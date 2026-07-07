@@ -68,7 +68,12 @@ lib/
   services/
   openapi/
 docs/
+openspec/
+  specs/
+  changes/
 ```
+
+`docs/` vs `openspec/`: `docs/` es la base estable definida en Fase 0 (decisiones de producto, arquitectura, seguridad y API que no cambian con cada tarea). `openspec/specs/` contiene las especificaciones vivas, sincronizadas con el codigo a medida que se implementa. `openspec/changes/` contiene propuestas de cambio en curso (siguiendo el ciclo explore -> propose -> spec -> design -> implement -> verify) hasta que se archivan.
 
 ## Manejo de autenticacion
 

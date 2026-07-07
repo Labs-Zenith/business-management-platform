@@ -14,6 +14,8 @@ Objetivo:
 - Definir seguridad.
 - Definir pruebas y despliegue.
 
+Esta documentacion alimenta el ciclo de Spec-Driven Development (SDD) que rige la implementacion a partir de Fase 1: explore -> propose -> spec -> design -> implement -> verify.
+
 ## Fase 1: MVP beta privada
 
 Objetivo:

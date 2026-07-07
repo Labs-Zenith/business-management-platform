@@ -8,6 +8,8 @@ El proyecto esta definido para construirse con Next.js, TypeScript, shadcn/ui, T
 
 Esta etapa contiene documentacion funcional y tecnica. Todavia no hay codigo de aplicacion implementado.
 
+El proyecto usa Spec-Driven Development (SDD): las propuestas de cambio y las specs vivas se gestionan en [`openspec/`](openspec/), sincronizadas con memoria persistente (Engram).
+
 ## Documentacion
 
 La documentacion completa esta en [docs/](docs/README.md).

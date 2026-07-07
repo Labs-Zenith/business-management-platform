@@ -17,6 +17,10 @@ El objetivo de esta etapa es dejar el producto listo para pasar a implementacion
 - [Deployment plan](deployment-plan.md): configuracion de Supabase, Vercel y beta privada.
 - [Roadmap](roadmap.md): evolucion posterior al MVP.
 
+## Flujo de trabajo (SDD)
+
+Este proyecto usa Spec-Driven Development (SDD) para pasar de esta documentacion a implementacion. Los documentos de esta carpeta son la base estable definida en Fase 0; los cambios en curso y las specs vivas viven en [`openspec/`](../openspec/): `openspec/specs/` para especificaciones consolidadas y sincronizadas con el codigo, `openspec/changes/` para propuestas en progreso hasta que se archivan.
+
 ## Decisiones principales
 
 - Stack definido: Next.js App Router, TypeScript, shadcn/ui, Tailwind CSS, Supabase y Vercel.
@@ -24,6 +28,7 @@ El objetivo de esta etapa es dejar el producto listo para pasar a implementacion
 - Base de datos: Supabase Postgres.
 - Autenticacion: Supabase Auth.
 - Documentacion API: OpenAPI/Swagger.
+- Datos operativos y logica financiera: server-side; el cliente llama `/api/*` y no consulta tablas financieras directamente.
 - Diseno: mobile first con tema default de shadcn.
 - Modelo SaaS: multi-negocio desde el inicio, aunque el MVP tenga un usuario por negocio.
 - Primer modo comercial: beta privada con cuentas creadas manualmente.

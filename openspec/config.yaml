@@ -1,0 +1,56 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Tech stack: Next.js (App Router) + TypeScript, shadcn/ui + Tailwind CSS, Supabase
+  (Postgres + Auth, RLS), Zod, OpenAPI/Swagger, deploy on Vercel.
+  Phase: Fase 0 (docs-only per docs/roadmap.md) — no app code, package.json, or CI yet.
+  Product: internal MVP SaaS — customers, invoices, payments, balances; multi-tenant
+  via server-resolved business_id; not official/electronic invoicing.
+  Architecture: layered UI / validation (Zod) / services / data-access; business_id,
+  status, and computed totals always server-derived, never trusted from client.
+  Testing: no test runner installed yet; docs/testing-plan.md defines future
+  functional/security/API/responsive test cases (see testing: below).
+  Style: functional/product docs in Spanish; SDD technical artifacts default to
+  English unless Spanish is explicitly requested.
+
+testing:
+  strict_tdd: false
+  test_runner: none
+  test_command: ""
+  build_command: ""
+  coverage_threshold: 0
+  notes: >
+    No package.json or test runner installed (project is Fase 0 / docs-only).
+    Recommended future stack per docs/technical-architecture.md: Vitest or Jest
+    (unit), Testing Library (component/integration), Playwright (E2E).
+    Re-run sdd-init detection once a runner is added — strict_tdd should default
+    to true once one exists, per the no-marker fallback rule.
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Explicitly call out multi-tenant/business_id and RLS impact for any data-touching proposal
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - State RLS/business_id scoping requirements for any requirement that touches operational tables
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+    - Note which layer (UI / validation / service / data-access) owns each responsibility
+    - Flag atomicity requirements for financial mutations (invoice creation, payment registration)
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Follow existing code patterns
+    - Never trust business_id, status, or computed totals from client payloads — resolve/recompute server-side
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
