@@ -2,30 +2,34 @@
 schema: spec-driven
 
 context: |
-  Tech stack: Next.js (App Router) + TypeScript, shadcn/ui + Tailwind CSS, Supabase
-  (Postgres + Auth, RLS), Zod, OpenAPI/Swagger, deploy on Vercel.
-  Phase: Fase 0 (docs-only per docs/roadmap.md) — no app code, package.json, or CI yet.
+  Tech stack: Next.js 16.2.10 (App Router) + TypeScript 5, React 19.2.4, shadcn/ui
+  (4.13.0) + @base-ui/react + Tailwind CSS v4, Supabase (Postgres + Auth, RLS)
+  planned, Zod planned, OpenAPI/Swagger planned, deploy on Vercel.
+  Phase: Fase 1 in progress — Next.js scaffold bootstrapped and test tooling
+  installed/verified (commit aa7715e); SDD planning artifacts exist for the
+  `mocked-mvp-scaffold` change (explore/proposal/design saved, commit 630e607).
   Product: internal MVP SaaS — customers, invoices, payments, balances; multi-tenant
   via server-resolved business_id; not official/electronic invoicing.
   Architecture: layered UI / validation (Zod) / services / data-access; business_id,
   status, and computed totals always server-derived, never trusted from client.
-  Testing: no test runner installed yet; docs/testing-plan.md defines future
-  functional/security/API/responsive test cases (see testing: below).
+  Testing: Vitest (unit/component, jsdom) + Testing Library + Playwright (E2E)
+  installed and verified working; see testing: below. docs/testing-plan.md still
+  defines the fuller functional/security/API/responsive test matrix to build out.
   Style: functional/product docs in Spanish; SDD technical artifacts default to
   English unless Spanish is explicitly requested.
 
 testing:
-  strict_tdd: false
-  test_runner: none
-  test_command: ""
-  build_command: ""
+  strict_tdd: true
+  test_runner: vitest+playwright
+  test_command: "npm run test"
+  build_command: "npm run build"
   coverage_threshold: 0
   notes: >
-    No package.json or test runner installed (project is Fase 0 / docs-only).
-    Recommended future stack per docs/technical-architecture.md: Vitest or Jest
-    (unit), Testing Library (component/integration), Playwright (E2E).
-    Re-run sdd-init detection once a runner is added — strict_tdd should default
-    to true once one exists, per the no-marker fallback rule.
+    Vitest (unit/component, jsdom) and Playwright (E2E) installed and verified
+    working (commit aa7715e). Passing example tests: lib/example.test.ts,
+    app/page.test.tsx, e2e/smoke.spec.ts. E2E command: `npm run test:e2e`.
+    Coverage not yet configured. strict_tdd now defaults to true per the
+    no-marker fallback rule now that a real test runner exists.
 
 rules:
   proposal:
@@ -46,11 +50,11 @@ rules:
   apply:
     - Follow existing code patterns
     - Never trust business_id, status, or computed totals from client payloads — resolve/recompute server-side
-    tdd: false
-    test_command: ""
+    tdd: true
+    test_command: "npm run test"
   verify:
-    test_command: ""
-    build_command: ""
+    test_command: "npm run test"
+    build_command: "npm run build"
     coverage_threshold: 0
   archive:
     - Warn before merging destructive deltas
