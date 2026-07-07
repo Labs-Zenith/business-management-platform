@@ -50,7 +50,7 @@ El MVP debe ser una app usable, no solo una demo visual. Si un cliente aprueba l
 - Permitir pago total.
 - Guardar metodo de pago.
 - Guardar nota opcional.
-- Actualizar saldo y estado de factura.
+- Actualizar saldo y estado calculado de factura.
 
 ### Dashboard
 
@@ -94,6 +94,7 @@ El MVP debe ser una app usable, no solo una demo visual. Si un cliente aprueba l
 - Una factura con saldo cero queda `paid`.
 - Una factura con fecha vencida y saldo pendiente queda `overdue`.
 - El estado `overdue` tiene prioridad visual sobre `pending` cuando la fecha de vencimiento ya paso.
+- El estado se calcula en servidor y no se acepta desde el cliente.
 
 ## Criterio de exito del MVP
 

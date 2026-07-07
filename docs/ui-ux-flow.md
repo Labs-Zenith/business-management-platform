@@ -200,7 +200,7 @@ Comportamiento:
 
 - Mostrar saldo actual.
 - No permitir monto mayor al saldo.
-- Actualizar estado al guardar.
+- Actualizar estado calculado al guardar.
 
 ### Comprobante imprimible
 

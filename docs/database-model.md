@@ -6,8 +6,9 @@
 - Todas las tablas usan `id uuid primary key`.
 - Todas las tablas relevantes usan `created_at` y `updated_at`.
 - Las tablas operativas usan `business_id`.
-- RLS debe estar activo en tablas operativas.
+- RLS debe estar activo en tablas operativas y en `businesses`.
 - La moneda inicial es COP.
+- Los totales, saldos y estados se consideran valores autoritativos del servidor.
 
 ## Entidades
 
@@ -86,6 +87,7 @@ Restricciones:
 - `total >= 0`
 - `subtotal >= 0`
 - `number` debe ser unico por `business_id`.
+- `business_id, customer_id` debe corresponder a un cliente del mismo negocio.
 
 Estados permitidos:
 
@@ -93,6 +95,12 @@ Estados permitidos:
 - `partially_paid`
 - `paid`
 - `overdue`
+
+Regla:
+
+- `status` no se acepta desde el cliente.
+- En el MVP puede persistirse para facilitar consultas, pero siempre debe recalcularse en servidor al crear facturas, registrar pagos o consultar vistas financieras.
+- Si hay diferencia entre `status` persistido y el estado calculado, la respuesta debe usar el estado calculado.
 
 ### invoice_items
 
@@ -114,6 +122,8 @@ Restricciones:
 - `quantity > 0`
 - `unit_price >= 0`
 - `line_total >= 0`
+- `line_total = quantity * unit_price`, calculado por servidor.
+- `business_id, invoice_id` debe corresponder a una factura del mismo negocio.
 
 ### payments
 
@@ -135,6 +145,9 @@ Campos:
 Restricciones:
 
 - `amount > 0`
+- `customer_id` se deriva desde la factura y no se acepta desde el cliente.
+- `business_id, invoice_id, customer_id` debe ser consistente con una factura del mismo negocio.
+- No se permite insertar pagos que superen el saldo pendiente.
 
 ## Relaciones
 
@@ -152,6 +165,8 @@ Restricciones:
 `invoice.total = sum(invoice_items.line_total)`
 
 En el MVP no se manejan impuestos ni descuentos globales.
+
+`subtotal` y `total` son iguales en el MVP y se calculan en servidor.
 
 ### Total pagado
 
@@ -172,6 +187,40 @@ Reglas:
 
 La interfaz puede mostrar vencida como prioridad visual aunque internamente se recalcule al consultar.
 
+## Integridad transaccional
+
+### Crear factura
+
+La creacion de factura debe ejecutarse en una transaccion o RPC:
+
+1. Resolver `business_id` desde la sesion.
+2. Validar que el cliente pertenece al negocio.
+3. Generar `number` de forma atomica por negocio.
+4. Calcular `line_total`, `subtotal`, `total` y estado inicial.
+5. Insertar factura e items.
+
+### Registrar pago
+
+El registro de pago debe ejecutarse en una transaccion o RPC:
+
+1. Resolver `business_id` desde la sesion.
+2. Bloquear o consultar de forma consistente la factura objetivo.
+3. Validar que la factura pertenece al negocio.
+4. Recalcular total pagado y saldo pendiente.
+5. Rechazar pagos mayores al saldo o sobre facturas ya pagadas.
+6. Derivar `customer_id` desde la factura.
+7. Insertar pago.
+8. Recalcular estado de factura.
+
+Esto evita sobrepagos cuando dos requests llegan al mismo tiempo.
+
+## Indices y restricciones recomendadas
+
+- `unique (business_id, number)` en `invoices`.
+- Indices por `business_id` en tablas operativas.
+- Indices compuestos para filtros frecuentes: `customers (business_id, is_active)`, `invoices (business_id, customer_id)`, `invoices (business_id, status)`, `payments (business_id, invoice_id)`.
+- Foreign keys compuestas o validaciones server-side/RPC para asegurar que recursos relacionados pertenecen al mismo negocio.
+
 ## Vistas o funciones recomendadas
 
 Para evitar duplicar calculos, se recomienda crear vistas o queries centralizadas para:
@@ -181,3 +230,5 @@ Para evitar duplicar calculos, se recomienda crear vistas o queries centralizada
 - Dashboard de negocio.
 
 Estas vistas deben respetar `business_id`.
+
+Las vistas deben devolver estado calculado, total pagado y saldo pendiente, y deben ser la fuente preferida para dashboard, listados financieros y detalle de cliente.

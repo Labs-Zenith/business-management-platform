@@ -35,11 +35,16 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_APP_URL=
+APP_ORIGIN=
 ```
 
 Reglas:
 
-- `SUPABASE_SERVICE_ROLE_KEY` solo debe usarse server-side.
+- Toda variable `NEXT_PUBLIC_*` se considera publica y visible en el navegador.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` puede estar en cliente porque es publica por diseno, pero debe depender de RLS para proteger datos.
+- `SUPABASE_SERVICE_ROLE_KEY` solo debe usarse en scripts administrativos o procesos server-side aislados.
+- `SUPABASE_SERVICE_ROLE_KEY` no debe usarse en Route Handlers de usuario.
+- `APP_ORIGIN` o `NEXT_PUBLIC_APP_URL` debe usarse para validar `Origin` o `Referer` en mutaciones.
 - No versionar valores reales.
 - Mantener `.env.example` cuando se implemente codigo.
 
@@ -49,12 +54,13 @@ Pasos:
 
 1. Crear proyecto Supabase.
 2. Crear tablas y relaciones.
-3. Activar RLS.
+3. Activar RLS en `businesses`, `profiles`, `customers`, `invoices`, `invoice_items` y `payments`.
 4. Crear politicas por `business_id`.
 5. Configurar Auth con email/password.
 6. Crear primer negocio.
 7. Crear primer usuario beta.
 8. Asociar usuario en `profiles`.
+9. Probar aislamiento con dos negocios distintos antes de usar datos reales.
 
 ## Configuracion inicial de Vercel
 
@@ -64,8 +70,12 @@ Pasos:
 2. Conectar repositorio.
 3. Configurar variables de entorno.
 4. Deploy de preview.
-5. Validar login, dashboard y API docs.
-6. Promover a produccion beta.
+5. Configurar headers de seguridad o confirmar que se aplican en la capa edge.
+6. Validar login, dashboard y API docs.
+7. Confirmar que `/api/docs` y `/api/openapi.json` requieren sesion en produccion beta.
+8. Confirmar que endpoints privados responden `Cache-Control: no-store`.
+9. Confirmar que mutaciones rechazan origenes no permitidos.
+10. Promover a produccion beta.
 
 ## Flujo de entrega a cliente beta
 
@@ -99,6 +109,8 @@ Minimo recomendado:
 - Logs de Supabase.
 - Manejo consistente de errores.
 - Registro de errores en UI sin mostrar detalles sensibles.
+- Redaccion de cookies, tokens, cabeceras `Authorization` y variables de entorno en logs.
+- Alertar manualmente cualquier error repetido en pagos, saldos o autorizacion durante beta.
 
 Futuro:
 
