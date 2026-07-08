@@ -76,6 +76,7 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 - [ ] 5.3 RED (SAFETY-CRITICAL) `lib/services/invoice-service.test.ts` — server-computed total/status even with forged input, cross-business customerId rejected, invalid item aborts whole creation → 5.4 GREEN implement
 - [ ] 5.5 RED (SAFETY-CRITICAL) `lib/services/payment-service.test.ts` — overpay rejected with no partial apply, balance=0 rejected → 5.6 GREEN implement
 - [ ] 5.7 RED `lib/services/dashboard-service.test.ts` — all 5 metrics isolated to session business_id → 5.8 GREEN implement
+- [x] 5.9 RED `lib/services/business-service.test.ts` — returns the business record scoped to `session.businessId` via `repositories.business`, NOT_FOUND if missing → 5.10 GREEN implement `lib/services/business-service.ts` (read-only, no update method) [business-profile]
 
 ## Phase 6: API routes
 
@@ -94,7 +95,7 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 - [ ] 7.3 `app/(dashboard)/customers/page.tsx` + `[id]/page.tsx` + `customer-form-dialog.tsx` (ssr:false) + `loading.tsx` [customers]
 - [ ] 7.4 `app/(dashboard)/invoices/{page,new/page,[id]/page}.tsx` + `invoice-item-fields.tsx` (useFieldArray, ssr:false) + `invoice-status-badge.tsx` + `loading.tsx` [invoices]
 - [ ] 7.5 `app/(dashboard)/payments/page.tsx` + `payment-form-dialog.tsx` (ssr:false) [payments]
-- [ ] 7.6 `app/(dashboard)/settings/page.tsx` — read-only Negocio, no PATCH [business-profile]
+- [x] 7.6 `app/(dashboard)/settings/page.tsx` — read-only Negocio, no PATCH [business-profile]
 - [ ] 7.7 `app/(print)/invoices/[id]/receipt/page.tsx` + payment receipt view — verbatim non-removable DIAN legal notice [receipts]
 
 ## Phase 8: E2E, concurrency proof, cleanup
