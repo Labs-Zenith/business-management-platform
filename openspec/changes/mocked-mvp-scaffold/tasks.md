@@ -56,8 +56,8 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 
 ## Phase 3: Schemas (Zod, strict)
 
-- [ ] 3.1 RED: `lib/schemas/customer.test.ts` — rejects business_id/balances, isActive defaults true
-- [ ] 3.2 GREEN: implement `lib/schemas/customer.ts`
+- [x] 3.1 RED: `lib/schemas/customer.test.ts` — rejects business_id/balances, isActive defaults true
+- [x] 3.2 GREEN: implement `lib/schemas/customer.ts`
 - [ ] 3.3 RED: `lib/schemas/invoice.test.ts` — rejects number/status/totals/business_id, item qty>0/unitPrice>=0
 - [ ] 3.4 GREEN: implement `lib/schemas/invoice.ts`
 - [ ] 3.5 RED: `lib/schemas/payment.test.ts` — rejects customerId/business_id/status, amount>0
@@ -67,12 +67,12 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 
 - [x] 4.1 RED: `lib/session.test.ts` — requireSession throws UNAUTHENTICATED without cookie
 - [x] 4.2 GREEN: implement `lib/session.ts`
-- [ ] 4.3 RED: `lib/server/http.test.ts` — withApiHandler maps errors, sets no-store, parses page/pageSize (max 50)
-- [ ] 4.4 GREEN: implement `lib/server/http.ts` + `lib/server/origin-check.ts`
+- [x] 4.3 RED: `lib/server/http.test.ts` — withApiHandler maps errors, sets no-store, parses page/pageSize (max 50)
+- [x] 4.4 GREEN: implement `lib/server/http.ts` + `lib/server/origin-check.ts`
 
 ## Phase 5: Services
 
-- [ ] 5.1 RED `lib/services/customer-service.test.ts` (scoping, PATCH rejects business_id/balances) → 5.2 GREEN implement
+- [x] 5.1 RED `lib/services/customer-service.test.ts` (scoping, PATCH rejects business_id/balances) → 5.2 GREEN implement
 - [ ] 5.3 RED (SAFETY-CRITICAL) `lib/services/invoice-service.test.ts` — server-computed total/status even with forged input, cross-business customerId rejected, invalid item aborts whole creation → 5.4 GREEN implement
 - [ ] 5.5 RED (SAFETY-CRITICAL) `lib/services/payment-service.test.ts` — overpay rejected with no partial apply, balance=0 rejected → 5.6 GREEN implement
 - [ ] 5.7 RED `lib/services/dashboard-service.test.ts` — all 5 metrics isolated to session business_id → 5.8 GREEN implement
@@ -81,7 +81,7 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 ## Phase 6: API routes
 
 - [x] 6.1 `middleware.ts` guard + `app/api/auth/{login,logout}/route.ts` + integration test (401 without cookie) [mock-auth-session]
-- [ ] 6.2 `app/api/customers/route.ts` + `[id]/route.ts` (GET/POST/PATCH) + tests: pagination, cross-business NOT_FOUND [customers]
+- [x] 6.2 `app/api/customers/route.ts` + `[id]/route.ts` (GET/POST/PATCH) + tests: pagination, cross-business NOT_FOUND [customers]
 - [ ] 6.3 `app/api/invoices/route.ts` + `[id]/route.ts` (GET/POST) + tests: forged fields ignored, GET always returns recomputed status [invoices]
 - [ ] 6.4 `app/api/invoices/[id]/payments/route.ts` + `app/api/payments/route.ts` + tests: overpay → 422 VALIDATION_ERROR, derived customerId [payments]
 - [ ] 6.5 `app/api/dashboard/summary/route.ts` + test: no cross-business leakage [dashboard]
@@ -92,7 +92,7 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 
 - [x] 7.1 `app/(auth)/login/page.tsx` [mock-auth-session]
 - [ ] 7.2 `app/(dashboard)/dashboard/page.tsx` + `loading.tsx` (5 KPIs + Create actions) [dashboard]
-- [ ] 7.3 `app/(dashboard)/customers/page.tsx` + `[id]/page.tsx` + `customer-form-dialog.tsx` (ssr:false) + `loading.tsx` [customers]
+- [x] 7.3 `app/(dashboard)/customers/page.tsx` + `[id]/page.tsx` + `customer-form-dialog.tsx` (ssr:false) + `loading.tsx` [customers]
 - [ ] 7.4 `app/(dashboard)/invoices/{page,new/page,[id]/page}.tsx` + `invoice-item-fields.tsx` (useFieldArray, ssr:false) + `invoice-status-badge.tsx` + `loading.tsx` [invoices]
 - [ ] 7.5 `app/(dashboard)/payments/page.tsx` + `payment-form-dialog.tsx` (ssr:false) [payments]
 - [x] 7.6 `app/(dashboard)/settings/page.tsx` — read-only Negocio, no PATCH [business-profile]

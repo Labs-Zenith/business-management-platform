@@ -15,6 +15,18 @@ import type {
 } from "@/lib/services/ports";
 import { generateId, store as defaultStore, type MockStore } from "./store";
 
+/**
+ * Artificial async gap simulating a real DB round-trip, matching the
+ * pattern already used by `payment-repo.ts`/`business-repo.ts`/`store.ts`.
+ * Without it, list/detail reads would resolve fully synchronously and
+ * `app/(dashboard)/customers/loading.tsx` / `[id]/loading.tsx`'s skeletons
+ * would never actually be demonstrable, even though they're still the
+ * correct Suspense boundaries to have.
+ */
+function simulateLatency(ms = 1): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function invoicesForCustomer(store: MockStore, customerId: string): Invoice[] {
   return [...store.invoices.values()].filter((invoice) => invoice.customerId === customerId);
 }
@@ -62,6 +74,7 @@ function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
 export function createCustomerRepository(store: MockStore): CustomerRepository {
   return {
     async list(businessId: string, query: CustomerListQuery): Promise<Paged<CustomerWithBalance>> {
+      await simulateLatency();
       let customers = [...store.customers.values()].filter((customer) => customer.businessId === businessId);
 
       if (query.status) {
@@ -88,6 +101,7 @@ export function createCustomerRepository(store: MockStore): CustomerRepository {
     },
 
     async getById(businessId: string, id: string): Promise<CustomerDetail | null> {
+      await simulateLatency();
       const customer = store.customers.get(id);
       if (!customer || customer.businessId !== businessId) {
         return null;

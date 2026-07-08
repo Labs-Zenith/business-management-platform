@@ -1,0 +1,151 @@
+import Link from "next/link";
+import { formatCOP } from "@/lib/money";
+import { requireSession } from "@/lib/session";
+import { listCustomers } from "@/lib/services/customer-service";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
+
+/**
+ * Clientes screen, per `docs/ui-ux-flow.md`'s "Clientes" section and
+ * `openspec/changes/mocked-mvp-scaffold/specs/customers/spec.md`. Fetches
+ * via `customer-service` directly (a Server Component call, not a
+ * self-fetch of `/api/customers`) — the API route exists for the client-side
+ * mutation dialog and any future non-page consumer.
+ *
+ * `requireSession()` runs first (defense in depth alongside
+ * `middleware.ts`'s `/customers` guard), matching the pattern established in
+ * `settings/page.tsx` (PR3).
+ */
+
+const PAGE_SIZE = 20;
+
+type CustomersPageProps = {
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+};
+
+function parsePageParam(raw: string | undefined): number {
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 1 ? value : 1;
+}
+
+function parseStatusParam(raw: string | undefined): "active" | "inactive" | undefined {
+  return raw === "active" || raw === "inactive" ? raw : undefined;
+}
+
+export default async function CustomersPage({ searchParams }: CustomersPageProps) {
+  const session = await requireSession();
+  const params = await searchParams;
+  const status = parseStatusParam(params.status);
+
+  const result = await listCustomers(session, {
+    q: params.q || undefined,
+    status,
+    page: parsePageParam(params.page),
+    pageSize: PAGE_SIZE,
+  });
+
+  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
+
+  return (
+    <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold">Clientes</h1>
+          <p className="text-sm text-muted-foreground">
+            Gestiona tus clientes y consulta su saldo pendiente.
+          </p>
+        </div>
+        <CustomerFormDialog mode="create" trigger={<Button>Crear cliente</Button>} />
+      </div>
+
+      <form method="get" className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="q" className="text-sm text-muted-foreground">
+            Buscar
+          </label>
+          <Input
+            id="q"
+            name="q"
+            defaultValue={params.q ?? ""}
+            placeholder="Nombre, documento, email o telefono"
+            className="w-64"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="status" className="text-sm text-muted-foreground">
+            Estado
+          </label>
+          <select
+            id="status"
+            name="status"
+            defaultValue={status ?? ""}
+            className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
+          >
+            <option value="">Todos</option>
+            <option value="active">Activos</option>
+            <option value="inactive">Inactivos</option>
+          </select>
+        </div>
+        <Button type="submit" variant="outline">
+          Filtrar
+        </Button>
+      </form>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Nombre</TableHead>
+            <TableHead>Telefono</TableHead>
+            <TableHead>Saldo pendiente</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead className="text-right">Acciones</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {result.data.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center text-muted-foreground">
+                No se encontraron clientes.
+              </TableCell>
+            </TableRow>
+          ) : (
+            result.data.map((customer) => (
+              <TableRow key={customer.id}>
+                <TableCell>
+                  <Link href={`/customers/${customer.id}`} className="font-medium hover:underline">
+                    {customer.name}
+                  </Link>
+                </TableCell>
+                <TableCell>{customer.phone ?? "-"}</TableCell>
+                <TableCell>{formatCOP(customer.balance)}</TableCell>
+                <TableCell>
+                  <Badge variant={customer.isActive ? "default" : "outline"}>
+                    {customer.isActive ? "Activo" : "Inactivo"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <CustomerFormDialog
+                    mode="edit"
+                    customer={customer}
+                    trigger={
+                      <Button variant="ghost" size="sm">
+                        Editar
+                      </Button>
+                    }
+                  />
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+
+      <p className="text-sm text-muted-foreground">
+        Pagina {result.page} de {totalPages} - {result.total} clientes
+      </p>
+    </div>
+  );
+}
