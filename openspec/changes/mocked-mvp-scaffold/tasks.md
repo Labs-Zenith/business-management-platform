@@ -85,8 +85,8 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 - [x] 6.3 `app/api/invoices/route.ts` + `[id]/route.ts` (GET/POST) + tests: forged fields ignored, GET always returns recomputed status [invoices]
 - [x] 6.4 `app/api/invoices/[id]/payments/route.ts` + `app/api/payments/route.ts` + tests: overpay → 400 VALIDATION_ERROR, derived customerId [payments]
 - [x] 6.5 `app/api/dashboard/summary/route.ts` + test: no cross-business leakage [dashboard]
-- [ ] 6.6 `lib/openapi/{registry,document}.ts` (zod-to-openapi) + `app/api/openapi.json/route.ts` + test: no secrets [api-docs]
-- [ ] 6.7 `app/api/docs/page.tsx` (Scalar, `dynamic(ssr:false)`) — FALLBACK CHECK: if `@scalar/api-reference-react` fails under React 19 SSR/build, fall back to a static link page to `/api/openapi.json` instead of blocking the PR [api-docs]
+- [x] 6.6 `lib/openapi/{registry,document}.ts` (zod-to-openapi) + `app/api/openapi.json/route.ts` + test: no secrets [api-docs]
+- [x] 6.7 `app/api/docs/page.tsx` (Scalar, `dynamic(ssr:false)`) — FALLBACK CHECK: if `@scalar/api-reference-react` fails under React 19 SSR/build, fall back to a static link page to `/api/openapi.json` instead of blocking the PR [api-docs]. RESULT: Scalar worked cleanly (typecheck/lint/test/build all pass) — no fallback needed.
 
 ## Phase 7: Pages/UI
 
