@@ -98,9 +98,9 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 - [x] 7.6 `app/(dashboard)/settings/page.tsx` — read-only Negocio, no PATCH [business-profile]
 - [x] 7.7 `app/(print)/invoices/[id]/receipt/page.tsx` + payment receipt view — verbatim non-removable DIAN legal notice [receipts]
 
-## Phase 8: E2E, concurrency proof, cleanup
+## Phase 8: E2E, concurrency proof, cleanup [x] ALL COMPLETE (PR10 — FINAL BATCH)
 
-- [ ] 8.1 Extend `e2e/smoke.spec.ts`: login → create customer → create invoice → partial payment → assert balance/status → print shows DIAN notice
-- [ ] 8.2 Add concurrency test (`e2e/concurrency.spec.ts` or Vitest integration): fire 2 simultaneous `POST /api/invoices/[id]/payments` on same invoice summing over balance; assert exactly one 201 + one 422, final balance never negative
-- [ ] 8.3 Run `npm run test` and `npm run build`; fix regressions
-- [ ] 8.4 Update `.env.example`; remove TODOs
+- [x] 8.1 Extend `e2e/smoke.spec.ts`: login → create customer → create invoice → partial payment → assert balance/status → print shows DIAN notice
+- [x] 8.2 Add concurrency test (`e2e/concurrency.spec.ts` or Vitest integration): fire 2 simultaneous `POST /api/invoices/[id]/payments` on same invoice summing over balance; assert exactly one 201 + one 422, final balance never negative — RESULT: real HTTP proof built as `e2e/concurrency.spec.ts` (Playwright `request` fixture against the real dev server); actual rejection status is `400 VALIDATION_ERROR` (this project's established convention, not `422` — confirmed against `app/api/invoices/[id]/payments/payments-routes.test.ts`). Also added a companion real-HTTP test proving invoice numbering stays unique under concurrent load (re-confirming PR1's repo-unit-level guarantee at the full route-handler level).
+- [x] 8.3 Run `npm run test` and `npm run build`; fix regressions — RESULT: no regressions; see Apply Progress for full gate results (typecheck/lint/test/build/e2e all green).
+- [x] 8.4 Update `.env.example`; remove TODOs — RESULT: `.env.example` already covered every `process.env.*` var actually referenced in app code (`APP_ORIGIN`, `DEMO_LOGIN_EMAIL`, `DEMO_LOGIN_PASSWORD`, `SUPABASE_SERVICE_ROLE_KEY`; `NODE_ENV`/`CI` are platform-provided, not app config) — no edit needed there. No leftover `TODO`/`FIXME`/`XXX` comments or dead/commented-out code found anywhere in `lib`, `app`, `components`, `middleware.ts`, or `e2e`.
