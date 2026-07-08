@@ -60,8 +60,8 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 - [x] 3.2 GREEN: implement `lib/schemas/customer.ts`
 - [x] 3.3 RED: `lib/schemas/invoice.test.ts` — rejects number/status/totals/business_id, item qty>0/unitPrice>=0
 - [x] 3.4 GREEN: implement `lib/schemas/invoice.ts`
-- [ ] 3.5 RED: `lib/schemas/payment.test.ts` — rejects customerId/business_id/status, amount>0
-- [ ] 3.6 GREEN: implement `lib/schemas/payment.ts`
+- [x] 3.5 RED: `lib/schemas/payment.test.ts` — rejects customerId/business_id/status, amount>0
+- [x] 3.6 GREEN: implement `lib/schemas/payment.ts`
 
 ## Phase 4: Server utils
 
@@ -74,7 +74,7 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 
 - [x] 5.1 RED `lib/services/customer-service.test.ts` (scoping, PATCH rejects business_id/balances) → 5.2 GREEN implement
 - [x] 5.3 RED (SAFETY-CRITICAL) `lib/services/invoice-service.test.ts` — server-computed total/status even with forged input, cross-business customerId rejected, invalid item aborts whole creation → 5.4 GREEN implement
-- [ ] 5.5 RED (SAFETY-CRITICAL) `lib/services/payment-service.test.ts` — overpay rejected with no partial apply, balance=0 rejected → 5.6 GREEN implement
+- [x] 5.5 RED (SAFETY-CRITICAL) `lib/services/payment-service.test.ts` — overpay rejected with no partial apply, balance=0 rejected → 5.6 GREEN implement
 - [ ] 5.7 RED `lib/services/dashboard-service.test.ts` — all 5 metrics isolated to session business_id → 5.8 GREEN implement
 - [x] 5.9 RED `lib/services/business-service.test.ts` — returns the business record scoped to `session.businessId` via `repositories.business`, NOT_FOUND if missing → 5.10 GREEN implement `lib/services/business-service.ts` (read-only, no update method) [business-profile]
 
@@ -83,7 +83,7 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 - [x] 6.1 `middleware.ts` guard + `app/api/auth/{login,logout}/route.ts` + integration test (401 without cookie) [mock-auth-session]
 - [x] 6.2 `app/api/customers/route.ts` + `[id]/route.ts` (GET/POST/PATCH) + tests: pagination, cross-business NOT_FOUND [customers]
 - [x] 6.3 `app/api/invoices/route.ts` + `[id]/route.ts` (GET/POST) + tests: forged fields ignored, GET always returns recomputed status [invoices]
-- [ ] 6.4 `app/api/invoices/[id]/payments/route.ts` + `app/api/payments/route.ts` + tests: overpay → 422 VALIDATION_ERROR, derived customerId [payments]
+- [x] 6.4 `app/api/invoices/[id]/payments/route.ts` + `app/api/payments/route.ts` + tests: overpay → 400 VALIDATION_ERROR, derived customerId [payments]
 - [ ] 6.5 `app/api/dashboard/summary/route.ts` + test: no cross-business leakage [dashboard]
 - [ ] 6.6 `lib/openapi/{registry,document}.ts` (zod-to-openapi) + `app/api/openapi.json/route.ts` + test: no secrets [api-docs]
 - [ ] 6.7 `app/api/docs/page.tsx` (Scalar, `dynamic(ssr:false)`) — FALLBACK CHECK: if `@scalar/api-reference-react` fails under React 19 SSR/build, fall back to a static link page to `/api/openapi.json` instead of blocking the PR [api-docs]
@@ -94,7 +94,7 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 - [ ] 7.2 `app/(dashboard)/dashboard/page.tsx` + `loading.tsx` (5 KPIs + Create actions) [dashboard]
 - [x] 7.3 `app/(dashboard)/customers/page.tsx` + `[id]/page.tsx` + `customer-form-dialog.tsx` (ssr:false) + `loading.tsx` [customers]
 - [x] 7.4 `app/(dashboard)/invoices/{page,new/page,[id]/page}.tsx` + `invoice-item-fields.tsx` (useFieldArray, ssr:false) + `invoice-status-badge.tsx` + `loading.tsx` [invoices]
-- [ ] 7.5 `app/(dashboard)/payments/page.tsx` + `payment-form-dialog.tsx` (ssr:false) [payments]
+- [x] 7.5 `app/(dashboard)/payments/page.tsx` + `payment-form-dialog.tsx` (ssr:false) [payments]
 - [x] 7.6 `app/(dashboard)/settings/page.tsx` — read-only Negocio, no PATCH [business-profile]
 - [ ] 7.7 `app/(print)/invoices/[id]/receipt/page.tsx` + payment receipt view — verbatim non-removable DIAN legal notice [receipts]
 

@@ -2,9 +2,11 @@ import Link from "next/link";
 import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
 import { getInvoice } from "@/lib/services/invoice-service";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
+import PaymentFormDialog from "@/components/domain/payments/payment-form-dialog";
 
 /**
  * Detalle de factura screen, per `docs/ui-ux-flow.md`'s "Detalle de
@@ -13,11 +15,13 @@ import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-
  * read time (`lib/mock/invoice-repo.ts` via `lib/services/status.ts`), never
  * a stale persisted value.
  *
- * The "Registrar pago" action and payment history table are PR6's scope
- * (payments capability) — this page leaves a clean, clearly-labeled spot for
- * them (a heading + "sin pagos registrados" placeholder) rather than linking
- * to a route that doesn't exist yet, matching the documented deviation
- * already established in PR4's customer detail page.
+ * The "Registrar pago" action (PR6's payments capability) opens
+ * `PaymentFormDialog`, which POSTs to `/api/invoices/{id}/payments` and
+ * `router.refresh()`es this Server Component afterwards so the
+ * balance/status/payments table below reflect the server-recomputed result.
+ * Hidden once the invoice's `balance` is already `0` (matching the payments
+ * spec's "payment on an already-paid invoice is always rejected" rule —
+ * no point offering an action that can only fail).
  */
 
 type InvoiceDetailPageProps = {
@@ -90,8 +94,15 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
           <CardTitle>Pagos</CardTitle>
+          {invoice.balance > 0 ? (
+            <PaymentFormDialog
+              invoiceId={invoice.id}
+              balance={invoice.balance}
+              trigger={<Button size="sm">Registrar pago</Button>}
+            />
+          ) : null}
         </CardHeader>
         <CardContent>
           {invoice.payments.length === 0 ? (
