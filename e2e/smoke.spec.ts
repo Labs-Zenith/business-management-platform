@@ -48,12 +48,13 @@ const DEMO_LOGIN_PASSWORD = process.env.DEMO_LOGIN_PASSWORD || "demo1234";
  * exact, non-removable DIAN legal notice text
  * (`components/domain/receipts/dian-notice.tsx`) is visible.
  *
- * There is no persistent sidebar/nav in this MVP scaffold (a pre-existing,
- * documented scope gap — `docs/ui-ux-flow.md` describes screens, not a nav
- * shell, and no `app/(dashboard)/layout.tsx` was ever added across PR1-PR9).
- * Top-level section changes below use `page.goto` for that reason — this
- * still exercises every real page/route/session-guard along the way, it
- * just doesn't click a nav link that doesn't exist in the app.
+ * `app/(dashboard)/layout.tsx` (added by a follow-up fix after PR10) now
+ * provides a real shared nav shell, so the customers section change below
+ * clicks the "Clientes" nav link instead of `page.goto`, proving the shell
+ * is genuinely reachable and clickable end to end. The remaining
+ * section/sub-page changes (`/invoices/new`, `/invoices/{id}/receipt`) keep
+ * `page.goto` since they are not top-level nav targets — this still
+ * exercises every real page/route/session-guard along the way.
  */
 test.describe("Full MVP flow (real browser, real running server, real mock backend)", () => {
   test("login -> create customer -> create invoice -> partial payment -> printable receipt", async ({ page }) => {
@@ -70,8 +71,16 @@ test.describe("Full MVP flow (real browser, real running server, real mock backe
     await expect(page).toHaveURL(/\/dashboard$/);
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
-    // 3. Navigate to customers and create a new one via the dialog.
-    await page.goto("/customers");
+    // 3. Navigate to customers via the real nav link (not page.goto) to
+    // prove the shared nav shell is genuinely reachable and clickable, then
+    // create a new customer via the dialog. `.first()` disambiguates
+    // between the desktop sidebar and mobile bottom nav, both of which
+    // render a "Clientes" link at all times (only CSS visibility differs
+    // per breakpoint).
+    const clientesLink = page.getByRole("link", { name: "Clientes" }).first();
+    await expect(clientesLink).toBeVisible();
+    await clientesLink.click();
+    await expect(page).toHaveURL(/\/customers$/);
     await page.getByRole("button", { name: "Crear cliente" }).click();
     await page.getByLabel("Nombre").fill(customerName);
     await page.getByRole("button", { name: "Guardar" }).click();
