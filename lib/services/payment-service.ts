@@ -23,6 +23,7 @@
  * `notes` fields from `lib/schemas/payment.ts`'s `.strict()` schema.
  */
 
+import { ApiError } from "@/lib/server/api-error";
 import { repositories } from "@/lib/services/repositories";
 import type { InvoiceDetail, Paged, PaymentInput, PaymentListQuery, PaymentWithRefs, Session } from "@/lib/services/ports";
 
@@ -35,6 +36,21 @@ export type PaymentCreateInput = {
 
 export async function listPayments(session: Session, query: PaymentListQuery): Promise<Paged<PaymentWithRefs>> {
   return repositories.payments.list(session.businessId, query);
+}
+
+/**
+ * Single-record lookup scoped to `session.businessId`, used by the print
+ * payment receipt (`app/(print)/payments/[id]/receipt/page.tsx`, PR8) — a
+ * cross-business or missing payment id surfaces as `NOT_FOUND`, matching
+ * `invoice-service.ts#getInvoice`'s established convention (never a leaked
+ * record from another business).
+ */
+export async function getPayment(session: Session, id: string): Promise<PaymentWithRefs> {
+  const payment = await repositories.payments.getById(session.businessId, id);
+  if (!payment) {
+    throw new ApiError("NOT_FOUND", "Payment not found.");
+  }
+  return payment;
 }
 
 export async function createPayment(

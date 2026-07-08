@@ -6,7 +6,7 @@ import { resetStore, store } from "@/lib/mock/store";
 import { customerFixtures } from "@/lib/mock/fixtures/data";
 import type { InvoicePersist, Session } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
-import { createPayment } from "./payment-service";
+import { createPayment, getPayment } from "./payment-service";
 
 /**
  * SAFETY-CRITICAL: proves the payment service (the layer
@@ -157,5 +157,51 @@ describe("createPayment (payment-service)", () => {
     await expect(
       createPayment(SESSION, invoice.id, { paymentDate: "2026-07-08", amount: 999999 }),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+/**
+ * `getPayment` is the single-record lookup the print receipt page
+ * (`app/(print)/payments/[id]/receipt/page.tsx`, PR8) relies on — it must
+ * scope strictly to `session.businessId` so a cross-business payment id
+ * surfaces as `NOT_FOUND`, never a leaked record (per
+ * `openspec/changes/mocked-mvp-scaffold/specs/receipts/spec.md`'s
+ * "business_id Scoping" requirement).
+ */
+describe("getPayment (payment-service)", () => {
+  it("returns the payment with its customer/invoice refs when it belongs to the session's business", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(100000));
+    const detail = await createPayment(SESSION, invoice.id, {
+      paymentDate: "2026-07-08",
+      amount: 100000,
+      method: "cash",
+    });
+    const paymentId = detail.payments[0]!.id;
+
+    const payment = await getPayment(SESSION, paymentId);
+
+    expect(payment.id).toBe(paymentId);
+    expect(payment.amount).toBe(100000);
+    expect(payment.customer.id).toBe(CUSTOMER_ID);
+    expect(payment.invoice.id).toBe(invoice.id);
+  });
+
+  it("rejects a cross-business payment id with NOT_FOUND rather than returning another business's payment", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(100000));
+    const detail = await createPayment(SESSION, invoice.id, { paymentDate: "2026-07-08", amount: 100000 });
+    const paymentId = detail.payments[0]!.id;
+
+    const otherSession: Session = { ...SESSION, businessId: OTHER_BUSINESS_ID };
+
+    await expect(getPayment(otherSession, paymentId)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("rejects a missing payment id with NOT_FOUND", async () => {
+    resetStore();
+    await expect(
+      getPayment(SESSION, "00000000-0000-4000-8000-000000000000"),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });

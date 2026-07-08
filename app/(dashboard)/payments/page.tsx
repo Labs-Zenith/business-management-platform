@@ -85,12 +85,13 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
             <TableHead>Factura</TableHead>
             <TableHead>Monto</TableHead>
             <TableHead>Metodo</TableHead>
+            <TableHead>Comprobante</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {result.data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground">
+              <TableCell colSpan={6} className="text-center text-muted-foreground">
                 No se encontraron pagos.
               </TableCell>
             </TableRow>
@@ -110,6 +111,16 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                 </TableCell>
                 <TableCell>{formatCOP(payment.amount)}</TableCell>
                 <TableCell>{payment.method ?? "-"}</TableCell>
+                <TableCell>
+                  <Link
+                    href={`/payments/${payment.id}/receipt`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-muted-foreground hover:underline"
+                  >
+                    Ver comprobante
+                  </Link>
+                </TableCell>
               </TableRow>
             ))
           )}

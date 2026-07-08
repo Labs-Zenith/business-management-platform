@@ -17,8 +17,14 @@ describe("middleware", () => {
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("redirects unauthenticated requests to a protected (print) route to /login", () => {
+  it("redirects unauthenticated requests to a protected (print) invoice receipt route to /login", () => {
     const response = middleware(buildRequest("/invoices/some-id/receipt"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  it("redirects unauthenticated requests to a protected (print) payment receipt route to /login", () => {
+    const response = middleware(buildRequest("/payments/some-id/receipt"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });

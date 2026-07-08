@@ -75,6 +75,17 @@ function toInvoiceDetail(store: MockStore, invoiceId: string): InvoiceDetail {
 
 export function createPaymentRepository(store: MockStore): PaymentRepository {
   return {
+    async getById(businessId: string, id: string): Promise<PaymentWithRefs | null> {
+      const payment = store.payments.get(id);
+      if (!payment || payment.businessId !== businessId) {
+        // Cross-business or missing: `null`, never leaked to the caller —
+        // matches `invoiceRepo.getById`/`customerRepo.getById`'s convention
+        // (PR4/PR5), which callers map to `NOT_FOUND` at the service layer.
+        return null;
+      }
+      return toPaymentWithRefs(store, payment);
+    },
+
     async list(businessId: string, query: PaymentListQuery): Promise<Paged<PaymentWithRefs>> {
       let payments = [...store.payments.values()]
         .filter((payment) => payment.businessId === businessId)

@@ -28,6 +28,47 @@ function buildInvoicePersist(totalCents: number): InvoicePersist {
   };
 }
 
+describe("paymentRepo.getById — business_id scoping", () => {
+  it("returns the payment when it belongs to the requesting business", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(100000));
+    const detail = await paymentRepo.createForInvoice(BUSINESS_ID, invoice.id, {
+      paymentDate: "2026-07-08",
+      amount: 100000,
+      method: "cash",
+      notes: null,
+    });
+    const paymentId = detail.payments[0]!.id;
+
+    const found = await paymentRepo.getById(BUSINESS_ID, paymentId);
+    expect(found).not.toBeNull();
+    expect(found!.id).toBe(paymentId);
+    expect(found!.customer.id).toBe(CUSTOMER_ID);
+    expect(found!.invoice.id).toBe(invoice.id);
+  });
+
+  it("returns null (not a leaked record) for a payment belonging to another business", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(100000));
+    const detail = await paymentRepo.createForInvoice(BUSINESS_ID, invoice.id, {
+      paymentDate: "2026-07-08",
+      amount: 100000,
+      method: "cash",
+      notes: null,
+    });
+    const paymentId = detail.payments[0]!.id;
+
+    const found = await paymentRepo.getById("10000000-0000-4000-8000-000000000099", paymentId);
+    expect(found).toBeNull();
+  });
+
+  it("returns null for a missing payment id", async () => {
+    resetStore();
+    const found = await paymentRepo.getById(BUSINESS_ID, "00000000-0000-4000-8000-000000000000");
+    expect(found).toBeNull();
+  });
+});
+
 describe("paymentRepo.createForInvoice — overpay race (safety-critical)", () => {
   it("accepts exactly one of two concurrent payments that individually fit but combined exceed the balance, and the balance never goes negative", async () => {
     resetStore();

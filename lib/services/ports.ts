@@ -212,6 +212,8 @@ export type PaymentListQuery = {
 
 export interface PaymentRepository {
   list(businessId: string, query: PaymentListQuery): Promise<Paged<PaymentWithRefs>>;
+  /** Scoped by `businessId`; returns `null` if missing or belongs to another business (cross-business -> `null`, never leaked). */
+  getById(businessId: string, id: string): Promise<PaymentWithRefs | null>;
   /**
    * Locked, overpay-rejecting, atomic: reads current balance, rejects
    * `amount > balance`, derives `customerId` from the invoice (never from

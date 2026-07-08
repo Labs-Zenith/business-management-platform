@@ -96,7 +96,7 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 - [x] 7.4 `app/(dashboard)/invoices/{page,new/page,[id]/page}.tsx` + `invoice-item-fields.tsx` (useFieldArray, ssr:false) + `invoice-status-badge.tsx` + `loading.tsx` [invoices]
 - [x] 7.5 `app/(dashboard)/payments/page.tsx` + `payment-form-dialog.tsx` (ssr:false) [payments]
 - [x] 7.6 `app/(dashboard)/settings/page.tsx` — read-only Negocio, no PATCH [business-profile]
-- [ ] 7.7 `app/(print)/invoices/[id]/receipt/page.tsx` + payment receipt view — verbatim non-removable DIAN legal notice [receipts]
+- [x] 7.7 `app/(print)/invoices/[id]/receipt/page.tsx` + payment receipt view — verbatim non-removable DIAN legal notice [receipts]
 
 ## Phase 8: E2E, concurrency proof, cleanup
 

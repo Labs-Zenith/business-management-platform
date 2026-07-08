@@ -43,6 +43,12 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           <h1 className="text-lg font-semibold">{invoice.number}</h1>
           <InvoiceStatusBadge status={invoice.status} />
         </div>
+        <Button
+          variant="outline"
+          render={<Link href={`/invoices/${invoice.id}/receipt`} target="_blank" rel="noopener noreferrer" />}
+        >
+          Ver comprobante
+        </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -114,6 +120,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                   <TableHead>Fecha</TableHead>
                   <TableHead>Monto</TableHead>
                   <TableHead>Metodo</TableHead>
+                  <TableHead>Comprobante</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -122,6 +129,16 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                     <TableCell>{payment.paymentDate}</TableCell>
                     <TableCell>{formatCOP(payment.amount)}</TableCell>
                     <TableCell>{payment.method ?? "-"}</TableCell>
+                    <TableCell>
+                      <Link
+                        href={`/payments/${payment.id}/receipt`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-muted-foreground hover:underline"
+                      >
+                        Ver comprobante
+                      </Link>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
