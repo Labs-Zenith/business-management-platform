@@ -35,24 +35,24 @@ Each PR merges to main in order (stacked-to-main); later PRs assume prior ones a
 
 ## Phase 1: Foundation (money, status, ports, errors)
 
-- [ ] 1.1 RED: `lib/money.test.ts` — roundHalfUp, lineTotal, formatCOP
-- [ ] 1.2 GREEN: implement `lib/money.ts`
-- [ ] 1.3 RED: `lib/services/status.test.ts` — precedence paid > partially_paid > overdue > pending
-- [ ] 1.4 GREEN: implement `lib/services/status.ts`
-- [ ] 1.5 Define `lib/services/ports.ts` (AuthPort, Customer/Invoice/Payment/BusinessRepository, Session)
-- [ ] 1.6 Define `lib/server/api-error.ts` (ApiError + codes)
+- [x] 1.1 RED: `lib/money.test.ts` — roundHalfUp, lineTotal, formatCOP
+- [x] 1.2 GREEN: implement `lib/money.ts`
+- [x] 1.3 RED: `lib/services/status.test.ts` — precedence paid > partially_paid > overdue > pending
+- [x] 1.4 GREEN: implement `lib/services/status.ts`
+- [x] 1.5 Define `lib/services/ports.ts` (AuthPort, Customer/Invoice/Payment/BusinessRepository, Session)
+- [x] 1.6 Define `lib/server/api-error.ts` (ApiError + codes)
 
 ## Phase 2: Mock data layer
 
-- [ ] 2.1 RED: `lib/mock/lock.test.ts` — withLock serializes concurrent calls
-- [ ] 2.2 GREEN: implement `lib/mock/lock.ts` (promise-chain mutex)
-- [ ] 2.3 Implement `lib/mock/store.ts` (globalThis singleton, per-business seq) + `lib/mock/fixtures/*`
-- [ ] 2.4 RED (SAFETY-CRITICAL): `lib/mock/invoice-repo.test.ts` — Promise.all N concurrent creates yield unique sequential numbers, no collisions
-- [ ] 2.5 GREEN: implement `lib/mock/invoice-repo.ts` (create under withLock(businessId), atomic invoice+items insert)
-- [ ] 2.6 RED (SAFETY-CRITICAL): `lib/mock/payment-repo.test.ts` — two concurrent payments whose sum exceeds balance: exactly one succeeds, balance never negative
-- [ ] 2.7 GREEN: implement `lib/mock/payment-repo.ts` (withLock(invoiceId): read balance, reject overpay, derive customerId, insert, recompute status)
-- [ ] 2.8 Implement `lib/mock/customer-repo.ts`, `lib/mock/business-repo.ts`, `lib/mock/auth-adapter.ts` (seeded demo user)
-- [ ] 2.9 Wire `lib/services/repositories.ts` to mock implementations
+- [x] 2.1 RED: `lib/mock/lock.test.ts` — withLock serializes concurrent calls
+- [x] 2.2 GREEN: implement `lib/mock/lock.ts` (promise-chain mutex)
+- [x] 2.3 Implement `lib/mock/store.ts` (globalThis singleton, per-business seq) + `lib/mock/fixtures/*`
+- [x] 2.4 RED (SAFETY-CRITICAL): `lib/mock/invoice-repo.test.ts` — Promise.all N concurrent creates yield unique sequential numbers, no collisions
+- [x] 2.5 GREEN: implement `lib/mock/invoice-repo.ts` (create under withLock(businessId), atomic invoice+items insert)
+- [x] 2.6 RED (SAFETY-CRITICAL): `lib/mock/payment-repo.test.ts` — two concurrent payments whose sum exceeds balance: exactly one succeeds, balance never negative
+- [x] 2.7 GREEN: implement `lib/mock/payment-repo.ts` (withLock(invoiceId): read balance, reject overpay, derive customerId, insert, recompute status)
+- [x] 2.8 Implement `lib/mock/customer-repo.ts`, `lib/mock/business-repo.ts`, `lib/mock/auth-adapter.ts` (seeded demo user)
+- [x] 2.9 Wire `lib/services/repositories.ts` to mock implementations
 
 ## Phase 3: Schemas (Zod, strict)
 
