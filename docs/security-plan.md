@@ -161,7 +161,7 @@ En una fase posterior se puede agregar:
 
 Todo comprobante interno debe mostrar:
 
-> Documento interno de control administrativo. No valido como factura electronica DIAN.
+> Documento interno, no valido como factura electronica DIAN.
 
 Este aviso reduce el riesgo de confusion tributaria.
 
