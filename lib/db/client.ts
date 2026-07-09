@@ -11,7 +11,11 @@ import { neon } from "@neondatabase/serverless";
  * when `isDbConfigured` is true, so local dev without a database keeps
  * working exactly as before (zero-setup mock).
  */
-const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+const connectionString =
+  process.env.POSTGRES_URL ||
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL_NON_POOLING ||
+  process.env.DATABASE_URL_UNPOOLED;
 
 export const isDbConfigured = Boolean(connectionString);
 
