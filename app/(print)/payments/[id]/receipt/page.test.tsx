@@ -84,14 +84,29 @@ describe("PaymentReceiptPage (printable comprobante de pago)", () => {
     ).toBeInTheDocument();
   });
 
-  it("rejects a cross-business payment id with NOT_FOUND instead of rendering another business's receipt", async () => {
+  it("renders a mock comprobante for NOT_FOUND instead of failing or leaking another business's receipt", async () => {
     mockRequireSession.mockResolvedValue(SESSION);
     mockGetPayment.mockRejectedValue(new ApiError("NOT_FOUND", "Payment not found."));
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
-    await expect(
-      PaymentReceiptPage({ params: Promise.resolve({ id: "cross-business-payment-id" }) }),
-    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    render(await PaymentReceiptPage({ params: Promise.resolve({ id: "cross-business-payment-id" }) }));
+
+    expect(screen.getByText("Cliente demo")).toBeInTheDocument();
+    expect(screen.getByText("Factura demo")).toBeInTheDocument();
+  });
+
+  it("renders a mock comprobante when the payment is missing in the mocked environment", async () => {
+    mockRequireSession.mockResolvedValue(SESSION);
+    mockGetPayment.mockRejectedValue(new ApiError("NOT_FOUND", "Payment not found."));
+    mockGetBusinessProfile.mockResolvedValue(BUSINESS);
+
+    render(await PaymentReceiptPage({ params: Promise.resolve({ id: "missing-payment-id" }) }));
+
+    expect(screen.getByText("Comprobante de pago")).toBeInTheDocument();
+    expect(screen.getByText("Cliente demo")).toBeInTheDocument();
+    expect(screen.getByText("Factura demo")).toBeInTheDocument();
+    expect(screen.getByText("Mock")).toBeInTheDocument();
+    expect(screen.getByText("Documento interno, no valido como factura electronica DIAN.")).toBeInTheDocument();
   });
 
   it("blocks unauthenticated access: propagates requireSession's UNAUTHENTICATED rejection and never calls getPayment", async () => {

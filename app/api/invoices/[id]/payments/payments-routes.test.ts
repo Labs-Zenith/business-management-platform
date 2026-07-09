@@ -54,17 +54,17 @@ async function signIn(): Promise<void> {
 }
 
 /** Seeds an invoice with a known total directly under `BUSINESS_ID`, no payments. */
-function seedInvoice(id: string, total: number): Invoice {
+function seedInvoice(id: string, total: number, dueDate = "2026-08-01", status: Invoice["status"] = "pending"): Invoice {
   const invoice: Invoice = {
     id,
     businessId: BUSINESS_ID,
     customerId: CUSTOMER_ID,
     number: `FAC-TEST-${id.slice(-4)}`,
     issueDate: "2026-07-01",
-    dueDate: "2026-08-01",
+    dueDate,
     subtotal: total,
     total,
-    status: "pending",
+    status,
     notes: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
@@ -159,6 +159,22 @@ describe("POST /api/invoices/{id}/payments", () => {
     expect(body.data.status).toBe("partially_paid");
     expect(body.data.payments).toHaveLength(1);
     expect(body.data.payments[0].customerId).toBe(CUSTOMER_ID);
+  });
+
+  it("registers a partial payment on an overdue invoice and returns partially_paid, not overdue", async () => {
+    await signIn();
+    const invoice = seedInvoice("50000000-0000-4000-8000-000000000912", 200000, "2020-01-01", "overdue");
+
+    const response = await POST(
+      postRequest(invoice.id, { paymentDate: "2026-07-08", amount: 80000, method: "cash" }),
+      buildContext(invoice.id),
+    );
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data.balance).toBe(120000);
+    expect(body.data.status).toBe("partially_paid");
+    expect(store.invoices.get(invoice.id)!.status).toBe("partially_paid");
   });
 
   it("rejects an overpay attempt (not 500) and leaves the store completely unchanged", async () => {

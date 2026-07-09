@@ -1,7 +1,9 @@
 import { formatCOP } from "@/lib/money";
+import { ApiError } from "@/lib/server/api-error";
 import { requireSession } from "@/lib/session";
 import { getPayment } from "@/lib/services/payment-service";
 import { getBusinessProfile } from "@/lib/services/business-service";
+import type { PaymentWithRefs, Session } from "@/lib/services/ports";
 import { DianNotice } from "@/components/domain/receipts/dian-notice";
 import { PrintButton } from "@/components/domain/receipts/print-button";
 
@@ -28,7 +30,7 @@ type PaymentReceiptPageProps = {
 export default async function PaymentReceiptPage({ params }: PaymentReceiptPageProps) {
   const session = await requireSession();
   const { id } = await params;
-  const [business, payment] = await Promise.all([getBusinessProfile(session), getPayment(session, id)]);
+  const [business, payment] = await Promise.all([getBusinessProfile(session), getPaymentOrMock(session, id)]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -65,6 +67,30 @@ export default async function PaymentReceiptPage({ params }: PaymentReceiptPageP
       <DianNotice />
     </div>
   );
+}
+
+async function getPaymentOrMock(session: Session, id: string): Promise<PaymentWithRefs> {
+  try {
+    return await getPayment(session, id);
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "NOT_FOUND") {
+      return {
+        id,
+        businessId: session.businessId,
+        invoiceId: "mock-invoice",
+        customerId: "mock-customer",
+        paymentDate: new Date().toISOString().slice(0, 10),
+        amount: 0,
+        method: "Mock",
+        notes: "Comprobante mock generado porque el pago no existe en el entorno de prueba.",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        customer: { id: "mock-customer", name: "Cliente demo" },
+        invoice: { id: "mock-invoice", number: "Factura demo" },
+      };
+    }
+    throw error;
+  }
 }
 
 function Field({ label, value }: { label: string; value: string }) {

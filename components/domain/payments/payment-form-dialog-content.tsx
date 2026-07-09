@@ -122,8 +122,8 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
         return;
       }
 
-      setOpen(false);
       router.refresh();
+      setOpen(false);
     } catch {
       setError(GENERIC_ERROR_MESSAGE);
     } finally {
