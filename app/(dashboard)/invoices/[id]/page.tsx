@@ -47,9 +47,9 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           variant="outline"
           className="w-full sm:w-auto"
           nativeButton={false}
-          render={<Link href={`/invoices/${invoice.id}/receipt`} target="_blank" rel="noopener noreferrer" />}
+          render={<Link href={`/api/invoices/${invoice.id}/pdf`} />}
         >
-          Ver comprobante
+          Descargar PDF
         </Button>
       </div>
 

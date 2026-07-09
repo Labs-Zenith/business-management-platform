@@ -25,9 +25,45 @@ const STATUS_COLORS = [
   "var(--chart-4)",
 ];
 
-function moneyTooltip(value: unknown) {
+function formatTooltipMoney(value: unknown) {
   const amount = Array.isArray(value) ? value[0] : value;
   return formatCOP(Number(amount ?? 0));
+}
+
+type ChartTooltipPayload = {
+  value?: unknown;
+  name?: unknown;
+  dataKey?: unknown;
+  color?: string;
+};
+
+function ChartTooltip({
+  active,
+  label,
+  payload,
+  valueLabel,
+}: {
+  active?: boolean;
+  label?: unknown;
+  payload?: readonly ChartTooltipPayload[];
+  valueLabel: string;
+}) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-sm">
+      <p className="mb-1 font-medium">{String(label ?? "")}</p>
+      {payload.map((item, index) => (
+        <div key={`${String(item.dataKey ?? item.name ?? valueLabel)}-${index}`} className="flex items-center gap-2">
+          <span className="size-2 rounded-full" style={{ backgroundColor: item.color ?? "var(--primary)" }} />
+          <span className="text-muted-foreground">{valueLabel}:</span>
+          <span className="font-medium tabular-nums">{formatTooltipMoney(item.value)}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function EmptyChart({ label }: { label: string }) {
@@ -62,14 +98,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
                   <YAxis hide />
                   <Tooltip
                     cursor={{ fill: "var(--muted)" }}
-                    formatter={moneyTooltip}
-                    labelClassName="text-foreground"
-                    contentStyle={{
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      background: "var(--popover)",
-                      color: "var(--popover-foreground)",
-                    }}
+                    content={(props) => <ChartTooltip {...props} valueLabel="Saldo" />}
                   />
                   <Bar dataKey="balance" radius={[6, 6, 0, 0]}>
                     {receivableRows.map((_, index) => (
@@ -112,13 +141,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
                   />
                   <Tooltip
                     cursor={{ fill: "var(--muted)" }}
-                    formatter={moneyTooltip}
-                    contentStyle={{
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      background: "var(--popover)",
-                      color: "var(--popover-foreground)",
-                    }}
+                    content={(props) => <ChartTooltip {...props} valueLabel="Saldo" />}
                   />
                   <Bar dataKey="balance" fill="var(--chart-2)" radius={[0, 6, 6, 0]} />
                 </BarChart>
@@ -144,13 +167,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
                   <YAxis hide />
                   <Tooltip
                     cursor={{ fill: "var(--muted)" }}
-                    formatter={moneyTooltip}
-                    contentStyle={{
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      background: "var(--popover)",
-                      color: "var(--popover-foreground)",
-                    }}
+                    content={(props) => <ChartTooltip {...props} valueLabel="Monto" />}
                   />
                   <Bar dataKey="amount" fill="var(--chart-3)" radius={[6, 6, 0, 0]} />
                 </BarChart>

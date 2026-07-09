@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
 import { listPayments } from "@/lib/services/payment-service";
+import { buildExportHref } from "@/lib/export/url";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,12 +52,39 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
   });
 
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
+  const exportParams = {
+    customerId: params.customerId,
+    invoiceId: params.invoiceId,
+    from: params.from,
+    to: params.to,
+    page: params.page,
+  };
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
-      <div>
-        <h1 className="text-lg font-semibold">Pagos</h1>
-        <p className="text-sm text-muted-foreground">Consulta los pagos registrados en tu negocio.</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-lg font-semibold">Pagos</h1>
+          <p className="text-sm text-muted-foreground">Consulta los pagos registrados en tu negocio.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:flex">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href={buildExportHref("/api/payments/export", exportParams, "xlsx")} />}
+          >
+            Excel
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href={buildExportHref("/api/payments/export", exportParams, "pdf")} />}
+          >
+            PDF
+          </Button>
+        </div>
       </div>
 
       <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[10rem_10rem_auto]">

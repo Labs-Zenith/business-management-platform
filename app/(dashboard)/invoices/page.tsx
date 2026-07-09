@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/session";
 import { listCustomers } from "@/lib/services/customer-service";
 import { listInvoices } from "@/lib/services/invoice-service";
 import type { InvoiceStatus } from "@/lib/services/status";
+import { buildExportHref } from "@/lib/export/url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -67,6 +68,13 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
 
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
   const customerNameById = new Map(customersResult.data.map((customer) => [customer.id, customer.name]));
+  const exportParams = {
+    customerId: params.customerId,
+    status: params.status,
+    from: params.from,
+    to: params.to,
+    page: params.page,
+  };
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
@@ -75,9 +83,27 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
           <h1 className="text-lg font-semibold">Facturas</h1>
           <p className="text-sm text-muted-foreground">Consulta tus facturas internas y su estado.</p>
         </div>
-        <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
-          Crear factura
-        </Button>
+        <div className="grid grid-cols-1 gap-2 sm:flex">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href={buildExportHref("/api/invoices/export", exportParams, "xlsx")} />}
+          >
+            Excel
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href={buildExportHref("/api/invoices/export", exportParams, "pdf")} />}
+          >
+            PDF
+          </Button>
+          <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
+            Crear factura
+          </Button>
+        </div>
       </div>
 
       <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_12rem_10rem_10rem_auto]">
