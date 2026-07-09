@@ -18,11 +18,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import { formatCOP } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { MoneyAmount } from "@/components/domain/money-amount";
 import { InvoiceItemFields } from "./invoice-item-fields";
 import { invoiceFormSchema, type InvoiceFormValues } from "./invoice-form-schema";
 
@@ -110,7 +110,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
   }
 
   return (
-    <form className="flex w-full max-w-2xl flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
+    <form className="mx-auto flex w-full max-w-2xl flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="invoice-customer">Cliente</Label>
         <select
@@ -147,7 +147,9 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
         <Textarea id="invoice-notes" {...register("notes")} />
       </div>
 
-      <p className="text-sm font-medium">Total: {formatCOP(totalCents)}</p>
+      <p className="flex items-baseline gap-1.5 text-sm font-medium">
+        Total: <MoneyAmount cents={totalCents} size="sm" />
+      </p>
 
       {submitError ? (
         <p role="alert" className="text-sm text-destructive">
