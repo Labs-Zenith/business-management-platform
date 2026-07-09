@@ -19,7 +19,11 @@
  * `InvoiceStatusBadge`, etc.) renders with its normal light-mode colors
  * without any print-specific component variants.
  */
-export default function PrintLayout({ children }: { children: React.ReactNode }) {
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
+
+export default async function PrintLayout({ children }: { children: React.ReactNode }) {
+  await loadStoreFromCookie();
+
   return (
     <div className="light mx-auto flex w-full max-w-2xl flex-1 flex-col bg-background p-6 text-foreground print:p-0">
       {children}

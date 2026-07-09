@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
 import DashboardSidebar from "@/components/layout/dashboard-sidebar";
 import DashboardBottomNav from "@/components/layout/dashboard-bottom-nav";
@@ -42,6 +43,7 @@ export default async function DashboardLayout({
 }: {
   children: ReactNode;
 }) {
+  await loadStoreFromCookie();
   const session = await requireSession();
 
   return (

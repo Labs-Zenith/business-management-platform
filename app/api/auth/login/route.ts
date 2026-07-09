@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError } from "@/lib/server/api-error";
+import { loadStoreFromCookie, saveStoreToCookie } from "@/lib/mock/cookie-persistence";
 import { repositories } from "@/lib/services/repositories";
 
 /**
@@ -37,6 +38,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
+  await loadStoreFromCookie();
   try {
     // Intentionally does NOT call requireSession() — establishing a new
     // session is the whole purpose of this endpoint, so it must be
@@ -46,17 +48,22 @@ export async function POST(request: Request): Promise<NextResponse> {
       // Generic message: never reveal whether the email or the password
       // was wrong, per the mock-auth-session spec's "Incorrect credentials"
       // scenario.
-      return errorResponse(new ApiError("UNAUTHENTICATED", "Invalid email or password."));
+      const response = errorResponse(new ApiError("UNAUTHENTICATED", "Invalid email or password."));
+      saveStoreToCookie(response);
+      return response;
     }
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       { data: { session } },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
+    saveStoreToCookie(response);
+    return response;
   } catch (error) {
-    if (error instanceof ApiError) {
-      return errorResponse(error);
-    }
-    return errorResponse(new ApiError("INTERNAL_ERROR", "Unexpected error."));
+    const response = error instanceof ApiError
+      ? errorResponse(error)
+      : errorResponse(new ApiError("INTERNAL_ERROR", "Unexpected error."));
+    saveStoreToCookie(response);
+    return response;
   }
 }

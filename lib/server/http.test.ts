@@ -1,6 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
 import { ApiError } from "@/lib/server/api-error";
+
+// `loadStoreFromCookie`/`saveStoreToCookie` call `next/headers`'s `cookies()`,
+// which requires a real Next.js request context unavailable when invoking
+// `withApiHandler`-wrapped handlers directly in Vitest — this test is about
+// withApiHandler's own error-mapping/header behavior, not cookie persistence.
+vi.mock("@/lib/mock/cookie-persistence", () => ({
+  loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
+  saveStoreToCookie: vi.fn(),
+}));
+
 import { parsePagination, withApiHandler } from "./http";
 
 describe("withApiHandler", () => {

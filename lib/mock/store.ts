@@ -27,6 +27,51 @@ export type MockStore = {
   invoiceSequences: Map<string, number>;
 };
 
+/** JSON-serializable snapshot of a `MockStore`, for cookie-based persistence. */
+export type SerializedStore = {
+  businesses: Business[];
+  profiles: Profile[];
+  customers: Customer[];
+  invoices: Invoice[];
+  invoiceItems: InvoiceItem[];
+  payments: Payment[];
+  invoiceSequences: Record<string, number>;
+};
+
+export function serializeStore(target: MockStore = store): SerializedStore {
+  return {
+    businesses: [...target.businesses.values()],
+    profiles: [...target.profiles.values()],
+    customers: [...target.customers.values()],
+    invoices: [...target.invoices.values()],
+    invoiceItems: [...target.invoiceItems.values()],
+    payments: [...target.payments.values()],
+    invoiceSequences: Object.fromEntries(target.invoiceSequences),
+  };
+}
+
+export function clearStore(target: MockStore): void {
+  target.businesses.clear();
+  target.profiles.clear();
+  target.customers.clear();
+  target.invoices.clear();
+  target.invoiceItems.clear();
+  target.payments.clear();
+  target.invoiceSequences.clear();
+}
+
+/** Repopulates `target` (defaults to the shared singleton) from a snapshot, replacing its current contents. */
+export function hydrateStore(data: SerializedStore, target: MockStore = store): void {
+  clearStore(target);
+  for (const b of data.businesses) target.businesses.set(b.id, b);
+  for (const p of data.profiles) target.profiles.set(p.userId, p);
+  for (const c of data.customers) target.customers.set(c.id, c);
+  for (const i of data.invoices) target.invoices.set(i.id, i);
+  for (const i of data.invoiceItems) target.invoiceItems.set(i.id, i);
+  for (const p of data.payments) target.payments.set(p.id, p);
+  for (const [k, v] of Object.entries(data.invoiceSequences)) target.invoiceSequences.set(k, v);
+}
+
 export function createEmptyStore(): MockStore {
   return {
     businesses: new Map(),

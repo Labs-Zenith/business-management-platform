@@ -14,6 +14,14 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
+// `loadStoreFromCookie` calls `next/headers`'s `cookies()`, unavailable
+// outside a real Next.js request context — irrelevant to this layout's own
+// nav/session-gating behavior under test.
+vi.mock("@/lib/mock/cookie-persistence", () => ({
+  loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
+  saveStoreToCookie: vi.fn(),
+}));
+
 import DashboardLayout from "./layout";
 
 const SESSION: Session = {

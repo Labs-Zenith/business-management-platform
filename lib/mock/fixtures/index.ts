@@ -11,6 +11,21 @@ import {
   invoiceFixtures,
 } from "./data";
 
+/**
+ * Minimal seed (business + demo profile only, no customers/invoices/
+ * payments) — used for the cookie-backed persistence path (see
+ * `lib/mock/cookie-persistence.ts`), where the whole store round-trips
+ * through an httpOnly cookie on every request. The full `seedFixtures`
+ * dataset (~8 customers/~12 invoices) is too large to fit in a ~4KB
+ * cookie; this keeps a fresh session small, and the user builds up their
+ * own data (which does fit comfortably) from there.
+ */
+export function seedMinimal(store: MockStore): void {
+  const nowIso = new Date().toISOString();
+  store.businesses.set(BUSINESS_ID, { ...businessFixture, createdAt: nowIso, updatedAt: nowIso });
+  store.profiles.set(demoProfileFixture.userId, { ...demoProfileFixture, createdAt: nowIso, updatedAt: nowIso });
+}
+
 function daysFromNow(offset: number): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offset);

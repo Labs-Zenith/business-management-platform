@@ -9,6 +9,7 @@
 
 import { NextResponse } from "next/server";
 import { ApiError } from "@/lib/server/api-error";
+import { loadStoreFromCookie, saveStoreToCookie } from "@/lib/mock/cookie-persistence";
 
 /**
  * Wraps a Next.js Route Handler so that:
@@ -27,19 +28,23 @@ export function withApiHandler<Args extends unknown[]>(
   handler: (...args: Args) => Promise<NextResponse>,
 ): (...args: Args) => Promise<NextResponse> {
   return async (...args: Args): Promise<NextResponse> => {
+    await loadStoreFromCookie();
     try {
       const response = await handler(...args);
       response.headers.set("Cache-Control", "no-store");
+      saveStoreToCookie(response);
       return response;
     } catch (error) {
       if (!(error instanceof ApiError)) {
         console.error(error);
       }
       const apiError = error instanceof ApiError ? error : new ApiError("INTERNAL_ERROR", "Unexpected error.");
-      return NextResponse.json(apiError.toResponseBody(), {
+      const response = NextResponse.json(apiError.toResponseBody(), {
         status: apiError.status,
         headers: { "Cache-Control": "no-store" },
       });
+      saveStoreToCookie(response);
+      return response;
     }
   };
 }
