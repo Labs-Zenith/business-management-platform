@@ -134,7 +134,7 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={trigger} />
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar pago</DialogTitle>
           <DialogDescription>Saldo pendiente actual: {formatCOP(balance)}</DialogDescription>
@@ -191,7 +191,7 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting || exceedsBalance}>
+            <Button type="submit" disabled={isSubmitting || exceedsBalance} className="w-full sm:w-auto">
               {isSubmitting ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>

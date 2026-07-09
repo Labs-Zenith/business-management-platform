@@ -5,6 +5,7 @@ import { KpiCards, KpiCardsSkeleton } from "@/components/domain/dashboard/kpi-ca
 import { RecentPayments, RecentPaymentsSkeleton } from "@/components/domain/dashboard/recent-payments";
 import { TopDebtors, TopDebtorsSkeleton } from "@/components/domain/dashboard/top-debtors";
 import { OverdueList, OverdueListSkeleton } from "@/components/domain/dashboard/overdue-list";
+import { DashboardCharts, DashboardChartsSkeleton } from "@/components/domain/dashboard/dashboard-charts";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 
 /**
@@ -33,19 +34,32 @@ import CustomerFormDialog from "@/components/domain/customers/customer-form-dial
 export default function DashboardPage() {
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-semibold">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Claridad inmediata sobre tu cartera.</p>
         </div>
-        <div className="flex gap-2">
-          <CustomerFormDialog mode="create" trigger={<Button variant="outline">Crear cliente</Button>} />
-          <Button render={<Link href="/invoices/new" />}>Crear factura</Button>
+        <div className="grid grid-cols-1 gap-2 sm:flex">
+          <CustomerFormDialog
+            mode="create"
+            trigger={
+              <Button variant="outline" className="w-full sm:w-auto">
+                Crear cliente
+              </Button>
+            }
+          />
+          <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
+            Crear factura
+          </Button>
         </div>
       </div>
 
       <Suspense fallback={<KpiCardsSkeleton />}>
         <KpiCards />
+      </Suspense>
+
+      <Suspense fallback={<DashboardChartsSkeleton />}>
+        <DashboardCharts />
       </Suspense>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
 import { listCustomers } from "@/lib/services/customer-service";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
+import { MoneyAmount } from "@/components/domain/money-amount";
 
 /**
  * Clientes screen, per `docs/ui-ux-flow.md`'s "Clientes" section and
@@ -51,18 +51,18 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-semibold">Clientes</h1>
           <p className="text-sm text-muted-foreground">
             Gestiona tus clientes y consulta su saldo pendiente.
           </p>
         </div>
-        <CustomerFormDialog mode="create" trigger={<Button>Crear cliente</Button>} />
+        <CustomerFormDialog mode="create" trigger={<Button className="w-full sm:w-auto">Crear cliente</Button>} />
       </div>
 
-      <form method="get" className="flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1.5">
+      <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="q" className="text-sm text-muted-foreground">
             Buscar
           </label>
@@ -71,10 +71,10 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
             name="q"
             defaultValue={params.q ?? ""}
             placeholder="Nombre, documento, email o telefono"
-            className="w-64"
+            className="w-full"
           />
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="status" className="text-sm text-muted-foreground">
             Estado
           </label>
@@ -82,24 +82,24 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
             id="status"
             name="status"
             defaultValue={status ?? ""}
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
           >
             <option value="">Todos</option>
             <option value="active">Activos</option>
             <option value="inactive">Inactivos</option>
           </select>
         </div>
-        <Button type="submit" variant="outline">
+        <Button type="submit" variant="outline" className="w-full sm:w-auto">
           Filtrar
         </Button>
       </form>
 
-      <Table>
+      <Table className="min-w-[720px]">
         <TableHeader>
           <TableRow>
             <TableHead>Nombre</TableHead>
             <TableHead>Telefono</TableHead>
-            <TableHead>Saldo pendiente</TableHead>
+            <TableHead className="text-right">Saldo pendiente</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
@@ -120,7 +120,9 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                   </Link>
                 </TableCell>
                 <TableCell>{customer.phone ?? "-"}</TableCell>
-                <TableCell>{formatCOP(customer.balance)}</TableCell>
+                <TableCell className="text-right">
+                  <MoneyAmount cents={customer.balance} />
+                </TableCell>
                 <TableCell>
                   <Badge variant={customer.isActive ? "default" : "outline"}>
                     {customer.isActive ? "Activo" : "Inactivo"}

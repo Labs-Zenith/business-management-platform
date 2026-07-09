@@ -49,7 +49,7 @@ export function InvoiceItemFields({ control, register, errors }: InvoiceItemFiel
                 id={`items.${index}.quantity`}
                 type="number"
                 step="any"
-                className="w-24"
+                className="w-full sm:w-24"
                 {...register(`items.${index}.quantity` as const, { valueAsNumber: true })}
               />
               {itemErrors?.quantity ? <p className="text-xs text-destructive">{itemErrors.quantity.message}</p> : null}
@@ -60,14 +60,21 @@ export function InvoiceItemFields({ control, register, errors }: InvoiceItemFiel
                 id={`items.${index}.unitPrice`}
                 type="number"
                 step="any"
-                className="w-32"
+                className="w-full sm:w-32"
                 {...register(`items.${index}.unitPrice` as const, { valueAsNumber: true })}
               />
               {itemErrors?.unitPrice ? (
                 <p className="text-xs text-destructive">{itemErrors.unitPrice.message}</p>
               ) : null}
             </div>
-            <Button type="button" variant="ghost" size="sm" onClick={() => remove(index)} disabled={fields.length === 1}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={() => remove(index)}
+              disabled={fields.length === 1}
+            >
               Quitar
             </Button>
           </div>
@@ -77,6 +84,7 @@ export function InvoiceItemFields({ control, register, errors }: InvoiceItemFiel
       <Button
         type="button"
         variant="outline"
+        className="w-full sm:w-fit"
         onClick={() => append({ description: "", quantity: 1, unitPrice: 0 })}
       >
         Agregar item

@@ -35,7 +35,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <Link href="/invoices" className="text-sm text-muted-foreground hover:underline">
             &larr; Facturas
@@ -45,13 +45,15 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
         </div>
         <Button
           variant="outline"
+          className="w-full sm:w-auto"
+          nativeButton={false}
           render={<Link href={`/invoices/${invoice.id}/receipt`} target="_blank" rel="noopener noreferrer" />}
         >
           Ver comprobante
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SummaryCard label="Total" value={formatCOP(invoice.total)} />
         <SummaryCard label="Pagado" value={formatCOP(invoice.paidAmount)} />
         <SummaryCard label="Saldo pendiente" value={formatCOP(invoice.balance)} />
@@ -76,7 +78,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           <CardTitle>Items</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
+          <Table className="min-w-[680px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Descripcion</TableHead>
@@ -100,13 +102,17 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Pagos</CardTitle>
           {invoice.balance > 0 ? (
             <PaymentFormDialog
               invoiceId={invoice.id}
               balance={invoice.balance}
-              trigger={<Button size="sm">Registrar pago</Button>}
+              trigger={
+                <Button size="sm" className="w-full sm:w-auto">
+                  Registrar pago
+                </Button>
+              }
             />
           ) : null}
         </CardHeader>
@@ -114,7 +120,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           {invoice.payments.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin pagos registrados.</p>
           ) : (
-            <Table>
+            <Table className="min-w-[560px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>

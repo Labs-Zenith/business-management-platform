@@ -59,25 +59,25 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
         <p className="text-sm text-muted-foreground">Consulta los pagos registrados en tu negocio.</p>
       </div>
 
-      <form method="get" className="flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1.5">
+      <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[10rem_10rem_auto]">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="from" className="text-sm text-muted-foreground">
             Desde
           </label>
-          <Input id="from" name="from" type="date" defaultValue={params.from ?? ""} className="w-40" />
+          <Input id="from" name="from" type="date" defaultValue={params.from ?? ""} className="w-full" />
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="to" className="text-sm text-muted-foreground">
             Hasta
           </label>
-          <Input id="to" name="to" type="date" defaultValue={params.to ?? ""} className="w-40" />
+          <Input id="to" name="to" type="date" defaultValue={params.to ?? ""} className="w-full" />
         </div>
-        <Button type="submit" variant="outline">
+        <Button type="submit" variant="outline" className="w-full sm:w-auto">
           Filtrar
         </Button>
       </form>
 
-      <Table>
+      <Table className="min-w-[760px]">
         <TableHeader>
           <TableRow>
             <TableHead>Fecha</TableHead>

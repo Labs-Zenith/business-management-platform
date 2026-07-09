@@ -70,16 +70,18 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-lg font-semibold">Facturas</h1>
           <p className="text-sm text-muted-foreground">Consulta tus facturas internas y su estado.</p>
         </div>
-        <Button render={<Link href="/invoices/new" />}>Crear factura</Button>
+        <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
+          Crear factura
+        </Button>
       </div>
 
-      <form method="get" className="flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1.5">
+      <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_12rem_10rem_10rem_auto]">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="customerId" className="text-sm text-muted-foreground">
             Cliente
           </label>
@@ -87,7 +89,7 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
             id="customerId"
             name="customerId"
             defaultValue={params.customerId ?? ""}
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
           >
             <option value="">Todos</option>
             {customersResult.data.map((customer) => (
@@ -97,7 +99,7 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="status" className="text-sm text-muted-foreground">
             Estado
           </label>
@@ -105,7 +107,7 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
             id="status"
             name="status"
             defaultValue={status ?? ""}
-            className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
+            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
           >
             <option value="">Todos</option>
             {VALID_STATUSES.map((value) => (
@@ -115,24 +117,24 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="from" className="text-sm text-muted-foreground">
             Desde
           </label>
-          <Input id="from" name="from" type="date" defaultValue={params.from ?? ""} className="w-40" />
+          <Input id="from" name="from" type="date" defaultValue={params.from ?? ""} className="w-full" />
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="to" className="text-sm text-muted-foreground">
             Hasta
           </label>
-          <Input id="to" name="to" type="date" defaultValue={params.to ?? ""} className="w-40" />
+          <Input id="to" name="to" type="date" defaultValue={params.to ?? ""} className="w-full" />
         </div>
-        <Button type="submit" variant="outline">
+        <Button type="submit" variant="outline" className="w-full sm:w-auto">
           Filtrar
         </Button>
       </form>
 
-      <Table>
+      <Table className="min-w-[900px]">
         <TableHeader>
           <TableRow>
             <TableHead>Numero</TableHead>

@@ -3,6 +3,7 @@ import { lineTotal } from "@/lib/money";
 import { repositories } from "@/lib/services/repositories";
 import type { InvoicePersist, Session } from "@/lib/services/ports";
 import {
+  getDashboardCharts,
   getDashboardSummary,
   getOverdueInvoices,
   getPaidThisMonth,
@@ -32,9 +33,11 @@ import {
 // depending on when the suite actually runs.
 const NOW = new Date();
 const THIS_MONTH_DATE = NOW.toISOString().slice(0, 10);
+const THIS_MONTH_KEY = THIS_MONTH_DATE.slice(0, 7);
 // Two months back (not one) so the boundary is never ambiguous even if NOW
 // is near a month edge.
 const PREVIOUS_MONTH_DATE = new Date(NOW.getFullYear(), NOW.getMonth() - 2, 15).toISOString().slice(0, 10);
+const PREVIOUS_MONTH_KEY = PREVIOUS_MONTH_DATE.slice(0, 7);
 
 const PAST_DUE_DATE = "2020-01-01"; // always in the past, regardless of when the suite runs
 const FUTURE_DUE_DATE = "2099-01-01"; // always in the future
@@ -168,6 +171,78 @@ describe("dashboard-service", () => {
     expect(summaryB.topDebtors.some((debtor) => debtor.id === customerA1.id || debtor.id === customerA2.id)).toBe(
       false,
     );
+  });
+
+  it("computes dashboard chart series scoped strictly to session.businessId", async () => {
+    const businessA = newBusinessId();
+    const businessB = newBusinessId();
+    const sessionA = sessionFor(businessA);
+
+    const customerA1 = await createCustomer(businessA, "Cliente Grafica A1");
+    const customerA2 = await createCustomer(businessA, "Cliente Grafica A2");
+    const customerB1 = await createCustomer(businessB, "Cliente Grafica B1");
+
+    await repositories.invoices.create(
+      businessA,
+      invoicePersist(customerA1.id, 100_000, FUTURE_DUE_DATE, THIS_MONTH_DATE),
+    );
+    await repositories.invoices.create(
+      businessA,
+      invoicePersist(customerA1.id, 50_000, PAST_DUE_DATE, THIS_MONTH_DATE),
+    );
+    const paidInvoice = await repositories.invoices.create(
+      businessA,
+      invoicePersist(customerA2.id, 80_000, FUTURE_DUE_DATE, THIS_MONTH_DATE),
+    );
+    await repositories.payments.createForInvoice(businessA, paidInvoice.id, {
+      paymentDate: THIS_MONTH_DATE,
+      amount: 80_000,
+      method: "cash",
+    });
+    const partiallyPaidInvoice = await repositories.invoices.create(
+      businessA,
+      invoicePersist(customerA2.id, 60_000, FUTURE_DUE_DATE, THIS_MONTH_DATE),
+    );
+    await repositories.payments.createForInvoice(businessA, partiallyPaidInvoice.id, {
+      paymentDate: PREVIOUS_MONTH_DATE,
+      amount: 20_000,
+      method: "transfer",
+    });
+
+    const foreignInvoice = await repositories.invoices.create(
+      businessB,
+      invoicePersist(customerB1.id, 50_000_000, PAST_DUE_DATE, THIS_MONTH_DATE),
+    );
+    await repositories.payments.createForInvoice(businessB, foreignInvoice.id, {
+      paymentDate: THIS_MONTH_DATE,
+      amount: 5_000_000,
+      method: "cash",
+    });
+
+    const charts = await getDashboardCharts(sessionA, NOW);
+
+    expect(charts.receivablesByStatus).toEqual([
+      { status: "pending", label: "Pendiente", count: 1, balance: 100_000, total: 100_000 },
+      { status: "partially_paid", label: "Parcial", count: 1, balance: 40_000, total: 60_000 },
+      { status: "paid", label: "Pagada", count: 1, balance: 0, total: 80_000 },
+      { status: "overdue", label: "Vencida", count: 1, balance: 50_000, total: 50_000 },
+    ]);
+    expect(charts.topDebtorBalances).toEqual([
+      { id: customerA1.id, name: "Cliente Grafica A1", balance: 150_000 },
+      { id: customerA2.id, name: "Cliente Grafica A2", balance: 40_000 },
+    ]);
+    expect(charts.topDebtorBalances.some((debtor) => debtor.id === customerB1.id)).toBe(false);
+
+    expect(charts.monthlyPayments).toHaveLength(6);
+    expect(charts.monthlyPayments.find((month) => month.month === THIS_MONTH_KEY)).toMatchObject({
+      month: THIS_MONTH_KEY,
+      amount: 80_000,
+    });
+    expect(charts.monthlyPayments.find((month) => month.month === PREVIOUS_MONTH_KEY)).toMatchObject({
+      month: PREVIOUS_MONTH_KEY,
+      amount: 20_000,
+    });
+    expect(charts.monthlyPayments.every((month) => month.amount < 5_000_000)).toBe(true);
   });
 
   it("uses the repository-recomputed status, never a stale/forged persisted status field, to decide overdue/pending", async () => {

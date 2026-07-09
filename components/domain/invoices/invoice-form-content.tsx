@@ -110,7 +110,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
   }
 
   return (
-    <form className="flex max-w-2xl flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
+    <form className="flex w-full max-w-2xl flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="invoice-customer">Cliente</Label>
         <select
@@ -128,7 +128,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
         {errors.customerId ? <p className="text-xs text-destructive">{errors.customerId.message}</p> : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="invoice-issue-date">Fecha de emision</Label>
           <Input id="invoice-issue-date" type="date" {...register("issueDate")} />
@@ -155,7 +155,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
         </p>
       ) : null}
 
-      <Button type="submit" disabled={isSubmitting}>
+      <Button type="submit" disabled={isSubmitting} className="w-full sm:w-fit">
         {isSubmitting ? "Guardando..." : "Crear factura"}
       </Button>
     </form>

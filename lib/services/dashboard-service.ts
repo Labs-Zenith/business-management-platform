@@ -22,6 +22,7 @@
 
 import { repositories } from "@/lib/services/repositories";
 import type { InvoiceWithFinance, PaymentWithRefs, Session } from "@/lib/services/ports";
+import type { InvoiceStatus } from "@/lib/services/status";
 
 /**
  * Large enough to fetch the whole business-scoped list in one call. The
@@ -34,6 +35,16 @@ const ALL_ROWS = Number.MAX_SAFE_INTEGER;
 
 const DEFAULT_RECENT_PAYMENTS_LIMIT = 5;
 const DEFAULT_TOP_DEBTORS_LIMIT = 5;
+const DEFAULT_MONTHLY_PAYMENT_BUCKETS = 6;
+
+const INVOICE_STATUS_CHART_META: Record<InvoiceStatus, { label: string }> = {
+  pending: { label: "Pendiente" },
+  partially_paid: { label: "Parcial" },
+  paid: { label: "Pagada" },
+  overdue: { label: "Vencida" },
+};
+
+const INVOICE_STATUS_CHART_ORDER: InvoiceStatus[] = ["pending", "partially_paid", "paid", "overdue"];
 
 export type TopDebtor = {
   id: string;
@@ -50,6 +61,26 @@ export type DashboardSummary = {
   overdueInvoiceList: InvoiceWithFinance[];
   recentPayments: PaymentWithRefs[];
   topDebtors: TopDebtor[];
+};
+
+export type ReceivablesByStatusDatum = {
+  status: InvoiceStatus;
+  label: string;
+  count: number;
+  balance: number;
+  total: number;
+};
+
+export type MonthlyPaymentDatum = {
+  month: string;
+  label: string;
+  amount: number;
+};
+
+export type DashboardCharts = {
+  receivablesByStatus: ReceivablesByStatusDatum[];
+  topDebtorBalances: TopDebtor[];
+  monthlyPayments: MonthlyPaymentDatum[];
 };
 
 async function listAllInvoices(session: Session): Promise<InvoiceWithFinance[]> {
@@ -69,6 +100,22 @@ async function listAllCustomers(session: Session) {
 
 function currentMonthPrefix(now: Date): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Intl.DateTimeFormat("es-CO", { month: "short" }).format(new Date(year, month - 1, 1));
+}
+
+function recentMonthKeys(now: Date, count: number): string[] {
+  return Array.from({ length: count }, (_, index) => {
+    const offset = count - index - 1;
+    return monthKey(new Date(now.getFullYear(), now.getMonth() - offset, 1));
+  });
 }
 
 /** "Total pendiente por cobrar": sum of `balance` across every non-paid invoice, scoped to `session.businessId`. */
@@ -128,6 +175,48 @@ export async function getTopDebtors(
     .sort((a, b) => b.balance - a.balance)
     .slice(0, limit)
     .map((customer) => ({ id: customer.id, name: customer.name, balance: customer.balance }));
+}
+
+export async function getDashboardCharts(
+  session: Session,
+  now: Date = new Date(),
+  monthBuckets: number = DEFAULT_MONTHLY_PAYMENT_BUCKETS,
+): Promise<DashboardCharts> {
+  const [invoices, payments, topDebtorBalances] = await Promise.all([
+    listAllInvoices(session),
+    listAllPayments(session),
+    getTopDebtors(session),
+  ]);
+
+  const receivablesByStatus = INVOICE_STATUS_CHART_ORDER.map((status) => {
+    const matchingInvoices = invoices.filter((invoice) => invoice.status === status);
+    return {
+      status,
+      label: INVOICE_STATUS_CHART_META[status].label,
+      count: matchingInvoices.length,
+      balance: matchingInvoices.reduce((sum, invoice) => sum + invoice.balance, 0),
+      total: matchingInvoices.reduce((sum, invoice) => sum + invoice.total, 0),
+    };
+  });
+
+  const months = recentMonthKeys(now, monthBuckets);
+  const amountsByMonth = new Map(months.map((month) => [month, 0]));
+  for (const payment of payments) {
+    const paymentMonth = payment.paymentDate.slice(0, 7);
+    if (amountsByMonth.has(paymentMonth)) {
+      amountsByMonth.set(paymentMonth, amountsByMonth.get(paymentMonth)! + payment.amount);
+    }
+  }
+
+  return {
+    receivablesByStatus,
+    topDebtorBalances,
+    monthlyPayments: months.map((month) => ({
+      month,
+      label: monthLabel(month),
+      amount: amountsByMonth.get(month) ?? 0,
+    })),
+  };
 }
 
 /** Combines all 5 KPIs in one payload, for `app/api/dashboard/summary/route.ts`. */

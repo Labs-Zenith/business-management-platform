@@ -144,7 +144,7 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={trigger} />
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{mode === "create" ? "Crear cliente" : "Editar cliente"}</DialogTitle>
           <DialogDescription>
@@ -226,7 +226,7 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
               {isSubmitting ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>

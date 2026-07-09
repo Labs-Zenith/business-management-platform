@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatCOP } from "@/lib/money";
+import type { ReactNode } from "react";
 import { requireSession } from "@/lib/session";
 import { getCustomer } from "@/lib/services/customer-service";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
+import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
+import { MoneyAmount } from "@/components/domain/money-amount";
 
 /**
  * Detalle de cliente screen, per `docs/ui-ux-flow.md`'s "Detalle de
@@ -32,7 +34,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
           <Link href="/customers" className="text-sm text-muted-foreground hover:underline">
             &larr; Clientes
@@ -42,13 +44,21 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
             {customer.isActive ? "Activo" : "Inactivo"}
           </Badge>
         </div>
-        <CustomerFormDialog mode="edit" customer={customer} trigger={<Button variant="outline">Editar</Button>} />
+        <CustomerFormDialog
+          mode="edit"
+          customer={customer}
+          trigger={
+            <Button variant="outline" className="w-full sm:w-auto">
+              Editar
+            </Button>
+          }
+        />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <SummaryCard label="Total facturado" value={formatCOP(customer.totalInvoiced)} />
-        <SummaryCard label="Total pagado" value={formatCOP(customer.totalPaid)} />
-        <SummaryCard label="Saldo pendiente" value={formatCOP(customer.balance)} />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <SummaryCard label="Total facturado" value={<MoneyAmount cents={customer.totalInvoiced} size="lg" />} />
+        <SummaryCard label="Total pagado" value={<MoneyAmount cents={customer.totalPaid} size="lg" />} />
+        <SummaryCard label="Saldo pendiente" value={<MoneyAmount cents={customer.balance} size="lg" />} />
       </div>
 
       <Card>
@@ -74,7 +84,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
           {customer.recentInvoices.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin facturas.</p>
           ) : (
-            <Table>
+            <Table className="min-w-[680px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Numero</TableHead>
@@ -89,10 +99,10 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
                   <TableRow key={invoice.id}>
                     <TableCell>{invoice.number}</TableCell>
                     <TableCell>{invoice.issueDate}</TableCell>
-                    <TableCell>{formatCOP(invoice.total)}</TableCell>
-                    <TableCell>{formatCOP(invoice.balance)}</TableCell>
+                    <TableCell className="text-right"><MoneyAmount cents={invoice.total} size="sm" /></TableCell>
+                    <TableCell className="text-right"><MoneyAmount cents={invoice.balance} size="sm" /></TableCell>
                     <TableCell>
-                      <Badge variant="outline">{invoice.status}</Badge>
+                      <InvoiceStatusBadge status={invoice.status} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -110,7 +120,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
           {customer.recentPayments.length === 0 ? (
             <p className="text-sm text-muted-foreground">Sin pagos.</p>
           ) : (
-            <Table>
+            <Table className="min-w-[560px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>
@@ -124,7 +134,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
                   <TableRow key={payment.id}>
                     <TableCell>{payment.paymentDate}</TableCell>
                     <TableCell>{payment.invoice.number}</TableCell>
-                    <TableCell>{formatCOP(payment.amount)}</TableCell>
+                    <TableCell className="text-right"><MoneyAmount cents={payment.amount} size="sm" /></TableCell>
                     <TableCell>{payment.method ?? "-"}</TableCell>
                   </TableRow>
                 ))}
@@ -137,7 +147,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
   );
 }
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value }: { label: string; value: ReactNode }) {
   return (
     <Card>
       <CardContent className="flex flex-col gap-1 py-4">
