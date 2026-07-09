@@ -32,6 +32,9 @@ export function withApiHandler<Args extends unknown[]>(
       response.headers.set("Cache-Control", "no-store");
       return response;
     } catch (error) {
+      if (!(error instanceof ApiError)) {
+        console.error(error);
+      }
       const apiError = error instanceof ApiError ? error : new ApiError("INTERNAL_ERROR", "Unexpected error.");
       return NextResponse.json(apiError.toResponseBody(), {
         status: apiError.status,
