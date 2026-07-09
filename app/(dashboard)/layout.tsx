@@ -26,6 +26,12 @@ import DashboardBottomNav from "@/components/layout/dashboard-bottom-nav";
  * `docs/security-plan.md`). This is an ADDITIONAL belt-and-suspenders layer,
  * not a replacement for each page's own `requireSession()` call.
  *
+ * The resolved `session` is passed down to `DashboardTopbar` (which needs
+ * `session.email` for its avatar initial) as a prop rather than having it
+ * call `requireSession()` a second time — that would also make it an async
+ * Server Component nested inside JSX, which React's client renderer (used
+ * by `layout.test.tsx`'s `render()`) cannot reconcile.
+ *
  * Existing page content is untouched: each `page.tsx` keeps its own
  * `flex flex-1 flex-col p-4` wrapper unchanged; this layout only adds
  * shared chrome around it, and reserves bottom padding on `<main>` on
@@ -36,11 +42,11 @@ export default async function DashboardLayout({
 }: {
   children: ReactNode;
 }) {
-  await requireSession();
+  const session = await requireSession();
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col">
-      <DashboardTopbar />
+      <DashboardTopbar session={session} />
       <div className="flex min-w-0 flex-1">
         <DashboardSidebar />
         <main className="flex min-w-0 flex-1 flex-col pb-24 md:pb-0">{children}</main>

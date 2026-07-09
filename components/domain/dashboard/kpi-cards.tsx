@@ -1,8 +1,8 @@
-import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
 import { getOverdueCount, getPaidThisMonth, getPendingBalance } from "@/lib/services/dashboard-service";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MoneyAmount } from "@/components/domain/money-amount";
 
 /**
  * Renders the 3 headline KPI cards ("pendiente por cobrar", "pagado del
@@ -24,22 +24,30 @@ export async function KpiCards() {
     getOverdueCount(session),
   ]);
 
-  const cards = [
-    { label: "Pendiente por cobrar", value: formatCOP(pendingBalance) },
-    { label: "Pagado este mes", value: formatCOP(paidThisMonth) },
-    { label: "Facturas vencidas", value: String(overdueCount) },
-  ];
-
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {cards.map((card) => (
-        <Card key={card.label}>
-          <CardHeader>
-            <CardDescription>{card.label}</CardDescription>
-            <CardTitle className="text-2xl">{card.value}</CardTitle>
-          </CardHeader>
-        </Card>
-      ))}
+      <Card>
+        <CardHeader>
+          <CardDescription>Pendiente por cobrar</CardDescription>
+          <CardTitle>
+            <MoneyAmount cents={pendingBalance} size="lg" />
+          </CardTitle>
+        </CardHeader>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardDescription>Pagado este mes</CardDescription>
+          <CardTitle>
+            <MoneyAmount cents={paidThisMonth} size="lg" />
+          </CardTitle>
+        </CardHeader>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardDescription>Facturas vencidas</CardDescription>
+          <CardTitle className="text-2xl">{overdueCount}</CardTitle>
+        </CardHeader>
+      </Card>
     </div>
   );
 }

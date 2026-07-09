@@ -5,10 +5,16 @@
  * "En escritorio" section), visible at `md` and up. Mobile uses
  * `dashboard-bottom-nav.tsx` instead — both read from the same
  * `NAV_ITEMS` source of truth.
+ *
+ * Uses the `--sidebar*` token family from `app/globals.css` (not the
+ * generic `--card`/`--accent` tokens) so the sidebar can read as a
+ * distinct panel from the main content area, matching the dark
+ * "sidebar + content" shell this was restyled after.
  */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "./nav-items";
 
@@ -20,19 +26,33 @@ export default function DashboardSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-56 shrink-0 flex-col gap-1 border-r border-border p-4 md:flex">
-      {NAV_ITEMS.map((item) => (
-        <Link
-          key={item.href}
-          href={item.href}
-          className={cn(
-            "rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
-            isActivePath(pathname, item.href) && "bg-muted text-foreground"
-          )}
-        >
-          {item.label}
-        </Link>
-      ))}
+    <aside className="hidden w-60 shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-4 text-sidebar-foreground md:flex">
+      <div className="mb-4 flex items-center gap-2 px-2">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+          <Wallet className="size-4" aria-hidden="true" />
+        </span>
+        <span className="text-sm font-semibold tracking-tight">Negocio</span>
+      </div>
+
+      {NAV_ITEMS.map((item) => {
+        const active = isActivePath(pathname, item.href);
+        const Icon = item.icon;
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              active && "bg-sidebar-accent text-sidebar-accent-foreground"
+            )}
+          >
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{item.label}</span>
+          </Link>
+        );
+      })}
     </aside>
   );
 }

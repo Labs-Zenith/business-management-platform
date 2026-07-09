@@ -11,21 +11,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, CreditCard, FileText, LayoutDashboard, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "./nav-items";
 
 function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
-
-const ICON_BY_HREF: Record<string, LucideIcon> = {
-  "/dashboard": LayoutDashboard,
-  "/customers": Users,
-  "/invoices": FileText,
-  "/payments": CreditCard,
-  "/settings": Building2,
-};
 
 export default function DashboardBottomNav() {
   const pathname = usePathname();
@@ -35,7 +26,7 @@ export default function DashboardBottomNav() {
       <div className="grid grid-cols-5 gap-1">
         {NAV_ITEMS.map((item) => {
           const active = isActivePath(pathname, item.href);
-          const Icon = ICON_BY_HREF[item.href] ?? LayoutDashboard;
+          const Icon = item.icon;
 
           return (
             <Link
