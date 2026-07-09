@@ -1,0 +1,115 @@
+import { ApiError } from "@/lib/server/api-error";
+import type { InvoiceDetail, Paged, PaymentInput, PaymentListQuery, PaymentRepository, PaymentWithRefs } from "@/lib/services/ports";
+import { sql } from "./client";
+import { ensureMigrated } from "./migrate";
+import { invoiceRepo } from "./invoice-repo";
+
+type PaymentRow = {
+  id: string;
+  business_id: string;
+  invoice_id: string;
+  customer_id: string;
+  payment_date: string;
+  amount: number;
+  method: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function toDateStr(value: unknown): string {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+async function toPaymentWithRefs(row: PaymentRow): Promise<PaymentWithRefs> {
+  const [customerRows, invoiceRows] = (await Promise.all([
+    sql`SELECT id, name FROM customers WHERE id = ${row.customer_id}`,
+    sql`SELECT id, number FROM invoices WHERE id = ${row.invoice_id}`,
+  ])) as unknown as [{ id: string; name: string }[], { id: string; number: string }[]];
+  return {
+    id: row.id,
+    businessId: row.business_id,
+    invoiceId: row.invoice_id,
+    customerId: row.customer_id,
+    paymentDate: toDateStr(row.payment_date),
+    amount: Number(row.amount),
+    method: row.method,
+    notes: row.notes,
+    createdAt: new Date(row.created_at).toISOString(),
+    updatedAt: new Date(row.updated_at).toISOString(),
+    customer: { id: row.customer_id, name: customerRows[0]?.name ?? "" },
+    invoice: { id: row.invoice_id, number: invoiceRows[0]?.number ?? "" },
+  };
+}
+
+function paginate<T>(items: T[], page: number, pageSize: number) {
+  const start = (page - 1) * pageSize;
+  return { data: items.slice(start, start + pageSize), page, pageSize, total: items.length };
+}
+
+export const paymentRepo: PaymentRepository = {
+  async getById(businessId: string, id: string): Promise<PaymentWithRefs | null> {
+    await ensureMigrated();
+    const rows = (await sql`SELECT * FROM payments WHERE id = ${id}`) as unknown as PaymentRow[];
+    const row = rows[0];
+    if (!row || row.business_id !== businessId) return null;
+    return toPaymentWithRefs(row);
+  },
+
+  async list(businessId: string, query: PaymentListQuery): Promise<Paged<PaymentWithRefs>> {
+    await ensureMigrated();
+    const rows = (await sql`SELECT * FROM payments WHERE business_id = ${businessId}`) as unknown as PaymentRow[];
+    let withRefs = await Promise.all(rows.map(toPaymentWithRefs));
+
+    if (query.customerId) withRefs = withRefs.filter((p) => p.customerId === query.customerId);
+    if (query.invoiceId) withRefs = withRefs.filter((p) => p.invoiceId === query.invoiceId);
+    if (query.from) withRefs = withRefs.filter((p) => p.paymentDate >= query.from!);
+    if (query.to) withRefs = withRefs.filter((p) => p.paymentDate <= query.to!);
+
+    withRefs.sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1));
+    return paginate(withRefs, query.page, query.pageSize) as Paged<PaymentWithRefs>;
+  },
+
+  async createForInvoice(businessId: string, invoiceId: string, data: PaymentInput): Promise<InvoiceDetail> {
+    await ensureMigrated();
+
+    // Friendly pre-check for NOT_FOUND (cross-business/missing invoice).
+    const invoiceRows = (await sql`SELECT id FROM invoices WHERE id = ${invoiceId} AND business_id = ${businessId}`) as {
+      id: string;
+    }[];
+    if (invoiceRows.length === 0) {
+      throw new ApiError("NOT_FOUND", "Invoice not found");
+    }
+
+    // Atomic, overpay-safe insert: a single statement computing the current
+    // balance (invoice.total minus the sum of existing payments) and only
+    // inserting if the new amount fits — Postgres guarantees this whole
+    // CTE+INSERT is one atomic unit, race-free across any number of
+    // concurrent serverless instances (replacing the mock's in-process
+    // withLock(invoiceId), which can't protect across instances).
+    const inserted = (await sql`
+      WITH bal AS (
+        SELECT i.id, i.customer_id,
+          i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS balance
+        FROM invoices i
+        WHERE i.id = ${invoiceId} AND i.business_id = ${businessId}
+      )
+      INSERT INTO payments (id, business_id, invoice_id, customer_id, payment_date, amount, method, notes)
+      SELECT gen_random_uuid(), ${businessId}, bal.id, bal.customer_id, ${data.paymentDate}, ${data.amount}, ${data.method ?? null}, ${data.notes ?? null}
+      FROM bal
+      WHERE ${data.amount} <= bal.balance
+      RETURNING id
+    `) as unknown as { id: string }[];
+
+    if (inserted.length === 0) {
+      throw new ApiError("VALIDATION_ERROR", "Payment amount exceeds the invoice's pending balance");
+    }
+
+    const detail = await invoiceRepo.getById(businessId, invoiceId);
+    if (!detail) {
+      throw new ApiError("NOT_FOUND", "Invoice not found");
+    }
+    return detail;
+  },
+};
