@@ -6,6 +6,11 @@ import type { Business, Session } from "@/lib/services/ports";
 const mockRequireSession = vi.fn<() => Promise<Session>>();
 const mockGetBusinessProfile = vi.fn<(session: Session) => Promise<Business>>();
 
+vi.mock("@/lib/mock/cookie-persistence", () => ({
+  loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
+  saveStoreToCookie: vi.fn(),
+}));
+
 vi.mock("@/lib/session", () => ({
   requireSession: () => mockRequireSession(),
 }));

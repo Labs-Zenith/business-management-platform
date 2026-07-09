@@ -1,5 +1,6 @@
 import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getInvoice } from "@/lib/services/invoice-service";
 import { getBusinessProfile } from "@/lib/services/business-service";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -29,6 +30,7 @@ type InvoiceReceiptPageProps = {
 };
 
 export default async function InvoiceReceiptPage({ params }: InvoiceReceiptPageProps) {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const { id } = await params;
   const [business, invoice] = await Promise.all([getBusinessProfile(session), getInvoice(session, id)]);

@@ -1,4 +1,5 @@
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getBusinessProfile } from "@/lib/services/business-service";
 import {
   Card,
@@ -18,6 +19,7 @@ import {
  * an unauthenticated request never reaches `getBusinessProfile`.
  */
 export default async function SettingsPage() {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const business = await getBusinessProfile(session);
 

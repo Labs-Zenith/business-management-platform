@@ -7,6 +7,11 @@ const mockRequireSession = vi.fn<() => Promise<Session>>();
 const mockGetPayment = vi.fn<(session: Session, id: string) => Promise<PaymentWithRefs>>();
 const mockGetBusinessProfile = vi.fn<(session: Session) => Promise<Business>>();
 
+vi.mock("@/lib/mock/cookie-persistence", () => ({
+  loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
+  saveStoreToCookie: vi.fn(),
+}));
+
 vi.mock("@/lib/session", () => ({
   requireSession: () => mockRequireSession(),
 }));

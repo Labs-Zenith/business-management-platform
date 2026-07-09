@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ function parseStatusParam(raw: string | undefined): "active" | "inactive" | unde
 }
 
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const params = await searchParams;
   const status = parseStatusParam(params.status);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getRecentPayments } from "@/lib/services/dashboard-service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  * — see `components/domain/dashboard/kpi-cards.tsx` for the shared rationale.
  */
 export async function RecentPayments() {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const payments = await getRecentPayments(session);
 

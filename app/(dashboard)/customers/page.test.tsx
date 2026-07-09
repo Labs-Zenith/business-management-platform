@@ -12,6 +12,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
+vi.mock("@/lib/mock/cookie-persistence", () => ({
+  loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
+  saveStoreToCookie: vi.fn(),
+}));
+
 vi.mock("@/lib/session", () => ({
   requireSession: () => mockRequireSession(),
 }));

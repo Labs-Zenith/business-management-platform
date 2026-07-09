@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import InvoiceForm from "@/components/domain/invoices/invoice-form";
 
@@ -18,6 +19,7 @@ type NewInvoicePageProps = {
 };
 
 export default async function NewInvoicePage({ searchParams }: NewInvoicePageProps) {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const params = await searchParams;
 

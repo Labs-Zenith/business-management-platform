@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getOverdueInvoices } from "@/lib/services/dashboard-service";
 import { listCustomers } from "@/lib/services/customer-service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +22,7 @@ const CUSTOMER_LOOKUP_PAGE_SIZE = 50;
  * repository-recomputed value, never a stale persisted field.
  */
 export async function OverdueList() {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const [invoices, customersResult] = await Promise.all([
     getOverdueInvoices(session),

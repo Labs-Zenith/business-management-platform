@@ -1,6 +1,7 @@
 import { formatCOP } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getPayment } from "@/lib/services/payment-service";
 import { getBusinessProfile } from "@/lib/services/business-service";
 import type { PaymentWithRefs, Session } from "@/lib/services/ports";
@@ -28,6 +29,7 @@ type PaymentReceiptPageProps = {
 };
 
 export default async function PaymentReceiptPage({ params }: PaymentReceiptPageProps) {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const { id } = await params;
   const [business, payment] = await Promise.all([getBusinessProfile(session), getPaymentOrMock(session, id)]);

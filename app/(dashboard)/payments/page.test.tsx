@@ -6,6 +6,11 @@ import type { Paged, PaymentListQuery, PaymentWithRefs, Session } from "@/lib/se
 const mockRequireSession = vi.fn<() => Promise<Session>>();
 const mockListPayments = vi.fn<(session: Session, query: PaymentListQuery) => Promise<Paged<PaymentWithRefs>>>();
 
+vi.mock("@/lib/mock/cookie-persistence", () => ({
+  loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
+  saveStoreToCookie: vi.fn(),
+}));
+
 vi.mock("@/lib/session", () => ({
   requireSession: () => mockRequireSession(),
 }));

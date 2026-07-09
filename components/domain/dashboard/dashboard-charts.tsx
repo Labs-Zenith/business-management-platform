@@ -1,10 +1,12 @@
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getDashboardCharts } from "@/lib/services/dashboard-service";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardChartCards } from "./dashboard-chart-cards";
 
 export async function DashboardCharts() {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const charts = await getDashboardCharts(session);
 

@@ -1,4 +1,5 @@
 import { requireSession } from "@/lib/session";
+import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getOverdueCount, getPaidThisMonth, getPendingBalance } from "@/lib/services/dashboard-service";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,6 +18,7 @@ import { MoneyAmount } from "@/components/domain/money-amount";
  * blocking `getDashboardSummary` call.
  */
 export async function KpiCards() {
+  await loadStoreFromCookie();
   const session = await requireSession();
   const [pendingBalance, paidThisMonth, overdueCount] = await Promise.all([
     getPendingBalance(session),
