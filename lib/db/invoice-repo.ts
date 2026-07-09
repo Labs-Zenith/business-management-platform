@@ -133,7 +133,7 @@ function toInvoice(row: InvoiceRow): Invoice {
 
 function withFinance(invoice: Invoice, payments: PaymentRow[]): InvoiceWithFinance {
   const paidAmount = payments
-    .filter((p) => p.invoice_id === invoice.id)
+    .filter((p) => String(p.invoice_id) === String(invoice.id))
     .reduce((sum, p) => sum + Number(p.amount), 0);
   const balance = invoice.total - paidAmount;
   const status = computeStatus(invoice.total, paidAmount, invoice.dueDate, new Date());

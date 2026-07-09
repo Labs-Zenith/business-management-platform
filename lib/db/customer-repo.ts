@@ -89,7 +89,7 @@ function toDateStr(value: unknown): string {
 
 function withFinance(invoice: InvoiceRow, payments: PaymentRow[]): InvoiceWithFinance {
   const paidAmount = payments
-    .filter((p) => p.invoice_id === invoice.id)
+    .filter((p) => String(p.invoice_id) === String(invoice.id))
     .reduce((sum, p) => sum + Number(p.amount), 0);
   const total = Number(invoice.total);
   const balance = total - paidAmount;
@@ -160,8 +160,8 @@ export const customerRepo: CustomerRepository = {
     customers.sort((a, b) => a.name.localeCompare(b.name));
 
     const withBalance: CustomerWithBalance[] = customers.map((c) => {
-      const invoiced = invoiceRows.filter((i) => i.customer_id === c.id).reduce((s, i) => s + Number(i.total), 0);
-      const paid = paymentRows.filter((p) => p.customer_id === c.id).reduce((s, p) => s + Number(p.amount), 0);
+      const invoiced = invoiceRows.filter((i) => String(i.customer_id) === String(c.id)).reduce((s, i) => s + Number(i.total), 0);
+      const paid = paymentRows.filter((p) => String(p.customer_id) === String(c.id)).reduce((s, p) => s + Number(p.amount), 0);
       return { ...c, balance: invoiced - paid };
     });
 
@@ -187,7 +187,7 @@ export const customerRepo: CustomerRepository = {
       .sort((a, b) => (a.payment_date < b.payment_date ? 1 : -1))
       .slice(0, 5)
       .map((p) => {
-        const inv = invoiceRows.find((i) => i.id === p.invoice_id);
+        const inv = invoiceRows.find((i) => String(i.id) === String(p.invoice_id));
         return toPaymentWithRefs(p, { id: customer.id, name: customer.name }, inv?.number ?? "");
       });
 
