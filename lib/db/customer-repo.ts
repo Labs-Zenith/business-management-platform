@@ -12,7 +12,6 @@ import type {
 } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
 import { sql } from "./client";
-import { ensureMigrated } from "./migrate";
 
 /**
  * Same strategy throughout `lib/db/*`: fetch business-scoped rows in bulk
@@ -140,7 +139,6 @@ function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
 
 export const customerRepo: CustomerRepository = {
   async list(businessId: string, query: CustomerListQuery): Promise<Paged<CustomerWithBalance>> {
-    await ensureMigrated();
     const customerRows = (await sql`SELECT * FROM customers WHERE business_id = ${businessId}`) as unknown as CustomerRow[];
     const invoiceRows = (await sql`SELECT * FROM invoices WHERE business_id = ${businessId}`) as unknown as InvoiceRow[];
     const paymentRows = (await sql`SELECT * FROM payments WHERE business_id = ${businessId}`) as unknown as PaymentRow[];
@@ -169,7 +167,6 @@ export const customerRepo: CustomerRepository = {
   },
 
   async getById(businessId: string, id: string): Promise<CustomerDetail | null> {
-    await ensureMigrated();
     const rows = (await sql`SELECT * FROM customers WHERE id = ${id}`) as unknown as CustomerRow[];
     const row = rows[0];
     if (!row || row.business_id !== businessId) return null;
@@ -202,7 +199,6 @@ export const customerRepo: CustomerRepository = {
   },
 
   async create(businessId: string, data: CustomerCreate): Promise<Customer> {
-    await ensureMigrated();
     const rows = (await sql`
       INSERT INTO customers (id, business_id, name, document_number, email, phone, address, notes, is_active)
       VALUES (gen_random_uuid(), ${businessId}, ${data.name}, ${data.documentNumber ?? null}, ${data.email ?? null}, ${data.phone ?? null}, ${data.address ?? null}, ${data.notes ?? null}, true)
@@ -212,7 +208,6 @@ export const customerRepo: CustomerRepository = {
   },
 
   async update(businessId: string, id: string, data: CustomerUpdate): Promise<Customer | null> {
-    await ensureMigrated();
     const existingRows = (await sql`SELECT * FROM customers WHERE id = ${id}`) as unknown as CustomerRow[];
     const existing = existingRows[0];
     if (!existing || existing.business_id !== businessId) return null;

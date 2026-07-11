@@ -1,6 +1,5 @@
 import type { Business, BusinessRepository } from "@/lib/services/ports";
 import { sql } from "./client";
-import { ensureMigrated } from "./migrate";
 
 type BusinessRow = {
   id: string;
@@ -28,7 +27,6 @@ function toBusiness(row: BusinessRow): Business {
 
 export const businessRepo: BusinessRepository = {
   async getById(businessId: string): Promise<Business | null> {
-    await ensureMigrated();
     const rows = (await sql`SELECT * FROM businesses WHERE id = ${businessId}`) as unknown as BusinessRow[];
     return rows[0] ? toBusiness(rows[0]) : null;
   },

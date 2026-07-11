@@ -1,7 +1,6 @@
 import { ApiError } from "@/lib/server/api-error";
 import type { InvoiceDetail, Paged, PaymentInput, PaymentListQuery, PaymentRepository, PaymentWithRefs } from "@/lib/services/ports";
 import { sql } from "./client";
-import { ensureMigrated } from "./migrate";
 import { invoiceRepo } from "./invoice-repo";
 
 type PaymentRow = {
@@ -50,7 +49,6 @@ function paginate<T>(items: T[], page: number, pageSize: number) {
 
 export const paymentRepo: PaymentRepository = {
   async getById(businessId: string, id: string): Promise<PaymentWithRefs | null> {
-    await ensureMigrated();
     const rows = (await sql`SELECT * FROM payments WHERE id = ${id}`) as unknown as PaymentRow[];
     const row = rows[0];
     if (!row || row.business_id !== businessId) return null;
@@ -58,7 +56,6 @@ export const paymentRepo: PaymentRepository = {
   },
 
   async list(businessId: string, query: PaymentListQuery): Promise<Paged<PaymentWithRefs>> {
-    await ensureMigrated();
     const rows = (await sql`SELECT * FROM payments WHERE business_id = ${businessId}`) as unknown as PaymentRow[];
     let withRefs = await Promise.all(rows.map(toPaymentWithRefs));
 
@@ -72,8 +69,6 @@ export const paymentRepo: PaymentRepository = {
   },
 
   async createForInvoice(businessId: string, invoiceId: string, data: PaymentInput): Promise<InvoiceDetail> {
-    await ensureMigrated();
-
     // Friendly pre-check for NOT_FOUND (cross-business/missing invoice).
     const invoiceRows = (await sql`SELECT id FROM invoices WHERE id = ${invoiceId} AND business_id = ${businessId}`) as {
       id: string;

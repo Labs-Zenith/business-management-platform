@@ -12,7 +12,6 @@ import type {
 } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
 import { sql } from "./client";
-import { ensureMigrated } from "./migrate";
 
 type InvoiceRow = {
   id: string;
@@ -159,7 +158,6 @@ async function buildDetail(invoice: Invoice): Promise<InvoiceDetail> {
 
 export const invoiceRepo: InvoiceRepository = {
   async list(businessId: string, query: InvoiceListQuery): Promise<Paged<InvoiceWithFinance>> {
-    await ensureMigrated();
     const invoiceRows = (await sql`SELECT * FROM invoices WHERE business_id = ${businessId}`) as unknown as InvoiceRow[];
     const paymentRows = (await sql`SELECT * FROM payments WHERE business_id = ${businessId}`) as unknown as PaymentRow[];
 
@@ -175,7 +173,6 @@ export const invoiceRepo: InvoiceRepository = {
   },
 
   async getById(businessId: string, id: string): Promise<InvoiceDetail | null> {
-    await ensureMigrated();
     const rows = (await sql`SELECT * FROM invoices WHERE id = ${id}`) as unknown as InvoiceRow[];
     const row = rows[0];
     if (!row || row.business_id !== businessId) return null;
@@ -183,8 +180,6 @@ export const invoiceRepo: InvoiceRepository = {
   },
 
   async create(businessId: string, data: InvoicePersist): Promise<InvoiceDetail> {
-    await ensureMigrated();
-
     // Atomic per-business numbering: a single UPSERT statement, race-free
     // under Postgres's row-level locking, replacing the mock's in-process
     // withLock(businessId) mutex (which can't protect across serverless
