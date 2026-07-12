@@ -1,6 +1,6 @@
 import { lineTotal } from "@/lib/money";
 import { computeStatus } from "@/lib/services/status";
-import type { Business, Customer, Expense, Invoice, InvoiceItem, Payment } from "@/lib/services/ports";
+import type { Business, Customer, Employee, Expense, Invoice, InvoiceItem, Payment, PayrollPayment } from "@/lib/services/ports";
 import type { MockStore, Profile } from "../store";
 import { generateId, nextInvoiceNumber } from "../store";
 import {
@@ -11,8 +11,10 @@ import {
   customerFixtures,
   demoProfileFixture,
   demoProfileFixture2,
+  employeeFixtures,
   expenseFixtures,
   invoiceFixtures,
+  payrollPaymentFixtures,
 } from "./data";
 
 /**
@@ -152,5 +154,34 @@ export function seedFixtures(store: MockStore): void {
       updatedAt: nowIso,
     };
     store.expenses.set(expense.id, expense);
+  }
+
+  for (const employeeFixture of employeeFixtures) {
+    const employee: Employee = {
+      id: employeeFixture.id,
+      businessId: BUSINESS_ID,
+      name: employeeFixture.name,
+      baseSalary: employeeFixture.baseSalary,
+      active: employeeFixture.active,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    store.employees.set(employee.id, employee);
+  }
+
+  for (const payrollPaymentFixture of payrollPaymentFixtures) {
+    const payrollPayment: PayrollPayment = {
+      id: payrollPaymentFixture.id,
+      businessId: BUSINESS_ID,
+      employeeId: payrollPaymentFixture.employeeId,
+      amount: payrollPaymentFixture.amount,
+      periodType: payrollPaymentFixture.periodType,
+      periodStart: payrollPaymentFixture.periodStart,
+      periodEnd: payrollPaymentFixture.periodEnd,
+      paymentDate: daysFromNow(payrollPaymentFixture.paymentDayOffset),
+      notes: payrollPaymentFixture.notes,
+      createdAt: nowIso,
+    };
+    store.payrollPayments.set(payrollPayment.id, payrollPayment);
   }
 }

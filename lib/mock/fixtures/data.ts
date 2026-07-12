@@ -378,3 +378,83 @@ export const expenseFixtures: ExpenseFixture[] = [
     notes: null,
   },
 ];
+
+export type EmployeeFixture = {
+  id: string;
+  name: string;
+  baseSalary: number; // integer cents
+  active: boolean;
+};
+
+function employeeId(n: number): string {
+  return `70000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
+/**
+ * A handful of demo employees (mostly active, one inactive) so the Nomina
+ * page has real data to show out of the box — excluded from `seedMinimal`
+ * (matches invoices/payments/expenses — cookie-size reasons).
+ */
+export const employeeFixtures: EmployeeFixture[] = [
+  { id: employeeId(1), name: "Laura Martinez", baseSalary: 2000000, active: true },
+  { id: employeeId(2), name: "Miguel Sanchez", baseSalary: 1800000, active: true },
+  { id: employeeId(3), name: "Natalia Fernandez", baseSalary: 2200000, active: true },
+  { id: employeeId(4), name: "Oscar Jimenez", baseSalary: 1900000, active: false },
+];
+
+export type PayrollPaymentFixture = {
+  id: string;
+  employeeId: string;
+  amount: number; // integer cents
+  periodType: "quincenal" | "mensual";
+  periodStart: string; // ISO date
+  periodEnd: string; // ISO date
+  paymentDayOffset: number;
+  notes: string | null;
+};
+
+function payrollPaymentId(n: number): string {
+  return `80000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
+/**
+ * A small payroll payment history mixing quincenal/mensual periods across
+ * different months, so the Pagos tab and the Egresos dashboard both have
+ * real `category:'nomina'` data to show out of the box. Excluded from
+ * `seedMinimal` (matches invoices/payments/expenses — cookie-size reasons).
+ * `periodStart`/`periodEnd` are fixed calendar dates (not day-offsets, unlike
+ * other fixtures) since they must stay internally consistent with the
+ * `periodType` they claim.
+ */
+export const payrollPaymentFixtures: PayrollPaymentFixture[] = [
+  {
+    id: payrollPaymentId(1),
+    employeeId: employeeId(1),
+    amount: 1000000,
+    periodType: "quincenal",
+    periodStart: "2026-06-01",
+    periodEnd: "2026-06-15",
+    paymentDayOffset: -25,
+    notes: "Primera quincena de junio",
+  },
+  {
+    id: payrollPaymentId(2),
+    employeeId: employeeId(2),
+    amount: 900000,
+    periodType: "quincenal",
+    periodStart: "2026-06-16",
+    periodEnd: "2026-06-30",
+    paymentDayOffset: -10,
+    notes: "Segunda quincena de junio",
+  },
+  {
+    id: payrollPaymentId(3),
+    employeeId: employeeId(3),
+    amount: 2200000,
+    periodType: "mensual",
+    periodStart: "2026-05-01",
+    periodEnd: "2026-05-31",
+    paymentDayOffset: -40,
+    notes: "Nomina mensual de mayo",
+  },
+];

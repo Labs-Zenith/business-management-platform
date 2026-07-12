@@ -18,16 +18,20 @@
 import { authAdapter } from "@/lib/mock/auth-adapter";
 import { businessRepo as mockBusinessRepo } from "@/lib/mock/business-repo";
 import { customerRepo as mockCustomerRepo } from "@/lib/mock/customer-repo";
+import { employeeRepo as mockEmployeeRepo } from "@/lib/mock/employee-repo";
 import { expenseRepo as mockExpenseRepo } from "@/lib/mock/expense-repo";
 import { invoiceRepo as mockInvoiceRepo } from "@/lib/mock/invoice-repo";
 import { paymentRepo as mockPaymentRepo } from "@/lib/mock/payment-repo";
+import { payrollRepo as mockPayrollRepo } from "@/lib/mock/payroll-repo";
 
 import { isDbConfigured } from "@/lib/db/client";
 import { businessRepo as dbBusinessRepo } from "@/lib/db/business-repo";
 import { customerRepo as dbCustomerRepo } from "@/lib/db/customer-repo";
+import { employeeRepo as dbEmployeeRepo } from "@/lib/db/employee-repo";
 import { expenseRepo as dbExpenseRepo } from "@/lib/db/expense-repo";
 import { invoiceRepo as dbInvoiceRepo } from "@/lib/db/invoice-repo";
 import { paymentRepo as dbPaymentRepo } from "@/lib/db/payment-repo";
+import { payrollRepo as dbPayrollRepo } from "@/lib/db/payroll-repo";
 
 export const repositories = {
   auth: authAdapter,
@@ -36,4 +40,6 @@ export const repositories = {
   invoices: isDbConfigured ? dbInvoiceRepo : mockInvoiceRepo,
   payments: isDbConfigured ? dbPaymentRepo : mockPaymentRepo,
   expenses: isDbConfigured ? dbExpenseRepo : mockExpenseRepo,
+  employees: isDbConfigured ? dbEmployeeRepo : mockEmployeeRepo,
+  payroll: isDbConfigured ? dbPayrollRepo : mockPayrollRepo,
 };

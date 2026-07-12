@@ -12,7 +12,7 @@ import { createEmptyStore, hydrateStore, serializeStore, type Profile, type Seri
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const PROFILE_ID = "30000000-0000-4000-8000-000000000001";
 
-function buildLegacyPayload(): Omit<SerializedStore, "expenses"> {
+function buildLegacyPayload(): Omit<SerializedStore, "expenses" | "employees" | "payrollPayments"> {
   const business: Business = {
     id: BUSINESS_ID,
     name: "Negocio Legacy",
@@ -61,6 +61,48 @@ describe("hydrateStore — backward compatibility with pre-expenses cookies (R4)
     expect(target.businesses.get(BUSINESS_ID)).toBeDefined();
     expect(target.profiles.get(PROFILE_ID)).toBeDefined();
     expect(target.expenses.size).toBe(0);
+  });
+
+  it("does not throw when the payload is missing the employees/payrollPayments fields entirely (nomina-payroll regression)", () => {
+    const legacyPayload = buildLegacyPayload() as SerializedStore; // simulates JSON.parse of a cookie predating employees/payrollPayments
+    const target = createEmptyStore();
+
+    expect(() => hydrateStore(legacyPayload, target)).not.toThrow();
+    expect(target.employees.size).toBe(0);
+    expect(target.payrollPayments.size).toBe(0);
+  });
+
+  it("still hydrates employees/payrollPayments normally when both fields ARE present (current-format cookie)", () => {
+    const target = createEmptyStore();
+    target.employees.set("70000000-0000-4000-8000-000000000001", {
+      id: "70000000-0000-4000-8000-000000000001",
+      businessId: BUSINESS_ID,
+      name: "Laura Martinez",
+      baseSalary: 2000000,
+      active: true,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    });
+    target.payrollPayments.set("80000000-0000-4000-8000-000000000001", {
+      id: "80000000-0000-4000-8000-000000000001",
+      businessId: BUSINESS_ID,
+      employeeId: "70000000-0000-4000-8000-000000000001",
+      amount: 1000000,
+      periodType: "quincenal",
+      periodStart: "2026-07-01",
+      periodEnd: "2026-07-15",
+      paymentDate: "2026-07-16",
+      notes: null,
+      createdAt: "2026-07-16T00:00:00.000Z",
+    });
+    const snapshot = serializeStore(target);
+
+    const rehydrated = createEmptyStore();
+    hydrateStore(snapshot, rehydrated);
+
+    expect(rehydrated.employees.size).toBe(1);
+    expect(rehydrated.payrollPayments.size).toBe(1);
+    expect(rehydrated.employees.get("70000000-0000-4000-8000-000000000001")?.name).toBe("Laura Martinez");
   });
 
   it("still hydrates expenses normally when the field IS present (current-format cookie)", () => {

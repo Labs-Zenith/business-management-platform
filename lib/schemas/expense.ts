@@ -16,11 +16,10 @@
  */
 
 import { z } from "zod";
+import { MAX_AMOUNT_COP_CENTS } from "./shared";
 
 const DESCRIPTION_MAX = 300;
 const NOTES_MAX = 1000;
-/** Matches the `expenses.amount` column's Postgres `INTEGER` range. */
-const MAX_AMOUNT_COP_CENTS = 2_147_483_647;
 
 const dateSchema = z
   .string()

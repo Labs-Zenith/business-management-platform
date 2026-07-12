@@ -301,3 +301,95 @@ export interface ExpenseRepository {
   /** Plain insert — no lock, no sequence, no balance invariant. */
   create(businessId: string, data: ExpenseInput): Promise<Expense>;
 }
+
+// ---------------------------------------------------------------------------
+// Employees (editable — Customer-style)
+// ---------------------------------------------------------------------------
+
+export type Employee = {
+  id: string;
+  businessId: string;
+  name: string;
+  baseSalary: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmployeeCreate = {
+  name: string;
+  baseSalary: number;
+};
+
+export type EmployeeUpdate = Partial<EmployeeCreate> & { active?: boolean };
+
+export type EmployeeListQuery = {
+  q?: string;
+  status?: "active" | "inactive";
+  page: number;
+  pageSize: number;
+};
+
+export interface EmployeeRepository {
+  list(businessId: string, query: EmployeeListQuery): Promise<Paged<Employee>>;
+  getById(businessId: string, id: string): Promise<Employee | null>;
+  create(businessId: string, data: EmployeeCreate): Promise<Employee>;
+  update(businessId: string, id: string, data: EmployeeUpdate): Promise<Employee | null>;
+}
+
+// ---------------------------------------------------------------------------
+// Payroll payments (append-only — Payment/Expense-style)
+// ---------------------------------------------------------------------------
+
+export type PeriodType = "quincenal" | "mensual";
+
+/** Caller-facing input: the caller picks periodType + a reference date; period_start/period_end are server-derived. */
+export type PayrollPaymentInput = {
+  employeeId: string;
+  amount: number;
+  periodType: PeriodType;
+  referenceDate: string;
+  paymentDate: string;
+  notes?: string | null;
+};
+
+/** Server-computed payload the service layer hands to the repository (period already derived). */
+export type PayrollPaymentPersist = {
+  employeeId: string;
+  amount: number;
+  periodType: PeriodType;
+  periodStart: string;
+  periodEnd: string;
+  paymentDate: string;
+  notes: string | null;
+};
+
+export type PayrollPayment = {
+  id: string;
+  businessId: string;
+  employeeId: string;
+  amount: number;
+  periodType: PeriodType;
+  periodStart: string;
+  periodEnd: string;
+  paymentDate: string;
+  notes: string | null;
+  createdAt: string;
+};
+
+export type PayrollPaymentWithEmployee = PayrollPayment & { employee: Pick<Employee, "id" | "name"> };
+
+export type PayrollPaymentListQuery = {
+  employeeId?: string;
+  from?: string;
+  to?: string;
+  page: number;
+  pageSize: number;
+};
+
+export interface PayrollPaymentRepository {
+  list(businessId: string, query: PayrollPaymentListQuery): Promise<Paged<PayrollPaymentWithEmployee>>;
+  getById(businessId: string, id: string): Promise<PayrollPaymentWithEmployee | null>;
+  /** Atomic: inserts the payroll payment AND its `category:'nomina'` expense in ONE transaction. */
+  create(businessId: string, data: PayrollPaymentPersist, expense: ExpenseInput): Promise<PayrollPayment>;
+}

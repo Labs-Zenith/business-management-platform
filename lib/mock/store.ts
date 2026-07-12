@@ -1,4 +1,4 @@
-import type { Business, Customer, Expense, Invoice, InvoiceItem, Payment, Role } from "@/lib/services/ports";
+import type { Business, Customer, Employee, Expense, Invoice, InvoiceItem, Payment, PayrollPayment, Role } from "@/lib/services/ports";
 import { seedFixtures } from "./fixtures";
 
 /**
@@ -26,6 +26,8 @@ export type MockStore = {
   invoiceItems: Map<string, InvoiceItem>;
   payments: Map<string, Payment>;
   expenses: Map<string, Expense>;
+  employees: Map<string, Employee>;
+  payrollPayments: Map<string, PayrollPayment>;
   /** `businessId` -> last-used sequence number, for atomic invoice numbering. */
   invoiceSequences: Map<string, number>;
 };
@@ -39,6 +41,8 @@ export type SerializedStore = {
   invoiceItems: InvoiceItem[];
   payments: Payment[];
   expenses: Expense[];
+  employees: Employee[];
+  payrollPayments: PayrollPayment[];
   invoiceSequences: Record<string, number>;
 };
 
@@ -51,6 +55,8 @@ export function serializeStore(target: MockStore = store): SerializedStore {
     invoiceItems: [...target.invoiceItems.values()],
     payments: [...target.payments.values()],
     expenses: [...target.expenses.values()],
+    employees: [...target.employees.values()],
+    payrollPayments: [...target.payrollPayments.values()],
     invoiceSequences: Object.fromEntries(target.invoiceSequences),
   };
 }
@@ -63,6 +69,8 @@ export function clearStore(target: MockStore): void {
   target.invoiceItems.clear();
   target.payments.clear();
   target.expenses.clear();
+  target.employees.clear();
+  target.payrollPayments.clear();
   target.invoiceSequences.clear();
 }
 
@@ -78,6 +86,10 @@ export function hydrateStore(data: SerializedStore, target: MockStore = store): 
   // `?? []` is REQUIRED: a cookie serialized before this change has no
   // `expenses` field at all, and this must not throw (design Risk R4).
   for (const e of data.expenses ?? []) target.expenses.set(e.id, e);
+  // Same `?? []` requirement for `employees`/`payrollPayments` — a cookie
+  // serialized before the nomina-payroll change has neither field at all.
+  for (const e of data.employees ?? []) target.employees.set(e.id, e);
+  for (const p of data.payrollPayments ?? []) target.payrollPayments.set(p.id, p);
   for (const [k, v] of Object.entries(data.invoiceSequences)) target.invoiceSequences.set(k, v);
 }
 
@@ -90,6 +102,8 @@ export function createEmptyStore(): MockStore {
     invoiceItems: new Map(),
     payments: new Map(),
     expenses: new Map(),
+    employees: new Map(),
+    payrollPayments: new Map(),
     invoiceSequences: new Map(),
   };
 }
