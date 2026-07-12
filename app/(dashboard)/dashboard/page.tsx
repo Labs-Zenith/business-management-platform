@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { KpiCards, KpiCardsSkeleton } from "@/components/domain/dashboard/kpi-cards";
 import { RecentPayments, RecentPaymentsSkeleton } from "@/components/domain/dashboard/recent-payments";
 import { TopDebtors, TopDebtorsSkeleton } from "@/components/domain/dashboard/top-debtors";
 import { OverdueList, OverdueListSkeleton } from "@/components/domain/dashboard/overdue-list";
 import { DashboardCharts, DashboardChartsSkeleton } from "@/components/domain/dashboard/dashboard-charts";
+import { ExpenseKpiCards, ExpenseKpiCardsSkeleton } from "@/components/domain/dashboard/expense-kpi-cards";
+import { ExpensesByCategory, ExpensesByCategorySkeleton } from "@/components/domain/dashboard/expenses-by-category";
+import { RecentExpenses, RecentExpensesSkeleton } from "@/components/domain/dashboard/recent-expenses";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 
 /**
@@ -13,23 +17,34 @@ import CustomerFormDialog from "@/components/domain/customers/customer-form-dial
  * ("Total pendiente por cobrar", "Pagos del mes", "Facturas vencidas",
  * "Pagos recientes", "Clientes con mayor saldo", plus "Crear cliente"/
  * "Crear factura" quick actions) and
- * `openspec/changes/mocked-mvp-scaffold/specs/dashboard/spec.md`'s "Dashboard
- * Screen Content and Actions" requirement.
+ * `openspec/changes/expenses-dashboard-split/specs/dashboard/spec.md`'s
+ * "Dashboard Screen Content and Actions" requirement, which splits the
+ * screen into an **Ingresos** tab (unchanged content below) and an
+ * **Egresos** tab (expenses).
  *
- * Each of the 5 KPIs is rendered by its own independently-streamed section
- * — a standalone async Server Component wrapped in its own `<Suspense>`
- * boundary, per the design's Suspense/Skeleton plan — so a slow section
- * (e.g. `OverdueList`'s extra customer-name lookup) never blocks the others
- * from appearing. Every section calls `lib/services/dashboard-service.ts`
- * directly (never a single combined `getDashboardSummary` fetch, which
- * would defeat independent streaming); `app/api/dashboard/summary/route.ts`
- * is the one that composes them into a single payload, for non-page
- * consumers.
+ * This page stays a plain Server Component (no `"use client"`). It renders
+ * the client `<Tabs>` shell (`components/ui/tabs.tsx`) and passes the
+ * Ingresos/Egresos subtrees as `children` — those subtrees are still
+ * Server Components, rendered and streamed on the server; the client Tabs
+ * wrapper only positions already-rendered output and toggles visibility.
+ * `keepMounted` is set on BOTH `TabsPanel`s so both subtrees render and
+ * stream on initial load (eager-fetch both tabs) and switching tabs never
+ * discards or re-fetches the inactive panel's content — see design.md
+ * section 6 for the full mechanic.
+ *
+ * Each KPI/list section (Ingresos and Egresos alike) is rendered by its own
+ * independently-streamed section — a standalone async Server Component
+ * wrapped in its own `<Suspense>` boundary — so a slow section never blocks
+ * the others from appearing. Every section calls its dashboard service
+ * directly (never a single combined summary fetch, which would defeat
+ * independent streaming).
  *
  * "Crear cliente" reuses the same lazy (`ssr:false`) dialog as
  * `app/(dashboard)/customers/page.tsx` (PR4) rather than linking away, for a
  * genuine one-click quick action; "Crear factura" links to the dedicated
- * `/invoices/new` page (a full line-item form, not a dialog).
+ * `/invoices/new` page (a full line-item form, not a dialog). Both stay in
+ * the page header as global/Ingresos-oriented actions; "Crear gasto" (Egresos
+ * quick action) is wired into the Egresos panel in a later change.
  */
 export default function DashboardPage() {
   return (
@@ -54,26 +69,55 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Suspense fallback={<KpiCardsSkeleton />}>
-        <KpiCards />
-      </Suspense>
+      <Tabs defaultValue="ingresos">
+        <TabsList>
+          <TabsTab value="ingresos">Ingresos</TabsTab>
+          <TabsTab value="egresos">Egresos</TabsTab>
+        </TabsList>
 
-      <Suspense fallback={<DashboardChartsSkeleton />}>
-        <DashboardCharts />
-      </Suspense>
+        {/* keepMounted is required: do not remove. base-ui's default is
+            `false`, which would unmount this panel's server-streamed
+            subtree (and re-fetch it) whenever the Egresos tab is active. */}
+        <TabsPanel value="ingresos" keepMounted>
+          <Suspense fallback={<KpiCardsSkeleton />}>
+            <KpiCards />
+          </Suspense>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Suspense fallback={<OverdueListSkeleton />}>
-          <OverdueList />
-        </Suspense>
-        <Suspense fallback={<TopDebtorsSkeleton />}>
-          <TopDebtors />
-        </Suspense>
-      </div>
+          <Suspense fallback={<DashboardChartsSkeleton />}>
+            <DashboardCharts />
+          </Suspense>
 
-      <Suspense fallback={<RecentPaymentsSkeleton />}>
-        <RecentPayments />
-      </Suspense>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Suspense fallback={<OverdueListSkeleton />}>
+              <OverdueList />
+            </Suspense>
+            <Suspense fallback={<TopDebtorsSkeleton />}>
+              <TopDebtors />
+            </Suspense>
+          </div>
+
+          <Suspense fallback={<RecentPaymentsSkeleton />}>
+            <RecentPayments />
+          </Suspense>
+        </TabsPanel>
+
+        {/* keepMounted is required: do not remove. base-ui's default is
+            `false`, which would unmount this panel's server-streamed
+            subtree (and re-fetch it) whenever the Ingresos tab is active. */}
+        <TabsPanel value="egresos" keepMounted>
+          <Suspense fallback={<ExpenseKpiCardsSkeleton />}>
+            <ExpenseKpiCards />
+          </Suspense>
+
+          <Suspense fallback={<ExpensesByCategorySkeleton />}>
+            <ExpensesByCategory />
+          </Suspense>
+
+          <Suspense fallback={<RecentExpensesSkeleton />}>
+            <RecentExpenses />
+          </Suspense>
+        </TabsPanel>
+      </Tabs>
     </div>
   );
 }

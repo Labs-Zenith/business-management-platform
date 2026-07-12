@@ -22,6 +22,16 @@ const CATEGORY_META: Record<ExpenseCategory, { label: string }> = {
 };
 const CATEGORY_ORDER: ExpenseCategory[] = ["nomina", "otro"];
 
+/**
+ * Single source of truth for an `ExpenseCategory`'s display label. Any
+ * component rendering a category (e.g. `recent-expenses.tsx`) MUST import
+ * this instead of hand-rolling its own label map — a duplicated map is how
+ * "Nómina" vs "Nomina" (missing accent) inconsistencies happen.
+ */
+export function getCategoryLabel(category: ExpenseCategory): string {
+  return CATEGORY_META[category].label;
+}
+
 export type ExpensesByCategoryDatum = { category: ExpenseCategory; label: string; total: number };
 export type ExpensesSummary = {
   totalThisMonth: number;

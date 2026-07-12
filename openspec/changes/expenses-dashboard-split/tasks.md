@@ -53,20 +53,20 @@ Chain strategy: feature-branch-chain
 
 ## Phase 6: Tabs Primitive (First-Time Component)
 
-- [ ] 6.1 Run `shadcn add tabs` (or hand-write) to create `components/ui/tabs.tsx` wrapping `@base-ui/react/tabs` (`Root`/`List`/`Tab`/`Panel`), `data-slot` + `cn(...)` conventions matching `select.tsx`.
-- [ ] 6.2 Verify against `node_modules/@base-ui/react/tabs/**/*.d.ts` (NOT just trust design.md): confirm part names, `Tabs.Panel`'s `keepMounted` default (`false`), and the actual selected-state data-attribute (`data-selected` vs `data-active`) emitted on `Tabs.Tab`; adjust the `data-[selected]:*`/`data-[active]:*` classes to match reality.
+- [x] 6.1 Run `shadcn add tabs` (or hand-write) to create `components/ui/tabs.tsx` wrapping `@base-ui/react/tabs` (`Root`/`List`/`Tab`/`Panel`), `data-slot` + `cn(...)` conventions matching `select.tsx`.
+- [x] 6.2 Verify against `node_modules/@base-ui/react/tabs/**/*.d.ts` (NOT just trust design.md): confirm part names, `Tabs.Panel`'s `keepMounted` default (`false`), and the actual selected-state data-attribute (`data-selected` vs `data-active`) emitted on `Tabs.Tab`; adjust the `data-[selected]:*`/`data-[active]:*` classes to match reality. **Confirmed: `data-active` (not `data-selected`)** — see `tabs/tab/TabsTabDataAttributes.d.ts`; `tabs.tsx` uses `data-[active]:*` classes.
 
 ## Phase 7: Dashboard Restructure
 
-- [ ] 7.1 `app/(dashboard)/dashboard/page.tsx`: wrap content in `<Tabs defaultValue="ingresos">` + `<TabsList>` (Ingresos/Egresos tabs); move the existing Ingresos subtree verbatim into `<TabsPanel value="ingresos" keepMounted>` (unchanged behavior/markup); add `<TabsPanel value="egresos" keepMounted>` for the new Egresos content. **`keepMounted` MUST be set on both panels** — omitting it discards the inactive panel's streamed server subtree on hydration (design Risk R1).
-- [ ] 7.2 Confirm the page stays a plain Server Component (no `"use client"`) and that Egresos section components are passed as children/props, never imported into the client `tabs.tsx` module.
+- [x] 7.1 `app/(dashboard)/dashboard/page.tsx`: wrap content in `<Tabs defaultValue="ingresos">` + `<TabsList>` (Ingresos/Egresos tabs); move the existing Ingresos subtree verbatim into `<TabsPanel value="ingresos" keepMounted>` (unchanged behavior/markup); add `<TabsPanel value="egresos" keepMounted>` for the new Egresos content. **`keepMounted` MUST be set on both panels** — omitting it discards the inactive panel's streamed server subtree on hydration (design Risk R1).
+- [x] 7.2 Confirm the page stays a plain Server Component (no `"use client"`) and that Egresos section components are passed as children/props, never imported into the client `tabs.tsx` module.
 
 ## Phase 8: Egresos Display Components
 
-- [ ] 8.1 Create `components/domain/dashboard/expense-kpi-cards.tsx`: `ExpenseKpiCards` (async Server Component, `getExpensesTotalThisMonth`) + `ExpenseKpiCardsSkeleton`, mirroring `kpi-cards.tsx`.
-- [ ] 8.2 Create `components/domain/dashboard/expenses-by-category.tsx`: `ExpensesByCategory` (`getExpensesByCategory`, two-row Nómina/Otro breakdown, no new chart type) + `ExpensesByCategorySkeleton`.
-- [ ] 8.3 Create `components/domain/dashboard/recent-expenses.tsx`: `RecentExpenses` (`getRecentExpenses`, Table columns Fecha/Categoría/Descripción/Monto, empty-state row "Sin gastos registrados.") + `RecentExpensesSkeleton`, mirroring `recent-payments.tsx`.
-- [ ] 8.4 Wire all three into the Egresos `TabsPanel` from 7.1, each in its own `<Suspense>` boundary.
+- [x] 8.1 Create `components/domain/dashboard/expense-kpi-cards.tsx`: `ExpenseKpiCards` (async Server Component, `getExpensesTotalThisMonth`) + `ExpenseKpiCardsSkeleton`, mirroring `kpi-cards.tsx`.
+- [x] 8.2 Create `components/domain/dashboard/expenses-by-category.tsx`: `ExpensesByCategory` (`getExpensesByCategory`, two-row Nómina/Otro breakdown, no new chart type) + `ExpensesByCategorySkeleton`.
+- [x] 8.3 Create `components/domain/dashboard/recent-expenses.tsx`: `RecentExpenses` (`getRecentExpenses`, Table columns Fecha/Categoría/Descripción/Monto, empty-state row "Sin gastos registrados.") + `RecentExpensesSkeleton`, mirroring `recent-payments.tsx`.
+- [x] 8.4 Wire all three into the Egresos `TabsPanel` from 7.1, each in its own `<Suspense>` boundary.
 
 ## Phase 9: "Crear Gasto" Dialog
 
@@ -83,7 +83,7 @@ Chain strategy: feature-branch-chain
 - [x] 10.4 `lib/services/expense-dashboard-service.test.ts`: `getExpensesTotalThisMonth` filters by calendar month; `getExpensesByCategory` always emits both categories (zeros included); `getRecentExpenses` sort/limit/tiebreak.
 - [x] 10.5 `app/api/expenses/expenses-route.test.ts`: 200 list with filters, cross-business isolation, 201 create, `VALIDATION_ERROR` on bad category/amount/date, `checkOrigin` enforcement on POST — mirrors `invoices-route.test.ts`.
 - [x] 10.6 `lib/mock/store.test.ts`: regression test — `hydrateStore` on a payload missing the `expenses` field does not throw (Risk R4).
-- [ ] 10.7 `components/ui/tabs.test.tsx`: both panels' content is present in the DOM on initial render (`keepMounted` behavior); switching tabs shows/hides without unmounting.
+- [x] 10.7 `components/ui/tabs.test.tsx`: both panels' content is present in the DOM on initial render (`keepMounted` behavior); switching tabs shows/hides without unmounting. **Implemented as `app/(dashboard)/dashboard/page.test.tsx` instead of a standalone `tabs.test.tsx`** — no `components/ui/*` primitive has its own dedicated test file in this codebase (checked `select.tsx` and siblings: none), so per that established convention this is verified through its real consumer (the dashboard page) using the actual `Tabs`/`TabsPanel` components (not mocked), proving both Ingresos and Egresos content are simultaneously present in the DOM and that clicking the Egresos tab does not unmount the Ingresos content.
 - [ ] 10.8 `components/domain/dashboard/expense-form-dialog-content.test.tsx`: valid submission POSTs cents-converted payload and calls `router.refresh()`; invalid amount/missing field blocks submission client-side; server error surfaces the message.
 
 ## Phase 11: Verification Gate
