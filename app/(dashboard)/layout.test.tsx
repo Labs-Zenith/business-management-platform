@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { Session } from "@/lib/services/ports";
+import type { BusinessMembership, Session } from "@/lib/services/ports";
 
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
+const mockListMembershipsForUser = vi.fn<(userId: string) => Promise<BusinessMembership[]>>();
 
 vi.mock("@/lib/session", () => ({
   requireSessionOrRedirect: () => mockRequireSessionOrRedirect(),
@@ -10,7 +11,7 @@ vi.mock("@/lib/session", () => ({
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
 // `loadStoreFromCookie` calls `next/headers`'s `cookies()`, unavailable
@@ -19,6 +20,19 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/mock/cookie-persistence", () => ({
   loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
   saveStoreToCookie: vi.fn(),
+}));
+
+// `repositories.business.listMembershipsForUser` is called directly by this
+// layout (Phase 7, `roles-multi-business`) to pass `memberships` down to
+// `DashboardTopbar`'s `BusinessSwitcher` — mocked here the same way
+// `requireSessionOrRedirect` is, since the real repository would otherwise
+// hit the mock store's cookie-hydration path.
+vi.mock("@/lib/services/repositories", () => ({
+  repositories: {
+    business: {
+      listMembershipsForUser: (userId: string) => mockListMembershipsForUser(userId),
+    },
+  },
 }));
 
 import DashboardLayout from "./layout";
@@ -30,6 +44,10 @@ const SESSION: Session = {
   role: "admin",
 };
 
+const SINGLE_MEMBERSHIP: BusinessMembership[] = [
+  { businessId: SESSION.businessId, businessName: "Negocio Demo", role: "admin" },
+];
+
 /**
  * Consistent with `app/(dashboard)/settings/page.test.tsx` (PR3)'s pattern:
  * mock `@/lib/session`, resolve/reject `requireSessionOrRedirect()`, and
@@ -38,14 +56,17 @@ const SESSION: Session = {
 describe("DashboardLayout (shared navigation shell)", () => {
   beforeEach(() => {
     mockRequireSessionOrRedirect.mockReset();
+    mockListMembershipsForUser.mockReset();
   });
 
   it("resolves the session, then renders links to every dashboard section, the page content, and a logout action", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListMembershipsForUser.mockResolvedValue(SINGLE_MEMBERSHIP);
 
     render(await DashboardLayout({ children: <div>Page content</div> }));
 
     expect(mockRequireSessionOrRedirect).toHaveBeenCalled();
+    expect(mockListMembershipsForUser).toHaveBeenCalledWith(SESSION.userId);
     expect(screen.getByText("Page content")).toBeInTheDocument();
 
     for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Negocio"]) {
@@ -83,5 +104,22 @@ describe("DashboardLayout (shared navigation shell)", () => {
     await expect(
       DashboardLayout({ children: <div>Page content</div> })
     ).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
+  });
+
+  it("currently propagates (crashes the shell) when listMembershipsForUser rejects — documents existing behavior, not a fix", async () => {
+    // Unlike `requireSessionOrRedirect()`'s rejection above (a real Next.js
+    // redirect signal), `listMembershipsForUser` has no try/catch around it
+    // in `layout.tsx`: a rejection here throws straight out of this Server
+    // Component with no `error.tsx`/`global-error.tsx` boundary for this
+    // route group. This test locks in that CURRENT behavior so it isn't a
+    // silent, unverified gap; whether to gracefully degrade instead (e.g.
+    // render with an empty `memberships` list) is a product decision left
+    // for a future change, not this fix pass.
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListMembershipsForUser.mockRejectedValue(new Error("db unavailable"));
+
+    await expect(
+      DashboardLayout({ children: <div>Page content</div> })
+    ).rejects.toThrow("db unavailable");
   });
 });

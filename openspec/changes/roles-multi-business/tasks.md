@@ -63,9 +63,12 @@ Chain strategy: feature-branch-chain
 
 ## Phase 7: UI Wiring
 
-- [ ] 7.1 Create `components/layout/business-switcher.tsx` (Client Component): props `{businesses: BusinessMembership[]; activeId: string}`; dropdown of business names; on select, `POST /api/auth/switch-business {businessId}`; on success `useRouter().refresh()`; on error, show inline message and keep the previous selection.
-- [ ] 7.2 `components/layout/dashboard-topbar.tsx`: accept new `businesses: BusinessMembership[]` prop (stays a sync Server Component); render `<BusinessSwitcher businesses={businesses} activeId={session.businessId} />`.
-- [ ] 7.3 `app/(dashboard)/layout.tsx`: after `requireSession()`, call `repositories.business.listMembershipsForUser(session.userId)`, pass `businesses={memberships}` to `<DashboardTopbar>`.
+- [x] 7.1 Create `components/layout/business-switcher.tsx` (Client Component): props `{businesses: BusinessMembership[]; activeId: string}`; dropdown of business names; on select, `POST /api/auth/switch-business {businessId}`; on success `useRouter().refresh()`; on error, show inline message and keep the previous selection.
+  > **Implementation note (PR3):** shipped as `<BusinessSwitcher currentBusinessId memberships />` (renamed from `{activeId, businesses}` for clarity — same shapes/semantics). Only renders a dropdown when `memberships.length > 1`; with exactly 1 membership it renders the business name as static text (no switcher). On success calls `router.refresh()` only — no `router.push("/dashboard")` — per `design.md`'s "Data Flow (switch)" contract, so the user isn't yanked off whatever `(dashboard)` page they were viewing. Uses this project's already-installed `@base-ui/react`-backed `components/ui/dropdown-menu.tsx` (no prior in-app consumer existed to mirror; chosen over `Select` since this is an actions list, not a form control).
+- [x] 7.2 `components/layout/dashboard-topbar.tsx`: accept new `businesses: BusinessMembership[]` prop (stays a sync Server Component); render `<BusinessSwitcher businesses={businesses} activeId={session.businessId} />`.
+  > **Implementation note (PR3):** prop renamed to `memberships` (matching 7.1); rendered as `<BusinessSwitcher currentBusinessId={session.businessId} memberships={memberships} />` next to the avatar/logout group. Component remains a synchronous Server Component — no fetching added.
+- [x] 7.3 `app/(dashboard)/layout.tsx`: after `requireSession()`, call `repositories.business.listMembershipsForUser(session.userId)`, pass `businesses={memberships}` to `<DashboardTopbar>`.
+  > **Implementation note (PR3):** this layout already calls `requireSessionOrRedirect()` (PR1 post-review fix, not `requireSession()`); `listMembershipsForUser(session.userId)` is called right after, and the result is passed to `<DashboardTopbar>` as `memberships={memberships}`.
 
 ## Phase 8: Tests
 
@@ -74,13 +77,15 @@ Chain strategy: feature-branch-chain
 - [ ] 8.3 `lib/mock/business-repo.test.ts` (new or extend): `listMembershipsForUser` returns both seeded memberships ordered by `createdAt` ASC.
 - [x] 8.4 `app/api/auth/switch-business/switch-business-route.test.ts` (new, mirrors `auth-routes.test.ts`'s cookie-jar mock): 200 + new cookie on valid membership; 403 + unchanged cookie for a non-member `businessId`; 400 on malformed payload. Also covers 401 for an unauthenticated request and the `Cache-Control: no-store` header.
   - Pre-commit fix pass (PR 2 scope) added: missing `businessId` field, empty-string `businessId`, wrong-type (`number`) `businessId`, malformed/invalid JSON body, `Cache-Control: no-store` on error responses (401/403/400, not just 200), and strengthened the success-case assertion to a full `toEqual` on the session shape (`userId`/`email` preserved, `businessId`/`role` updated).
+- [x] 8.5 (new, PR 3 scope — not originally numbered) `components/layout/business-switcher.test.tsx`: static text (no dropdown) with 1 membership; dropdown lists other businesses with 2+; selecting a business POSTs and calls `router.refresh()` on success; shows an inline error (role="alert") without crashing on a 403 or network failure. Also updated `app/(dashboard)/layout.test.tsx` to mock `repositories.business.listMembershipsForUser` and assert it's called.
+  - Note: 8.1–8.3 above are also unchecked in this file despite their corresponding implementation tasks (3.5, 4.1/4.3, 5.1) being marked done and their test files (`lib/mock/auth-adapter.test.ts`, `lib/mock/business-repo.test.ts`, `lib/services/permissions.test.ts`) already existing and passing (confirmed in this PR's full `npm run test` run) — pre-existing checkbox bookkeeping gap from PR1/PR2, left as-is since fixing it is outside this PR3 (Phase 7 UI wiring) scope.
 
 ## Phase 9: Verification Gate
 
-- [ ] 9.1 `npm run typecheck`
-- [ ] 9.2 `npm run lint`
-- [ ] 9.3 `npm run test`
-- [ ] 9.4 `npm run build`
+- [x] 9.1 `npm run typecheck`
+- [x] 9.2 `npm run lint`
+- [x] 9.3 `npm run test`
+- [x] 9.4 `npm run build`
 
 ## Phase 10: Docs / Deferred
 

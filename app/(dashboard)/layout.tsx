@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
+import { repositories } from "@/lib/services/repositories";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
 import DashboardSidebar from "@/components/layout/dashboard-sidebar";
 import DashboardBottomNav from "@/components/layout/dashboard-bottom-nav";
@@ -35,7 +36,12 @@ import DashboardBottomNav from "@/components/layout/dashboard-bottom-nav";
  * `session.email` for its avatar initial) as a prop rather than having it
  * call `requireSessionOrRedirect()` a second time — that would also make it an async
  * Server Component nested inside JSX, which React's client renderer (used
- * by `layout.test.tsx`'s `render()`) cannot reconcile.
+ * by `layout.test.tsx`'s `render()`) cannot reconcile. For the same reason,
+ * this layout also resolves the session's full list of business
+ * memberships via `repositories.business.listMembershipsForUser(session.userId)`
+ * (Phase 7, `roles-multi-business`) and passes it down as `memberships`, so
+ * `DashboardTopbar`'s `BusinessSwitcher` can render without doing any
+ * fetching of its own.
  *
  * Existing page content is untouched: each `page.tsx` keeps its own
  * `flex flex-1 flex-col p-4` wrapper unchanged; this layout only adds
@@ -49,10 +55,16 @@ export default async function DashboardLayout({
 }) {
   await loadStoreFromCookie();
   const session = await requireSessionOrRedirect();
+  // NOTE: unlike `requireSessionOrRedirect()` above, this call has no
+  // try/catch — a rejection here currently crashes this dashboard shell
+  // (same class of issue PR1 fixed for session resolution). Graceful
+  // degradation (e.g. falling back to an empty `memberships` list) is a
+  // possible future improvement, not implemented here.
+  const memberships = await repositories.business.listMembershipsForUser(session.userId);
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col">
-      <DashboardTopbar session={session} />
+      <DashboardTopbar session={session} memberships={memberships} />
       <div className="flex min-w-0 flex-1">
         <DashboardSidebar />
         <main className="flex min-w-0 flex-1 flex-col pb-24 md:pb-0">{children}</main>
