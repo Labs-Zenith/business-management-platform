@@ -25,6 +25,12 @@ export async function listPayrollPayments(
   return repositories.payroll.list(session.businessId, query);
 }
 
+/**
+ * Reserved: no route calls this yet — there is no single-payment GET this
+ * phase (append-only records are only ever listed, never viewed/edited
+ * individually). Kept for a likely future payment-detail drill-down and
+ * exercised directly by this file's own tests in the meantime.
+ */
 export async function getPayrollPayment(session: Session, id: string): Promise<PayrollPaymentWithEmployee> {
   const payment = await repositories.payroll.getById(session.businessId, id);
   if (!payment) {

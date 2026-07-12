@@ -35,6 +35,38 @@ describe("middleware", () => {
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
+  /**
+   * Nomina (payroll) additions — presence-only, per
+   * `openspec/changes/nomina-payroll/design.md`'s Middleware section: role
+   * is never checked here, only cookie presence. The authoritative
+   * capability check lives at the page (`requireCapabilityOrNotFound`) and
+   * route (`requireCapability`) layers.
+   */
+  it("redirects unauthenticated requests to the gated /nomina page to /login", () => {
+    const response = middleware(buildRequest("/nomina"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  it("redirects unauthenticated requests to /api/employees to /login", () => {
+    const response = middleware(buildRequest("/api/employees"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  it("redirects unauthenticated requests to /api/payroll-payments to /login", () => {
+    const response = middleware(buildRequest("/api/payroll-payments"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  it("allows a request with a session cookie through to /nomina, /api/employees, and /api/payroll-payments (presence-only — role is never checked here)", () => {
+    for (const path of ["/nomina", "/api/employees", "/api/payroll-payments"]) {
+      const response = middleware(buildRequest(path, "opaque-token-value"));
+      expect(response.headers.get("location")).toBeNull();
+    }
+  });
+
   it("allows requests to a protected route through when a session cookie is present", () => {
     const response = middleware(buildRequest("/dashboard", "opaque-token-value"));
 

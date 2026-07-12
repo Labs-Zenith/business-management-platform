@@ -28,6 +28,12 @@ const PROTECTED_PATH_PREFIXES = [
   "/payments",
   "/settings",
   "/api/docs",
+  // Nomina (payroll) — first role-gated feature. Presence-only here (no
+  // role check); the authoritative capability gate is `lib/session.ts`'s
+  // `requireCapabilityOrNotFound` (page) / `requireCapability` (routes).
+  "/nomina",
+  "/api/employees",
+  "/api/payroll-payments",
 ];
 
 function isProtectedPath(pathname: string): boolean {
@@ -59,5 +65,8 @@ export const config = {
     "/payments/:path*",
     "/settings/:path*",
     "/api/docs/:path*",
+    "/nomina/:path*",
+    "/api/employees/:path*",
+    "/api/payroll-payments/:path*",
   ],
 };

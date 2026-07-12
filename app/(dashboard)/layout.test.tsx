@@ -48,6 +48,17 @@ const SINGLE_MEMBERSHIP: BusinessMembership[] = [
   { businessId: SESSION.businessId, businessName: "Negocio Demo", role: "admin" },
 ];
 
+const WORKER_SESSION: Session = {
+  userId: "20000000-0000-4000-8000-000000000002",
+  businessId: "10000000-0000-4000-8000-000000000001",
+  email: "worker@negociodemo.test",
+  role: "worker",
+};
+
+const WORKER_MEMBERSHIP: BusinessMembership[] = [
+  { businessId: WORKER_SESSION.businessId, businessName: "Negocio Demo", role: "worker" },
+];
+
 /**
  * Consistent with `app/(dashboard)/settings/page.test.tsx` (PR3)'s pattern:
  * mock `@/lib/session`, resolve/reject `requireSessionOrRedirect()`, and
@@ -69,26 +80,45 @@ describe("DashboardLayout (shared navigation shell)", () => {
     expect(mockListMembershipsForUser).toHaveBeenCalledWith(SESSION.userId);
     expect(screen.getByText("Page content")).toBeInTheDocument();
 
-    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Negocio"]) {
+    const HREF_BY_LABEL: Record<string, string> = {
+      Dashboard: "/dashboard",
+      Clientes: "/customers",
+      Facturas: "/invoices",
+      Pagos: "/payments",
+      Nómina: "/nomina",
+      Negocio: "/settings",
+    };
+
+    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Nómina", "Negocio"]) {
       const links = screen.getAllByRole("link", { name: label });
       expect(links.length).toBeGreaterThan(0);
       for (const link of links) {
-        expect(link).toHaveAttribute(
-          "href",
-          label === "Dashboard"
-            ? "/dashboard"
-            : label === "Clientes"
-              ? "/customers"
-              : label === "Facturas"
-                ? "/invoices"
-                : label === "Pagos"
-                  ? "/payments"
-                  : "/settings"
-        );
+        expect(link).toHaveAttribute("href", HREF_BY_LABEL[label]);
       }
     }
 
     expect(screen.getByRole("button", { name: /cerrar sesion/i })).toBeInTheDocument();
+  });
+
+  /**
+   * Per `openspec/changes/nomina-payroll/specs/role-based-navigation/spec.md`'s
+   * "Navigation Items Are Filtered by Role" requirement — a `worker` session
+   * must not see the Nómina nav item in either surface. This is a UX
+   * complement only; the authoritative check is `lib/session.ts`'s
+   * `requireCapabilityOrNotFound` at the Nomina page itself (out of scope
+   * for this layout, covered separately).
+   */
+  it("hides the Nómina nav item for a worker session (lacks viewPayroll) in both the sidebar and bottom nav", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(WORKER_SESSION);
+    mockListMembershipsForUser.mockResolvedValue(WORKER_MEMBERSHIP);
+
+    render(await DashboardLayout({ children: <div>Page content</div> }));
+
+    expect(screen.queryByRole("link", { name: "Nómina" })).not.toBeInTheDocument();
+    // Every other nav item is still present for a worker.
+    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Negocio"]) {
+      expect(screen.getAllByRole("link", { name: label }).length).toBeGreaterThan(0);
+    }
   });
 
   it("redirects to /login instead of rendering the shell when there is no valid session (defense in depth) — a stale/role-less cookie must not crash this layout", async () => {

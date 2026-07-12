@@ -17,6 +17,13 @@ export async function listEmployees(session: Session, query: EmployeeListQuery):
   return repositories.employees.list(session.businessId, query);
 }
 
+/**
+ * Reserved: no route calls this yet — `app/api/employees/[id]/route.ts` only
+ * exposes PATCH (see design.md), there is no single-employee GET this phase.
+ * Kept for parity with `customer-service.ts`'s `getCustomer` and for a
+ * likely future employee-detail view; exercised directly by this file's
+ * own tests in the meantime.
+ */
 export async function getEmployee(session: Session, id: string): Promise<Employee> {
   const employee = await repositories.employees.getById(session.businessId, id);
   if (!employee) {

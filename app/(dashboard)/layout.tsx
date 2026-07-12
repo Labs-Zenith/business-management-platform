@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { repositories } from "@/lib/services/repositories";
+import { navItemsForRole } from "@/components/layout/nav-items";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
 import DashboardSidebar from "@/components/layout/dashboard-sidebar";
 import DashboardBottomNav from "@/components/layout/dashboard-bottom-nav";
@@ -61,15 +62,23 @@ export default async function DashboardLayout({
   // degradation (e.g. falling back to an empty `memberships` list) is a
   // possible future improvement, not implemented here.
   const memberships = await repositories.business.listMembershipsForUser(session.userId);
+  // Role-filtered once here (single source of truth) and threaded to both
+  // nav surfaces, so a `worker` session never sees a capability-gated item
+  // (e.g. Nómina) in either the sidebar or the bottom nav — see
+  // `nav-items.ts`'s `navItemsForRole` and its spec's "Navigation Items Are
+  // Filtered by Role" requirement. This is a UX complement only; the
+  // authoritative check is each gated page's/route's own
+  // `requireCapabilityOrNotFound`/`requireCapability` call.
+  const items = navItemsForRole(session.role);
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col">
       <DashboardTopbar session={session} memberships={memberships} />
       <div className="flex min-w-0 flex-1">
-        <DashboardSidebar />
+        <DashboardSidebar items={items} />
         <main className="flex min-w-0 flex-1 flex-col pb-24 md:pb-0">{children}</main>
       </div>
-      <DashboardBottomNav />
+      <DashboardBottomNav items={items} />
     </div>
   );
 }

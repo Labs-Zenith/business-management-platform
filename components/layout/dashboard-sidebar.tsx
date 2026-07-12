@@ -16,13 +16,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NAV_ITEMS } from "./nav-items";
+import { NAV_ITEMS, type NavItem } from "./nav-items";
 
 function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export default function DashboardSidebar() {
+/**
+ * `items` (optional, defaults to `NAV_ITEMS`) lets a caller pass an
+ * already role-filtered list — see `nav-items.ts`'s `navItemsForRole` and
+ * `app/(dashboard)/layout.tsx`, which passes
+ * `navItemsForRole(session.role)`. Additive/backward-compatible: existing
+ * callers that don't pass `items` keep rendering the full unfiltered list.
+ */
+export default function DashboardSidebar({ items = NAV_ITEMS }: { items?: NavItem[] }) {
   const pathname = usePathname();
 
   return (
@@ -34,7 +41,7 @@ export default function DashboardSidebar() {
         <span className="text-sm font-semibold tracking-tight">Negocio</span>
       </div>
 
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const active = isActivePath(pathname, item.href);
         const Icon = item.icon;
 

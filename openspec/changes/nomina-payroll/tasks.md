@@ -59,31 +59,31 @@ Chain strategy: feature-branch-chain
 
 ## Phase 5: Capability-Gate Infrastructure (PR2)
 
-- [ ] 5.1 `lib/session.ts`: add `requireCapability(session, capability)` (throws `ApiError("FORBIDDEN")`) and `requireCapabilityOrNotFound(session, capability)` (calls `notFound()`), both delegating to `permissions.can()`.
-- [ ] 5.2 `lib/session.test.ts`: `requireCapability` throws `FORBIDDEN` for a role lacking the capability, passes silently otherwise; `requireCapabilityOrNotFound` calls `notFound()` under the same condition.
+- [x] 5.1 `lib/session.ts`: add `requireCapability(capability)` (resolves session via `requireSession()`, throws `ApiError("FORBIDDEN")` if the role lacks the capability) and `requireCapabilityOrNotFound(capability)` (resolves session via `requireSessionOrRedirect()`, calls `notFound()` if the role lacks the capability), both delegating to `permissions.can()`. NOTE: signature deviates from `design.md`'s `requireCapability(session, capability)` — both helpers self-resolve the session (mirroring `requireSession`/`requireSessionOrRedirect`'s own ergonomics) per explicit orchestrator instruction for this batch; each route/page call site is a single line.
+- [x] 5.2 `lib/session.test.ts`: `requireCapability` throws `FORBIDDEN` for a role lacking the capability (worker), resolves with the session otherwise (admin), and propagates `UNAUTHENTICATED` when no session exists; `requireCapabilityOrNotFound` calls `notFound()` under the same denied condition, redirects to `/login` when no session exists, and resolves with the session for admin.
 
 ## Phase 6: Nav Changes
 
-- [ ] 6.1 `components/layout/nav-items.ts`: add optional `capability?: Capability` to `NavItem`; add `{ href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" }`; add `navItemsForRole(role)` filtering by `can(role, item.capability)`.
-- [ ] 6.2 `components/layout/dashboard-sidebar.tsx`: accept optional `items` prop (default `NAV_ITEMS`), backward-compatible.
-- [ ] 6.3 `components/layout/dashboard-bottom-nav.tsx`: accept optional `items` prop; replace hardcoded `grid-cols-5` with a static `GRID_COLS: Record<number, string>` map (`{5: "grid-cols-5", 6: "grid-cols-6"}`) keyed by `items.length` (Tailwind cannot safelist an interpolated class).
-- [ ] 6.4 `app/(dashboard)/layout.tsx`: compute `const items = navItemsForRole(session.role)`, pass `items={items}` to both `<DashboardSidebar>` and `<DashboardBottomNav>`.
-- [ ] 6.5 Tests: `navItemsForRole("worker")` excludes Nómina, `("admin")` includes it; sidebar/bottom-nav render tests updated for the `items` prop; bottom-nav renders `grid-cols-6` with 6 items and `grid-cols-5` with 5 (regression for the `GRID_COLS` fix).
+- [x] 6.1 `components/layout/nav-items.ts`: add optional `capability?: Capability` to `NavItem`; add `{ href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" }` (before "Negocio"); add `navItemsForRole(role)` filtering by `can(role, item.capability)`.
+- [x] 6.2 `components/layout/dashboard-sidebar.tsx`: accept optional `items` prop (default `NAV_ITEMS`), backward-compatible.
+- [x] 6.3 `components/layout/dashboard-bottom-nav.tsx`: accept optional `items` prop; replace hardcoded `grid-cols-5` with a static `GRID_COLS: Record<number, string>` map (`{5: "grid-cols-5", 6: "grid-cols-6"}`) keyed by `items.length` via an exported pure `gridColsClass(itemCount)` helper (Tailwind cannot safelist an interpolated class).
+- [x] 6.4 `app/(dashboard)/layout.tsx`: compute `const items = navItemsForRole(session.role)`, pass `items={items}` to both `<DashboardSidebar>` and `<DashboardBottomNav>`.
+- [x] 6.5 Tests: `navItemsForRole("worker")` excludes Nómina, `("admin")` includes it (`nav-items.test.ts`); sidebar/bottom-nav render tests updated for the `items` prop (`dashboard-sidebar.test.tsx`, `dashboard-bottom-nav.test.tsx`); `gridColsClass` pure-function test proves 5→`grid-cols-5`/6→`grid-cols-6`/unmapped→fallback (extracted to a pure function per strict-TDD's "no CSS-class assertions in render tests" rule, instead of asserting className strings); `layout.test.tsx` updated — admin session sees Nómina, worker session does not (both nav surfaces).
 
 ## Phase 7: Middleware
 
-- [ ] 7.1 `middleware.ts`: add `"/nomina"`, `"/api/employees"`, `"/api/payroll-payments"` to `PROTECTED_PATH_PREFIXES`; add matching entries to `matcher`. Stays presence-only — no role check here (per convention).
+- [x] 7.1 `middleware.ts`: add `"/nomina"`, `"/api/employees"`, `"/api/payroll-payments"` to `PROTECTED_PATH_PREFIXES`; add matching entries to `matcher`. Stays presence-only — no role check here (per convention). Tests added to `middleware.test.ts`.
 
 ## Phase 8: API Routes
 
-- [ ] 8.1 Create `app/api/employees/route.ts`: `GET` (`requireSession`, `requireCapability(session,"viewPayroll")`, pagination, `listEmployees`), `POST` (`checkOrigin`, `employeeCreateSchema.safeParse`, `createEmployee`, 201).
-- [ ] 8.2 Create `app/api/employees/[id]/route.ts`: `PATCH` (`requireCapability`, `checkOrigin`, `employeeUpdateSchema.safeParse`, `updateEmployee`, 404 if missing).
-- [ ] 8.3 Create `app/api/payroll-payments/route.ts`: `GET` (`requireCapability`, pagination/filters, `listPayrollPayments`), `POST` (`checkOrigin`, `payrollPaymentCreateSchema.safeParse`, `createPayrollPayment`, 201).
-- [ ] 8.4 Tests (`employees-route.test.ts`, `payroll-payments-route.test.ts`): `worker` session → 403 `FORBIDDEN` on every payroll route; `admin` session → success; standard validation/cross-business cases per Phase 4 precedent.
+- [x] 8.1 Create `app/api/employees/route.ts`: `GET` (`requireCapability("viewPayroll")`, pagination, `listEmployees`), `POST` (`checkOrigin`, `employeeCreateSchema.safeParse`, `createEmployee`, 201).
+- [x] 8.2 Create `app/api/employees/[id]/route.ts`: `PATCH` (`requireCapability`, `checkOrigin`, `employeeUpdateSchema.safeParse`, `updateEmployee`, 404 if missing — no other verb, employees have no delete).
+- [x] 8.3 Create `app/api/payroll-payments/route.ts`: `GET` (`requireCapability`, pagination/filters, `listPayrollPayments`), `POST` (`checkOrigin`, `payrollPaymentCreateSchema.safeParse`, `createPayrollPayment`, 201).
+- [x] 8.4 Tests (`employees-routes.test.ts`, `payroll-payments-routes.test.ts`): `worker` session → 403 `FORBIDDEN` on every payroll route (proved for GET/POST/PATCH, including "creates/mutates nothing" store-count assertions); `admin` session → success; standard validation/cross-business/atomicity cases per Phase 4 precedent. Worker sessions obtained via `repositories.auth.switchBusiness(BUSINESS_ID, "worker")` after demo sign-in (no worker fixture exists yet — this exercises the REAL `requireCapability` → `permissions.can()` path, unmocked, matching `auth-adapter.test.ts`'s own "arbitrary role, no verification" precedent).
 
 ## Phase 9: Nomina Page + Dialogs (PR3)
 
-- [ ] 9.1 Create `app/(dashboard)/nomina/page.tsx`: `requireSessionOrRedirect()` then `requireCapabilityOrNotFound(session, "viewPayroll")`; `<Tabs>` with `Empleados`/`Pagos` `TabsPanel`s (both `keepMounted`, mirroring `dashboard/page.tsx`).
+- [ ] 9.1 Create `app/(dashboard)/nomina/page.tsx`: `const session = await requireCapabilityOrNotFound("viewPayroll");` (single call — per Phase 5's implemented signature, this already resolves the session via `requireSessionOrRedirect()` internally and 404s a denied role; do NOT also call `requireSessionOrRedirect()` separately); `<Tabs>` with `Empleados`/`Pagos` `TabsPanel`s (both `keepMounted`, mirroring `dashboard/page.tsx`).
 - [ ] 9.2 Create `components/domain/nomina/employee-form-dialog-content.tsx` + `employee-form-dialog.tsx` (lazy `dynamic(..., {ssr:false})` wrapper): plain `useState` (Customer precedent); fields name, baseSalary (pesos→cents), active toggle (edit-only, excluded on create); POST/PATCH then `router.refresh()`.
 - [ ] 9.3 Create `components/domain/nomina/payroll-payment-form-dialog-content.tsx` + wrapper: RHF + `zodResolver` (Expense precedent); fields employeeId (select, active employees only), amount (pesos→cents), periodType (select), referenceDate/paymentDate (date inputs, default today), notes; client-side live preview via `computePeriod`/`periodDays`; POST then `router.refresh()`.
 - [ ] 9.4 Wire both dialogs into the page's Empleados/Pagos tabs from 9.1.
