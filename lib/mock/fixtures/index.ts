@@ -1,6 +1,6 @@
 import { lineTotal } from "@/lib/money";
 import { computeStatus } from "@/lib/services/status";
-import type { Business, Customer, Invoice, InvoiceItem, Payment } from "@/lib/services/ports";
+import type { Business, Customer, Expense, Invoice, InvoiceItem, Payment } from "@/lib/services/ports";
 import type { MockStore, Profile } from "../store";
 import { generateId, nextInvoiceNumber } from "../store";
 import {
@@ -11,6 +11,7 @@ import {
   customerFixtures,
   demoProfileFixture,
   demoProfileFixture2,
+  expenseFixtures,
   invoiceFixtures,
 } from "./data";
 
@@ -136,5 +137,20 @@ export function seedFixtures(store: MockStore): void {
       };
       store.payments.set(payment.id, payment);
     }
+  }
+
+  for (const expenseFixture of expenseFixtures) {
+    const expense: Expense = {
+      id: expenseFixture.id,
+      businessId: BUSINESS_ID,
+      category: expenseFixture.category,
+      expenseDate: daysFromNow(expenseFixture.dayOffset),
+      description: expenseFixture.description,
+      amount: expenseFixture.amountInCents,
+      notes: expenseFixture.notes,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    store.expenses.set(expense.id, expense);
   }
 }

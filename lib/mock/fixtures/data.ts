@@ -316,3 +316,65 @@ export const invoiceFixtures: InvoiceFixture[] = [
     ],
   },
 ];
+
+export type ExpenseFixture = {
+  id: string;
+  category: "nomina" | "otro";
+  description: string;
+  amountInCents: number;
+  dayOffset: number;
+  notes: string | null;
+};
+
+function expenseId(n: number): string {
+  return `60000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
+/**
+ * A handful of demo expenses mixing `nomina`/`otro` categories across a few
+ * different months, so the Egresos dashboard aggregation (total this month,
+ * by-category, recent) has real data to show out of the box. Excluded from
+ * `seedMinimal` (matches invoices/payments/customers — cookie-size reasons).
+ */
+export const expenseFixtures: ExpenseFixture[] = [
+  {
+    id: expenseId(1),
+    category: "nomina",
+    description: "Nomina quincenal - equipo operativo",
+    amountInCents: 3500000,
+    dayOffset: -3,
+    notes: "Pago quincenal",
+  },
+  {
+    id: expenseId(2),
+    category: "otro",
+    description: "Arriendo local",
+    amountInCents: 1200000,
+    dayOffset: -5,
+    notes: null,
+  },
+  {
+    id: expenseId(3),
+    category: "otro",
+    description: "Servicios publicos",
+    amountInCents: 350000,
+    dayOffset: -10,
+    notes: "Agua, luz y gas",
+  },
+  {
+    id: expenseId(4),
+    category: "nomina",
+    description: "Nomina quincenal - mes anterior",
+    amountInCents: 3400000,
+    dayOffset: -35,
+    notes: null,
+  },
+  {
+    id: expenseId(5),
+    category: "otro",
+    description: "Insumos y papeleria",
+    amountInCents: 180000,
+    dayOffset: -45,
+    notes: null,
+  },
+];

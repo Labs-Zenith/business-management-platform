@@ -253,3 +253,51 @@ export interface PaymentRepository {
    */
   createForInvoice(businessId: string, invoiceId: string, data: PaymentInput): Promise<InvoiceDetail>;
 }
+
+// ---------------------------------------------------------------------------
+// Expenses
+// ---------------------------------------------------------------------------
+
+export type ExpenseCategory = "nomina" | "otro";
+
+/**
+ * Repository-facing create payload. Unlike invoices, NOTHING here is
+ * server-derived (no number/status/balance), so this doubles as the
+ * service's persist type — `businessId` is always a separate argument,
+ * never a field, matching Payment's `PaymentInput`.
+ */
+export type ExpenseInput = {
+  category: ExpenseCategory;
+  expenseDate: string;
+  description: string;
+  amount: number;
+  notes?: string | null;
+};
+
+export type Expense = {
+  id: string;
+  businessId: string;
+  category: ExpenseCategory;
+  expenseDate: string;
+  description: string;
+  amount: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ExpenseListQuery = {
+  category?: ExpenseCategory;
+  from?: string;
+  to?: string;
+  page: number;
+  pageSize: number;
+};
+
+export interface ExpenseRepository {
+  list(businessId: string, query: ExpenseListQuery): Promise<Paged<Expense>>;
+  /** Scoped by `businessId`; cross-business or missing -> `null`, never leaked (matches PaymentRepository.getById). */
+  getById(businessId: string, id: string): Promise<Expense | null>;
+  /** Plain insert — no lock, no sequence, no balance invariant. */
+  create(businessId: string, data: ExpenseInput): Promise<Expense>;
+}

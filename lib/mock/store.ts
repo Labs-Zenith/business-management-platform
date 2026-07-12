@@ -1,4 +1,4 @@
-import type { Business, Customer, Invoice, InvoiceItem, Payment, Role } from "@/lib/services/ports";
+import type { Business, Customer, Expense, Invoice, InvoiceItem, Payment, Role } from "@/lib/services/ports";
 import { seedFixtures } from "./fixtures";
 
 /**
@@ -25,6 +25,7 @@ export type MockStore = {
   invoices: Map<string, Invoice>;
   invoiceItems: Map<string, InvoiceItem>;
   payments: Map<string, Payment>;
+  expenses: Map<string, Expense>;
   /** `businessId` -> last-used sequence number, for atomic invoice numbering. */
   invoiceSequences: Map<string, number>;
 };
@@ -37,6 +38,7 @@ export type SerializedStore = {
   invoices: Invoice[];
   invoiceItems: InvoiceItem[];
   payments: Payment[];
+  expenses: Expense[];
   invoiceSequences: Record<string, number>;
 };
 
@@ -48,6 +50,7 @@ export function serializeStore(target: MockStore = store): SerializedStore {
     invoices: [...target.invoices.values()],
     invoiceItems: [...target.invoiceItems.values()],
     payments: [...target.payments.values()],
+    expenses: [...target.expenses.values()],
     invoiceSequences: Object.fromEntries(target.invoiceSequences),
   };
 }
@@ -59,6 +62,7 @@ export function clearStore(target: MockStore): void {
   target.invoices.clear();
   target.invoiceItems.clear();
   target.payments.clear();
+  target.expenses.clear();
   target.invoiceSequences.clear();
 }
 
@@ -71,6 +75,9 @@ export function hydrateStore(data: SerializedStore, target: MockStore = store): 
   for (const i of data.invoices) target.invoices.set(i.id, i);
   for (const i of data.invoiceItems) target.invoiceItems.set(i.id, i);
   for (const p of data.payments) target.payments.set(p.id, p);
+  // `?? []` is REQUIRED: a cookie serialized before this change has no
+  // `expenses` field at all, and this must not throw (design Risk R4).
+  for (const e of data.expenses ?? []) target.expenses.set(e.id, e);
   for (const [k, v] of Object.entries(data.invoiceSequences)) target.invoiceSequences.set(k, v);
 }
 
@@ -82,6 +89,7 @@ export function createEmptyStore(): MockStore {
     invoices: new Map(),
     invoiceItems: new Map(),
     payments: new Map(),
+    expenses: new Map(),
     invoiceSequences: new Map(),
   };
 }
