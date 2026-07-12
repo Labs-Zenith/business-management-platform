@@ -1,0 +1,180 @@
+"use client";
+
+/**
+ * Actual "Crear gasto" dialog implementation, per
+ * `openspec/changes/expenses-dashboard-split/specs/expense-tracking/spec.md`'s
+ * "Crear Gasto Manual Entry Form" requirement and
+ * `openspec/changes/expenses-dashboard-split/design.md` section 7. Always
+ * imported indirectly through `./expense-form-dialog.tsx`
+ * (`dynamic(..., {ssr: false})`) — never import this file directly from a
+ * page, per the user's explicit lazy-loading requirement for form dialogs.
+ *
+ * Uses `react-hook-form` + `zodResolver` (matching
+ * `invoice-form-content.tsx`'s stack), since `category` is a fixed-value
+ * select alongside three other fields — closer in shape to the invoice form
+ * than to the plain-`useState` customer/payment dialogs.
+ *
+ * Money convention: `amount` is entered as whole COP pesos (natural UX —
+ * typing raw integer cents would be unusable), converted to integer cents
+ * (`lib/money.ts`'s convention) only at submit time, exactly like
+ * `invoice-form-content.tsx`'s `unitPrice` convention.
+ *
+ * POSTs directly to `/api/expenses` (the dialog is the client-side mutation
+ * boundary, matching `customer-form-dialog-content.tsx`'s established
+ * pattern); on success, closes the dialog and calls `router.refresh()` so
+ * the Egresos Server Components (`ExpenseKpiCards`/`ExpensesByCategory`/
+ * `RecentExpenses`) re-stream with the new row.
+ */
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
+import { useState, type ReactElement } from "react";
+import { useForm } from "react-hook-form";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { expenseFormSchema, type ExpenseFormValues } from "./expense-form-schema";
+
+const GENERIC_ERROR_MESSAGE = "No se pudo crear el gasto. Verifica los datos e intenta de nuevo.";
+
+function todayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function defaultValues(): ExpenseFormValues {
+  return { category: "otro", description: "", amount: 0, expenseDate: todayIsoDate(), notes: "" };
+}
+
+export type ExpenseFormDialogProps = {
+  /** Rendered as the dialog's trigger (e.g. a "Crear gasto" button). */
+  trigger: ReactElement;
+};
+
+export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<ExpenseFormValues>({
+    resolver: zodResolver(expenseFormSchema),
+    defaultValues: defaultValues(),
+  });
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      reset(defaultValues());
+      setSubmitError(null);
+    }
+  }
+
+  async function onSubmit(values: ExpenseFormValues) {
+    setSubmitError(null);
+    try {
+      const payload = {
+        category: values.category,
+        description: values.description,
+        amount: Math.round(Number((values.amount * 100).toFixed(2))),
+        expenseDate: values.expenseDate,
+        ...(values.notes?.trim() ? { notes: values.notes.trim() } : {}),
+      };
+
+      const response = await fetch("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const body: { error?: { message?: string } } | null = await response.json().catch(() => null);
+        setSubmitError(body?.error?.message ?? GENERIC_ERROR_MESSAGE);
+        return;
+      }
+
+      setOpen(false);
+      router.refresh();
+    } catch {
+      setSubmitError(GENERIC_ERROR_MESSAGE);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger render={trigger} />
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Crear gasto</DialogTitle>
+          <DialogDescription>Registra un nuevo gasto para tu negocio.</DialogDescription>
+        </DialogHeader>
+        <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="expense-category">Categoria</Label>
+            <select
+              id="expense-category"
+              className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
+              {...register("category")}
+            >
+              <option value="nomina">Nómina</option>
+              <option value="otro">Otro</option>
+            </select>
+            {errors.category ? <p className="text-xs text-destructive">{errors.category.message}</p> : null}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="expense-description">Descripcion</Label>
+            <Input id="expense-description" {...register("description")} />
+            {errors.description ? <p className="text-xs text-destructive">{errors.description.message}</p> : null}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="expense-amount">Monto</Label>
+            <Input
+              id="expense-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              {...register("amount", { valueAsNumber: true })}
+            />
+            {errors.amount ? <p className="text-xs text-destructive">{errors.amount.message}</p> : null}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="expense-date">Fecha</Label>
+            <Input id="expense-date" type="date" {...register("expenseDate")} />
+            {errors.expenseDate ? <p className="text-xs text-destructive">{errors.expenseDate.message}</p> : null}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="expense-notes">Nota</Label>
+            <Textarea id="expense-notes" {...register("notes")} />
+          </div>
+          {submitError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {submitError}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+              {isSubmitting ? "Guardando..." : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

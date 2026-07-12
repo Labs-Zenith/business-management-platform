@@ -11,6 +11,7 @@ import { ExpenseKpiCards, ExpenseKpiCardsSkeleton } from "@/components/domain/da
 import { ExpensesByCategory, ExpensesByCategorySkeleton } from "@/components/domain/dashboard/expenses-by-category";
 import { RecentExpenses, RecentExpensesSkeleton } from "@/components/domain/dashboard/recent-expenses";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
+import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog";
 
 /**
  * Dashboard screen, per `docs/ui-ux-flow.md`'s "Dashboard" section
@@ -44,7 +45,8 @@ import CustomerFormDialog from "@/components/domain/customers/customer-form-dial
  * genuine one-click quick action; "Crear factura" links to the dedicated
  * `/invoices/new` page (a full line-item form, not a dialog). Both stay in
  * the page header as global/Ingresos-oriented actions; "Crear gasto" (Egresos
- * quick action) is wired into the Egresos panel in a later change.
+ * quick action) is tab-local — it lives inside the Egresos `TabsPanel` (see
+ * design.md section 6), not the shared page header.
  */
 export default function DashboardPage() {
   return (
@@ -105,6 +107,10 @@ export default function DashboardPage() {
             `false`, which would unmount this panel's server-streamed
             subtree (and re-fetch it) whenever the Ingresos tab is active. */}
         <TabsPanel value="egresos" keepMounted>
+          <div className="flex items-center justify-end">
+            <ExpenseFormDialog trigger={<Button>Crear gasto</Button>} />
+          </div>
+
           <Suspense fallback={<ExpenseKpiCardsSkeleton />}>
             <ExpenseKpiCards />
           </Suspense>

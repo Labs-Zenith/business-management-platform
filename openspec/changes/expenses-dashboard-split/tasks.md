@@ -70,10 +70,10 @@ Chain strategy: feature-branch-chain
 
 ## Phase 9: "Crear Gasto" Dialog
 
-- [ ] 9.1 Create `components/domain/dashboard/expense-form-schema.ts`: client-side pesos-based form schema (distinct from `lib/schemas/expense.ts`'s cents-based server schema), mirroring `invoice-form-schema.ts`.
-- [ ] 9.2 Create `components/domain/dashboard/expense-form-dialog-content.tsx`: `react-hook-form` + `zodResolver`, fields category (select), description (Input), amount (Input type="number", pesos→cents via `Math.round(value * 100)`), expenseDate (Input type="date", default `todayIsoDate()`), optional notes (Textarea). On submit: `POST /api/expenses`; success closes dialog and calls `router.refresh()` so Egresos Server Components re-stream; failure surfaces `body.error.message`.
-- [ ] 9.3 Create `components/domain/dashboard/expense-form-dialog.tsx`: thin `"use client"` `dynamic(..., { ssr: false })` wrapper re-exporting the content's prop type, accepting a `trigger` prop — mirrors `customer-form-dialog.tsx`.
-- [ ] 9.4 Wire `<ExpenseFormDialog trigger={<Button>Crear gasto</Button>} />` into the Egresos `TabsPanel` (from 7.1/8.4).
+- [x] 9.1 Create `components/domain/dashboard/expense-form-schema.ts`: client-side pesos-based form schema (distinct from `lib/schemas/expense.ts`'s cents-based server schema), mirroring `invoice-form-schema.ts`.
+- [x] 9.2 Create `components/domain/dashboard/expense-form-dialog-content.tsx`: `react-hook-form` + `zodResolver`, fields category (select), description (Input), amount (Input type="number", pesos→cents via `Math.round(value * 100)`), expenseDate (Input type="date", default `todayIsoDate()`), optional notes (Textarea). On submit: `POST /api/expenses`; success closes dialog and calls `router.refresh()` so Egresos Server Components re-stream; failure surfaces `body.error.message`.
+- [x] 9.3 Create `components/domain/dashboard/expense-form-dialog.tsx`: thin `"use client"` `dynamic(..., { ssr: false })` wrapper re-exporting the content's prop type, accepting a `trigger` prop — mirrors `customer-form-dialog.tsx`.
+- [x] 9.4 Wire `<ExpenseFormDialog trigger={<Button>Crear gasto</Button>} />` into the Egresos `TabsPanel` (from 7.1/8.4).
 
 ## Phase 10: Tests
 
@@ -84,11 +84,11 @@ Chain strategy: feature-branch-chain
 - [x] 10.5 `app/api/expenses/expenses-route.test.ts`: 200 list with filters, cross-business isolation, 201 create, `VALIDATION_ERROR` on bad category/amount/date, `checkOrigin` enforcement on POST — mirrors `invoices-route.test.ts`.
 - [x] 10.6 `lib/mock/store.test.ts`: regression test — `hydrateStore` on a payload missing the `expenses` field does not throw (Risk R4).
 - [x] 10.7 `components/ui/tabs.test.tsx`: both panels' content is present in the DOM on initial render (`keepMounted` behavior); switching tabs shows/hides without unmounting. **Implemented as `app/(dashboard)/dashboard/page.test.tsx` instead of a standalone `tabs.test.tsx`** — no `components/ui/*` primitive has its own dedicated test file in this codebase (checked `select.tsx` and siblings: none), so per that established convention this is verified through its real consumer (the dashboard page) using the actual `Tabs`/`TabsPanel` components (not mocked), proving both Ingresos and Egresos content are simultaneously present in the DOM and that clicking the Egresos tab does not unmount the Ingresos content.
-- [ ] 10.8 `components/domain/dashboard/expense-form-dialog-content.test.tsx`: valid submission POSTs cents-converted payload and calls `router.refresh()`; invalid amount/missing field blocks submission client-side; server error surfaces the message.
+- [x] 10.8 `components/domain/dashboard/expense-form-dialog-content.test.tsx`: valid submission POSTs cents-converted payload and calls `router.refresh()`; invalid amount/missing field blocks submission client-side; server error surfaces the message.
 
 ## Phase 11: Verification Gate
 
-- [ ] 11.1 `npm run typecheck`
-- [ ] 11.2 `npm run lint`
-- [ ] 11.3 `npm run test`
-- [ ] 11.4 `npm run build`
+- [x] 11.1 `npm run typecheck`
+- [x] 11.2 `npm run lint`
+- [x] 11.3 `npm run test`
+- [x] 11.4 `npm run build`
