@@ -68,11 +68,11 @@ Revert the PR and run migration Down (`DROP TABLE expenses`). All new code is ad
 
 ## Success Criteria
 
-- [ ] Migration creates `expenses` (business-scoped, `category IN ('nomina','otro')`, integer amount).
-- [ ] `/api/expenses` lists (paginated, category/from/to filters) and creates with session-derived `business_id`; `createExpense` is a standalone reusable function (no route coupling).
-- [ ] A "Crear gasto" form (category, description, amount, date) exists in the Egresos tab, mirroring the invoice/payment create-form pattern, so `category: 'otro'` expenses are enterable by real users this phase (not API-only).
-- [ ] Dashboard shows Ingresos (unchanged) + Egresos (total this month, by-category, recent, create-expense action) with independent Suspense streaming.
-- [ ] Expenses excluded from `seedMinimal`; both mock and Postgres backends pass.
+- [x] Migration creates `expenses` (business-scoped, `category IN ('nomina','otro')`, integer amount).
+- [x] `/api/expenses` lists (paginated, category/from/to filters) and creates with session-derived `business_id`; `createExpense` is a standalone reusable function (no route coupling).
+- [x] A "Crear gasto" form (category, description, amount, date) exists in the Egresos tab, mirroring the invoice/payment create-form pattern, so `category: 'otro'` expenses are enterable by real users this phase (not API-only).
+- [x] Dashboard shows Ingresos (unchanged) + Egresos (total this month, by-category, recent, create-expense action) with independent Suspense streaming.
+- [x] Expenses excluded from `seedMinimal`; both mock and Postgres backends pass.
 
 ## Proposal question round — resolved
 
