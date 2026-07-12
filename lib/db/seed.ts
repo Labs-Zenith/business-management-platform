@@ -1,10 +1,14 @@
 import { sql, isDbConfigured } from "./client";
 import {
   BUSINESS_ID,
+  BUSINESS_ID_2,
   DEMO_PROFILE_ID,
+  DEMO_PROFILE_ID_2,
   DEMO_USER_ID,
   businessFixture,
+  businessFixture2,
   demoProfileFixture,
+  demoProfileFixture2,
 } from "@/lib/mock/fixtures/data";
 
 /**
@@ -26,12 +30,27 @@ async function seed(): Promise<void> {
     ON CONFLICT (id) DO NOTHING
   `;
   await sql`
-    INSERT INTO profiles (id, user_id, business_id, full_name, email)
-    VALUES (${DEMO_PROFILE_ID}, ${DEMO_USER_ID}, ${BUSINESS_ID}, ${demoProfileFixture.fullName}, ${demoProfileFixture.email})
+    INSERT INTO profiles (id, user_id, business_id, full_name, email, role)
+    VALUES (${DEMO_PROFILE_ID}, ${DEMO_USER_ID}, ${BUSINESS_ID}, ${demoProfileFixture.fullName}, ${demoProfileFixture.email}, ${demoProfileFixture.role})
     ON CONFLICT (id) DO NOTHING
   `;
 
-  console.log("[seed] Demo business + profile seeded.");
+  // Second business + membership for the SAME demo user, mirroring
+  // `lib/mock/fixtures/index.ts` — proves a user can hold N memberships and
+  // demos the business switcher (UI wiring lands in a later PR) identically
+  // on both backends.
+  await sql`
+    INSERT INTO businesses (id, name, email, phone, address, currency)
+    VALUES (${BUSINESS_ID_2}, ${businessFixture2.name}, ${businessFixture2.email}, ${businessFixture2.phone}, ${businessFixture2.address}, ${businessFixture2.currency})
+    ON CONFLICT (id) DO NOTHING
+  `;
+  await sql`
+    INSERT INTO profiles (id, user_id, business_id, full_name, email, role)
+    VALUES (${DEMO_PROFILE_ID_2}, ${DEMO_USER_ID}, ${BUSINESS_ID_2}, ${demoProfileFixture2.fullName}, ${demoProfileFixture2.email}, ${demoProfileFixture2.role})
+    ON CONFLICT (id) DO NOTHING
+  `;
+
+  console.log("[seed] Demo businesses + profiles seeded.");
 }
 
 seed()

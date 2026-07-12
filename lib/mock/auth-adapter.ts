@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import type { AuthPort, Session } from "@/lib/services/ports";
+import type { AuthPort, Role, Session } from "@/lib/services/ports";
 import { store as defaultStore, listProfilesForUser, type MockStore } from "./store";
 
 const SESSION_COOKIE_NAME = "session";
@@ -161,11 +161,14 @@ export function createAuthAdapter(store: MockStore): AuthPort {
     },
 
     /**
-     * Re-verifies membership itself — never trusts a caller-supplied role.
-     * See the `AuthPort.switchBusiness` JSDoc (`lib/services/ports.ts`) for
-     * the full contract.
+     * Pure session/cookie mechanics — performs NO membership or authorization
+     * check of its own. See the `AuthPort.switchBusiness` JSDoc
+     * (`lib/services/ports.ts`) for the full security contract: the caller
+     * (the switch-business route) is solely responsible for verifying
+     * `role` against a backend-aware `BusinessRepository.listMembershipsForUser`
+     * lookup before calling this.
      */
-    async switchBusiness(businessId: string): Promise<Session | null> {
+    async switchBusiness(businessId: string, role: Role): Promise<Session | null> {
       const cookieStore = await cookies();
       const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
       if (!token) {
@@ -176,21 +179,11 @@ export function createAuthAdapter(store: MockStore): AuthPort {
         return null;
       }
 
-      // The target business's role is derived SOLELY from the current
-      // user's own stored membership row — never from caller input. No
-      // matching membership -> reject the switch, current session untouched.
-      const membership = listProfilesForUser(store, current.userId).find(
-        (profile) => profile.businessId === businessId
-      );
-      if (!membership) {
-        return null;
-      }
-
       const session: Session = {
         userId: current.userId,
         email: current.email,
-        businessId: membership.businessId,
-        role: membership.role,
+        businessId,
+        role,
       };
 
       await setCookie(session);

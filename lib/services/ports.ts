@@ -26,14 +26,24 @@ export interface AuthPort {
   signOut(): Promise<void>;
   /**
    * Re-issues the session cookie for the already-authenticated user, active
-   * business swapped to `businessId`. Internally RE-VERIFIES that the
-   * current session's `userId` holds a membership for `businessId` and
-   * derives `role` strictly from that membership row — the caller can never
-   * supply or escalate a role. Returns `null` (current session untouched,
-   * no cookie re-issued) if there is no prior session or no membership for
-   * `businessId`.
+   * business swapped to `businessId` with the given `role`.
+   *
+   * SECURITY CONTRACT: this method performs NO membership verification of
+   * its own and blindly trusts the caller — `role` MUST be sourced from a
+   * prior `BusinessRepository.listMembershipsForUser(userId)` lookup against
+   * the currently-active backend (real Postgres or mock, whichever is
+   * wired). The only sanctioned caller is
+   * `app/api/auth/switch-business/route.ts`. Do NOT call this with a
+   * client-supplied or otherwise unverified `role` — doing so is a
+   * privilege-escalation vector. Returns `null` (current session untouched,
+   * no cookie re-issued) only if there is no prior session.
+   *
+   * `AuthPort` (and `switchBusiness` specifically) has exactly ONE
+   * implementation regardless of backend — see `lib/services/repositories.ts`'s
+   * wiring comment for why `auth: authAdapter` is unconditional and
+   * backend-agnostic.
    */
-  switchBusiness(businessId: string): Promise<Session | null>;
+  switchBusiness(businessId: string, role: Role): Promise<Session | null>;
 }
 
 export type Paged<T> = {

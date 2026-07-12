@@ -99,47 +99,45 @@ describe("authAdapter.switchBusiness", () => {
     mockCookieJar.clear();
   });
 
+  /**
+   * `switchBusiness` is PURE session/cookie mechanics — it performs NO
+   * membership or authorization check of its own (that responsibility moved
+   * to the caller, `app/api/auth/switch-business/route.ts`, which verifies
+   * against the backend-aware `BusinessRepository.listMembershipsForUser`
+   * before calling this). The "unrelated business is rejected" contract is
+   * already covered end-to-end, against the real backend-aware check, by
+   * `app/api/auth/switch-business/switch-business-route.test.ts`'s 403
+   * non-member test.
+   */
+
   it("returns null when there is no prior session", async () => {
-    const result = await authAdapter.switchBusiness(BUSINESS_ID_2);
+    const result = await authAdapter.switchBusiness(BUSINESS_ID_2, "admin");
 
     expect(result).toBeNull();
     expect(mockCookieJar.get("session")).toBeUndefined();
   });
 
-  it("re-issues the cookie with the target businessId and the membership's OWN stored role, keeping userId/email", async () => {
+  it("re-issues the cookie with exactly the given businessId/role, keeping userId/email — trusting the caller completely", async () => {
     const original = await authAdapter.signIn(DEMO_EMAIL, DEMO_PASSWORD);
     expect(original!.businessId).toBe(BUSINESS_ID);
     expect(original!.role).toBe("admin");
 
-    const switched = await authAdapter.switchBusiness(BUSINESS_ID_2);
+    // Arbitrary (businessId, role) pair, including one with NO real
+    // membership row and a role ("worker") that doesn't match any seeded
+    // membership — proving the adapter trusts the caller completely and
+    // does not re-derive or verify anything itself.
+    const ARBITRARY_BUSINESS_ID = "10000000-0000-4000-8000-00000000dead";
+    const switched = await authAdapter.switchBusiness(ARBITRARY_BUSINESS_ID, "worker");
 
     expect(switched).not.toBeNull();
     expect(switched!.userId).toBe(original!.userId);
     expect(switched!.email).toBe(original!.email);
-    expect(switched!.businessId).toBe(BUSINESS_ID_2);
-    // Both seeded demo memberships are role:'admin' — this proves the role
-    // came from BUSINESS_ID_2's OWN membership row, not merely "whatever the
-    // caller passed" (there is no caller-supplied role anymore).
-    expect(switched!.role).toBe("admin");
+    expect(switched!.businessId).toBe(ARBITRARY_BUSINESS_ID);
+    expect(switched!.role).toBe("worker");
 
     // The re-issued cookie reflects the switch on the very next read.
     const persisted = await authAdapter.getSession();
     expect(persisted).toEqual(switched);
-  });
-
-  it("returns null (rejects the switch, current session untouched) when the current user has no membership for the target businessId — never forging a session for a business they don't belong to", async () => {
-    const original = await authAdapter.signIn(DEMO_EMAIL, DEMO_PASSWORD);
-    const NON_MEMBER_BUSINESS_ID = "10000000-0000-4000-8000-00000000dead";
-
-    const result = await authAdapter.switchBusiness(NON_MEMBER_BUSINESS_ID);
-
-    expect(result).toBeNull();
-
-    // The current session cookie is untouched — still scoped to the
-    // original business, not re-issued for the non-member business.
-    const persisted = await authAdapter.getSession();
-    expect(persisted).toEqual(original);
-    expect(persisted!.businessId).toBe(BUSINESS_ID);
   });
 });
 
