@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { ApiError } from "@/lib/server/api-error";
 import type { CustomerListQuery, CustomerWithBalance, Paged, Session } from "@/lib/services/ports";
 
-const mockRequireSession = vi.fn<() => Promise<Session>>();
+const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockListCustomers = vi.fn<
   (session: Session, query: CustomerListQuery) => Promise<Paged<CustomerWithBalance>>
 >();
@@ -18,7 +17,7 @@ vi.mock("@/lib/mock/cookie-persistence", () => ({
 }));
 
 vi.mock("@/lib/session", () => ({
-  requireSession: () => mockRequireSession(),
+  requireSessionOrRedirect: () => mockRequireSessionOrRedirect(),
 }));
 
 vi.mock("@/lib/services/customer-service", () => ({
@@ -31,6 +30,7 @@ const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
   businessId: "10000000-0000-4000-8000-000000000001",
   email: "demo@negociodemo.test",
+  role: "admin",
 };
 
 const CUSTOMER: CustomerWithBalance = {
@@ -50,12 +50,12 @@ const CUSTOMER: CustomerWithBalance = {
 
 describe("CustomersPage", () => {
   beforeEach(() => {
-    mockRequireSession.mockReset();
+    mockRequireSessionOrRedirect.mockReset();
     mockListCustomers.mockReset();
   });
 
   it("resolves the session first, then renders that session's scoped customer list (name, phone, balance, status)", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 1, pageSize: 20, total: 1 });
 
     render(await CustomersPage({ searchParams: Promise.resolve({}) }));
@@ -72,7 +72,7 @@ describe("CustomersPage", () => {
   });
 
   it("passes q/status/page search params through to the service", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListCustomers.mockResolvedValue({ data: [], page: 2, pageSize: 20, total: 0 });
 
     render(
@@ -90,7 +90,7 @@ describe("CustomersPage", () => {
   });
 
   it("shows an empty state when there are no customers", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListCustomers.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });
 
     render(await CustomersPage({ searchParams: Promise.resolve({}) }));
@@ -98,17 +98,22 @@ describe("CustomersPage", () => {
     expect(screen.getByText(/no se encontraron clientes/i)).toBeInTheDocument();
   });
 
-  it("propagates requireSession's UNAUTHENTICATED rejection instead of ever calling listCustomers (defense in depth)", async () => {
-    mockRequireSession.mockRejectedValue(new ApiError("UNAUTHENTICATED", "Authentication required."));
+  it("redirects to /login instead of ever calling listCustomers when there is no valid session (defense in depth)", async () => {
+    // Real `requireSessionOrRedirect()` never resolves here — it calls
+    // `next/navigation`'s `redirect("/login")`, which throws Next's internal
+    // `NEXT_REDIRECT` signal (a real redirect, not a crash).
+    mockRequireSessionOrRedirect.mockRejectedValue(
+      Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" })
+    );
 
     await expect(CustomersPage({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({
-      code: "UNAUTHENTICATED",
+      digest: expect.stringContaining("NEXT_REDIRECT"),
     });
     expect(mockListCustomers).not.toHaveBeenCalled();
   });
 
   it("eventually renders the lazily-loaded 'Crear cliente' trigger", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListCustomers.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });
 
     render(await CustomersPage({ searchParams: Promise.resolve({}) }));

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
 import DashboardSidebar from "@/components/layout/dashboard-sidebar";
@@ -20,16 +20,20 @@ import DashboardBottomNav from "@/components/layout/dashboard-bottom-nav";
  * from the UI — only direct URL navigation worked (`middleware.ts` still
  * guarded every path, but there was nothing to click).
  *
- * `requireSession()` runs here too (defense in depth alongside
+ * `requireSessionOrRedirect()` runs here too (defense in depth alongside
  * `middleware.ts`'s route guard on every `(dashboard)` path), matching the
  * pattern every page in this project already follows individually
  * (`settings/page.tsx`, `customers/page.tsx`, etc. — see
  * `docs/security-plan.md`). This is an ADDITIONAL belt-and-suspenders layer,
- * not a replacement for each page's own `requireSession()` call.
+ * not a replacement for each page's own `requireSessionOrRedirect()` call.
+ * A stale/invalid session cookie (e.g. pre-role-migration shape) redirects
+ * to `/login` here rather than crashing — this layout has no
+ * `error.tsx`/`global-error.tsx` boundary, so a thrown error would otherwise
+ * be Next's generic crash page for every currently-logged-in user.
  *
  * The resolved `session` is passed down to `DashboardTopbar` (which needs
  * `session.email` for its avatar initial) as a prop rather than having it
- * call `requireSession()` a second time — that would also make it an async
+ * call `requireSessionOrRedirect()` a second time — that would also make it an async
  * Server Component nested inside JSX, which React's client renderer (used
  * by `layout.test.tsx`'s `render()`) cannot reconcile.
  *
@@ -44,7 +48,7 @@ export default async function DashboardLayout({
   children: ReactNode;
 }) {
   await loadStoreFromCookie();
-  const session = await requireSession();
+  const session = await requireSessionOrRedirect();
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col">

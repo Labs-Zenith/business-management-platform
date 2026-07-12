@@ -48,6 +48,7 @@ const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
   businessId: "10000000-0000-4000-8000-000000000001",
   email: "demo@negociodemo.test",
+  role: "admin",
 };
 
 const OTHER_BUSINESS_ID = "10000000-0000-4000-8000-000000000099";

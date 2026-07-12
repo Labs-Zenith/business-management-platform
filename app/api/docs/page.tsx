@@ -1,4 +1,4 @@
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import ApiReferenceClient from "@/components/domain/docs/api-reference-client";
 
 /**
@@ -6,15 +6,15 @@ import ApiReferenceClient from "@/components/domain/docs/api-reference-client";
  * `openspec/changes/mocked-mvp-scaffold/specs/api-docs/spec.md`'s
  * "Interactive Docs UI via Scalar" requirement.
  *
- * `requireSession()` runs before anything renders (defense in depth, same
- * pattern as every other protected page — e.g. `settings/page.tsx`); the
- * actual redirect-to-`/login` for an unauthenticated *browser* request
- * happens at `middleware.ts` (which already lists `/api/docs` in
- * `PROTECTED_PATH_PREFIXES`/`matcher`), before this Server Component ever
- * runs.
+ * `requireSessionOrRedirect()` runs before anything renders (defense in
+ * depth, same pattern as every other protected page — e.g.
+ * `settings/page.tsx`); it also redirects to `/login` itself for a stale/
+ * invalid session cookie, in addition to `middleware.ts` (which already
+ * lists `/api/docs` in `PROTECTED_PATH_PREFIXES`/`matcher`) catching the
+ * no-cookie-at-all case before this Server Component ever runs.
  */
 export default async function ApiDocsPage() {
-  await requireSession();
+  await requireSessionOrRedirect();
 
   return <ApiReferenceClient />;
 }

@@ -1,5 +1,5 @@
-import type { Business, BusinessRepository } from "@/lib/services/ports";
-import { store as defaultStore, type MockStore } from "./store";
+import type { Business, BusinessMembership, BusinessRepository } from "@/lib/services/ports";
+import { store as defaultStore, listProfilesForUser, type MockStore } from "./store";
 
 /**
  * Artificial async gap simulating a real DB round-trip, matching the pattern
@@ -17,6 +17,22 @@ export function createBusinessRepository(store: MockStore): BusinessRepository {
     async getById(businessId: string): Promise<Business | null> {
       await simulateLatency();
       return store.businesses.get(businessId) ?? null;
+    },
+
+    async listMembershipsForUser(userId: string): Promise<BusinessMembership[]> {
+      await simulateLatency();
+      const memberships: BusinessMembership[] = [];
+      for (const profile of listProfilesForUser(store, userId)) {
+        const business = store.businesses.get(profile.businessId);
+        // Orphaned membership (businessId doesn't resolve to a real
+        // business record) — skip it entirely rather than surfacing a
+        // fabricated `businessName: ""` row.
+        if (!business) {
+          continue;
+        }
+        memberships.push({ businessId: profile.businessId, businessName: business.name, role: profile.role });
+      }
+      return memberships;
     },
   };
 }

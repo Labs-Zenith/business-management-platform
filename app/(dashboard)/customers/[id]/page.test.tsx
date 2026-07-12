@@ -4,7 +4,7 @@ import { formatCOP } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
 import type { CustomerDetail, Session } from "@/lib/services/ports";
 
-const mockRequireSession = vi.fn<() => Promise<Session>>();
+const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockGetCustomer = vi.fn<(session: Session, id: string) => Promise<CustomerDetail>>();
 
 vi.mock("next/navigation", () => ({
@@ -17,7 +17,7 @@ vi.mock("@/lib/mock/cookie-persistence", () => ({
 }));
 
 vi.mock("@/lib/session", () => ({
-  requireSession: () => mockRequireSession(),
+  requireSessionOrRedirect: () => mockRequireSessionOrRedirect(),
 }));
 
 vi.mock("@/lib/services/customer-service", () => ({
@@ -30,6 +30,7 @@ const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
   businessId: "10000000-0000-4000-8000-000000000001",
   email: "demo@negociodemo.test",
+  role: "admin",
 };
 
 const CUSTOMER_ID = "40000000-0000-4000-8000-000000000001";
@@ -55,12 +56,12 @@ const CUSTOMER_DETAIL: CustomerDetail = {
 
 describe("CustomerDetailPage", () => {
   beforeEach(() => {
-    mockRequireSession.mockReset();
+    mockRequireSessionOrRedirect.mockReset();
     mockGetCustomer.mockReset();
   });
 
   it("resolves the session first, then renders that customer's financial summary scoped by id", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetCustomer.mockResolvedValue(CUSTOMER_DETAIL);
 
     render(await CustomerDetailPage({ params: Promise.resolve({ id: CUSTOMER_ID }) }));
@@ -78,7 +79,7 @@ describe("CustomerDetailPage", () => {
   });
 
   it("propagates a NOT_FOUND rejection from getCustomer (cross-business access) instead of rendering any data", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetCustomer.mockRejectedValue(new ApiError("NOT_FOUND", "Customer not found."));
 
     await expect(
@@ -86,12 +87,14 @@ describe("CustomerDetailPage", () => {
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("propagates requireSession's UNAUTHENTICATED rejection instead of ever calling getCustomer (defense in depth)", async () => {
-    mockRequireSession.mockRejectedValue(new ApiError("UNAUTHENTICATED", "Authentication required."));
+  it("redirects to /login instead of ever calling getCustomer when there is no valid session (defense in depth)", async () => {
+    mockRequireSessionOrRedirect.mockRejectedValue(
+      Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" })
+    );
 
     await expect(
       CustomerDetailPage({ params: Promise.resolve({ id: CUSTOMER_ID }) }),
-    ).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    ).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
     expect(mockGetCustomer).not.toHaveBeenCalled();
   });
 });

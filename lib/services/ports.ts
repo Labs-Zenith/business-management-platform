@@ -11,16 +11,29 @@
 
 import type { InvoiceStatus } from "./status";
 
+export type Role = "admin" | "worker";
+
 export type Session = {
   userId: string;
   businessId: string;
   email: string;
+  role: Role;
 };
 
 export interface AuthPort {
   getSession(): Promise<Session | null>;
   signIn(email: string, password: string): Promise<Session | null>;
   signOut(): Promise<void>;
+  /**
+   * Re-issues the session cookie for the already-authenticated user, active
+   * business swapped to `businessId`. Internally RE-VERIFIES that the
+   * current session's `userId` holds a membership for `businessId` and
+   * derives `role` strictly from that membership row — the caller can never
+   * supply or escalate a role. Returns `null` (current session untouched,
+   * no cookie re-issued) if there is no prior session or no membership for
+   * `businessId`.
+   */
+  switchBusiness(businessId: string): Promise<Session | null>;
 }
 
 export type Paged<T> = {
@@ -45,8 +58,16 @@ export type Business = {
   updatedAt: string;
 };
 
+export type BusinessMembership = {
+  businessId: string;
+  businessName: string;
+  role: Role;
+};
+
 export interface BusinessRepository {
   getById(businessId: string): Promise<Business | null>;
+  /** Memberships for a user, ordered by profile `created_at` ASC (index 0 = default business). */
+  listMembershipsForUser(userId: string): Promise<BusinessMembership[]>;
 }
 
 // ---------------------------------------------------------------------------

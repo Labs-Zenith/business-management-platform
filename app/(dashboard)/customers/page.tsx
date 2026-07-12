@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ import { MoneyAmount } from "@/components/domain/money-amount";
  * self-fetch of `/api/customers`) — the API route exists for the client-side
  * mutation dialog and any future non-page consumer.
  *
- * `requireSession()` runs first (defense in depth alongside
+ * `requireSessionOrRedirect()` runs first (defense in depth alongside
  * `middleware.ts`'s `/customers` guard), matching the pattern established in
  * `settings/page.tsx` (PR3).
  */
@@ -38,7 +38,7 @@ function parseStatusParam(raw: string | undefined): "active" | "inactive" | unde
 
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
   await loadStoreFromCookie();
-  const session = await requireSession();
+  const session = await requireSessionOrRedirect();
   const params = await searchParams;
   const status = parseStatusParam(params.status);
 

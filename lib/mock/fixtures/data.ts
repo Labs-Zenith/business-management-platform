@@ -13,6 +13,14 @@ export const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 export const DEMO_USER_ID = "20000000-0000-4000-8000-000000000001";
 export const DEMO_PROFILE_ID = "30000000-0000-4000-8000-000000000001";
 
+/**
+ * Second business + membership for the SAME demo user (same `DEMO_USER_ID`,
+ * same login `email`) — proves a user can hold N memberships and demos the
+ * business switcher (UI wiring lands in a later PR).
+ */
+export const BUSINESS_ID_2 = "10000000-0000-4000-8000-000000000002";
+export const DEMO_PROFILE_ID_2 = "30000000-0000-4000-8000-000000000002";
+
 export const businessFixture = {
   id: BUSINESS_ID,
   name: "Negocio Demo",
@@ -22,12 +30,31 @@ export const businessFixture = {
   currency: "COP",
 };
 
+export const businessFixture2 = {
+  id: BUSINESS_ID_2,
+  name: "Negocio Demo 2",
+  email: "contacto@negociodemo2.test",
+  phone: "3000000001",
+  address: "Calle 50 # 10-20, Medellin",
+  currency: "COP",
+};
+
 export const demoProfileFixture = {
   id: DEMO_PROFILE_ID,
   userId: DEMO_USER_ID,
   businessId: BUSINESS_ID,
   fullName: "Usuario Demo",
   email: "demo@negociodemo.test",
+  role: "admin" as const,
+};
+
+export const demoProfileFixture2 = {
+  id: DEMO_PROFILE_ID_2,
+  userId: DEMO_USER_ID,
+  businessId: BUSINESS_ID_2,
+  fullName: "Usuario Demo",
+  email: "demo@negociodemo.test",
+  role: "admin" as const,
 };
 
 export type CustomerFixture = {

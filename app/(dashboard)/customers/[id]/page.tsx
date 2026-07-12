@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getCustomer } from "@/lib/services/customer-service";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +30,7 @@ type CustomerDetailPageProps = {
 
 export default async function CustomerDetailPage({ params }: CustomerDetailPageProps) {
   await loadStoreFromCookie();
-  const session = await requireSession();
+  const session = await requireSessionOrRedirect();
   const { id } = await params;
   const customer = await getCustomer(session, id);
 

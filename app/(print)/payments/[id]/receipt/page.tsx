@@ -1,6 +1,6 @@
 import { formatCOP } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getPayment } from "@/lib/services/payment-service";
 import { getBusinessProfile } from "@/lib/services/business-service";
@@ -15,7 +15,7 @@ import { PrintButton } from "@/components/domain/receipts/print-button";
  * "Printable Payment Receipt" requirement. NOT a dashboard page: no
  * sidebar/nav, minimal `(print)` layout only.
  *
- * `requireSession()` runs before any data fetch (defense in depth) — these
+ * `requireSessionOrRedirect()` runs before any data fetch (defense in depth) — these
  * are INTERNAL documents per `docs/security-plan.md`, not publicly
  * accessible. `getPayment` (`payment-service.ts`, PR8) is scoped to
  * `session.businessId` and throws `NOT_FOUND` for a cross-business payment
@@ -30,7 +30,7 @@ type PaymentReceiptPageProps = {
 
 export default async function PaymentReceiptPage({ params }: PaymentReceiptPageProps) {
   await loadStoreFromCookie();
-  const session = await requireSession();
+  const session = await requireSessionOrRedirect();
   const { id } = await params;
   const [business, payment] = await Promise.all([getBusinessProfile(session), getPaymentOrMock(session, id)]);
 

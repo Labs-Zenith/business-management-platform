@@ -72,7 +72,7 @@ function newBusinessId(): string {
 }
 
 function sessionFor(businessId: string): Session {
-  return { userId: crypto.randomUUID(), businessId, email: "owner@negocio.test" };
+  return { userId: crypto.randomUUID(), businessId, email: "owner@negocio.test", role: "admin" };
 }
 
 describe("dashboard-service", () => {

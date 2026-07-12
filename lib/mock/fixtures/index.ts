@@ -5,25 +5,33 @@ import type { MockStore, Profile } from "../store";
 import { generateId, nextInvoiceNumber } from "../store";
 import {
   BUSINESS_ID,
+  BUSINESS_ID_2,
   businessFixture,
+  businessFixture2,
   customerFixtures,
   demoProfileFixture,
+  demoProfileFixture2,
   invoiceFixtures,
 } from "./data";
 
 /**
- * Minimal seed (business + demo profile only, no customers/invoices/
- * payments) — used for the cookie-backed persistence path (see
+ * Minimal seed (both businesses + both demo profiles only, no customers/
+ * invoices/payments) — used for the cookie-backed persistence path (see
  * `lib/mock/cookie-persistence.ts`), where the whole store round-trips
  * through an httpOnly cookie on every request. The full `seedFixtures`
  * dataset (~8 customers/~12 invoices) is too large to fit in a ~4KB
  * cookie; this keeps a fresh session small, and the user builds up their
- * own data (which does fit comfortably) from there.
+ * own data (which does fit comfortably) from there. Both profiles are
+ * seeded (not just the first) so the cookie-persistence path can still
+ * demo the business switcher.
  */
 export function seedMinimal(store: MockStore): void {
   const nowIso = new Date().toISOString();
+  const laterIso = new Date(Date.now() + 1000).toISOString();
   store.businesses.set(BUSINESS_ID, { ...businessFixture, createdAt: nowIso, updatedAt: nowIso });
-  store.profiles.set(demoProfileFixture.userId, { ...demoProfileFixture, createdAt: nowIso, updatedAt: nowIso });
+  store.businesses.set(BUSINESS_ID_2, { ...businessFixture2, createdAt: laterIso, updatedAt: laterIso });
+  store.profiles.set(demoProfileFixture.id, { ...demoProfileFixture, createdAt: nowIso, updatedAt: nowIso });
+  store.profiles.set(demoProfileFixture2.id, { ...demoProfileFixture2, createdAt: laterIso, updatedAt: laterIso });
 }
 
 function daysFromNow(offset: number): string {
@@ -32,10 +40,11 @@ function daysFromNow(offset: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Populates an empty `MockStore` with the "Negocio Demo" seed data. */
+/** Populates an empty `MockStore` with the "Negocio Demo" seed data (both businesses/memberships). */
 export function seedFixtures(store: MockStore): void {
   const now = new Date();
   const nowIso = now.toISOString();
+  const laterIso = new Date(now.getTime() + 1000).toISOString();
 
   const business: Business = {
     ...businessFixture,
@@ -44,12 +53,26 @@ export function seedFixtures(store: MockStore): void {
   };
   store.businesses.set(business.id, business);
 
+  const business2: Business = {
+    ...businessFixture2,
+    createdAt: laterIso,
+    updatedAt: laterIso,
+  };
+  store.businesses.set(business2.id, business2);
+
   const profile: Profile = {
     ...demoProfileFixture,
     createdAt: nowIso,
     updatedAt: nowIso,
   };
-  store.profiles.set(profile.userId, profile);
+  store.profiles.set(profile.id, profile);
+
+  const profile2: Profile = {
+    ...demoProfileFixture2,
+    createdAt: laterIso,
+    updatedAt: laterIso,
+  };
+  store.profiles.set(profile2.id, profile2);
 
   for (const customerFixture of customerFixtures) {
     const customer: Customer = {

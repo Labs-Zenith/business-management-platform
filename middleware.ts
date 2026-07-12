@@ -14,8 +14,12 @@ const SESSION_COOKIE_NAME = "session";
  * `/api/docs`. See `docs/ui-ux-flow.md` and `design.md`'s File Layout.
  *
  * This is a lightweight presence check only — the authoritative guard is
- * `requireSession()` (`lib/session.ts`), which every protected page and API
- * route MUST also call (defense in depth), per `docs/security-plan.md`.
+ * `lib/session.ts`, which every protected page and API route MUST also call
+ * (defense in depth), per `docs/security-plan.md`: API route handlers call
+ * `requireSession()` (throws `ApiError` -> 401 JSON); Server Component
+ * pages/layouts call `requireSessionOrRedirect()` (redirects to `/login`
+ * instead of crashing on a stale/invalid cookie — there is no
+ * `error.tsx`/`global-error.tsx` boundary in this tree).
  */
 const PROTECTED_PATH_PREFIXES = [
   "/dashboard",

@@ -27,6 +27,7 @@ const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
   businessId: BUSINESS_ID,
   email: "demo@negociodemo.test",
+  role: "admin",
 };
 
 function buildInvoicePersist(totalCents: number, dueDate: string | null = "2026-08-08"): InvoicePersist {

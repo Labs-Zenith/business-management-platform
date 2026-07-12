@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatCOP } from "@/lib/money";
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { listInvoices } from "@/lib/services/invoice-service";
@@ -52,7 +52,7 @@ function parseStatusParam(raw: string | undefined): InvoiceStatus | undefined {
 
 export default async function InvoicesPage({ searchParams }: InvoicesPageProps) {
   await loadStoreFromCookie();
-  const session = await requireSession();
+  const session = await requireSessionOrRedirect();
   const params = await searchParams;
   const status = parseStatusParam(params.status);
 

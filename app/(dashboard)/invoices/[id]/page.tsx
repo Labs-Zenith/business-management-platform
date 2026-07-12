@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatCOP } from "@/lib/money";
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getInvoice } from "@/lib/services/invoice-service";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ type InvoiceDetailPageProps = {
 
 export default async function InvoiceDetailPage({ params }: InvoiceDetailPageProps) {
   await loadStoreFromCookie();
-  const session = await requireSession();
+  const session = await requireSessionOrRedirect();
   const { id } = await params;
   const invoice = await getInvoice(session, id);
 

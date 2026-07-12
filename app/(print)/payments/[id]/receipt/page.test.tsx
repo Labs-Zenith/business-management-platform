@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/server/api-error";
 import type { Business, PaymentWithRefs, Session } from "@/lib/services/ports";
 
-const mockRequireSession = vi.fn<() => Promise<Session>>();
+const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockGetPayment = vi.fn<(session: Session, id: string) => Promise<PaymentWithRefs>>();
 const mockGetBusinessProfile = vi.fn<(session: Session) => Promise<Business>>();
 
@@ -13,7 +13,7 @@ vi.mock("@/lib/mock/cookie-persistence", () => ({
 }));
 
 vi.mock("@/lib/session", () => ({
-  requireSession: () => mockRequireSession(),
+  requireSessionOrRedirect: () => mockRequireSessionOrRedirect(),
 }));
 
 vi.mock("@/lib/services/payment-service", () => ({
@@ -30,6 +30,7 @@ const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
   businessId: "10000000-0000-4000-8000-000000000001",
   email: "demo@negociodemo.test",
+  role: "admin",
 };
 
 const BUSINESS: Business = {
@@ -62,13 +63,13 @@ const PAYMENT: PaymentWithRefs = {
 
 describe("PaymentReceiptPage (printable comprobante de pago)", () => {
   beforeEach(() => {
-    mockRequireSession.mockReset();
+    mockRequireSessionOrRedirect.mockReset();
     mockGetPayment.mockReset();
     mockGetBusinessProfile.mockReset();
   });
 
   it("renders business/customer/invoice-reference/payment data AND the verbatim, non-removable DIAN legal notice", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetPayment.mockResolvedValue(PAYMENT);
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
@@ -90,7 +91,7 @@ describe("PaymentReceiptPage (printable comprobante de pago)", () => {
   });
 
   it("renders a mock comprobante for NOT_FOUND instead of failing or leaking another business's receipt", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetPayment.mockRejectedValue(new ApiError("NOT_FOUND", "Payment not found."));
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
@@ -101,7 +102,7 @@ describe("PaymentReceiptPage (printable comprobante de pago)", () => {
   });
 
   it("renders a mock comprobante when the payment is missing in the mocked environment", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetPayment.mockRejectedValue(new ApiError("NOT_FOUND", "Payment not found."));
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
@@ -114,12 +115,14 @@ describe("PaymentReceiptPage (printable comprobante de pago)", () => {
     expect(screen.getByText("Documento interno, no valido como factura electronica DIAN.")).toBeInTheDocument();
   });
 
-  it("blocks unauthenticated access: propagates requireSession's UNAUTHENTICATED rejection and never calls getPayment", async () => {
-    mockRequireSession.mockRejectedValue(new ApiError("UNAUTHENTICATED", "Authentication required."));
+  it("blocks unauthenticated access: redirects to /login instead of crashing, and never calls getPayment", async () => {
+    mockRequireSessionOrRedirect.mockRejectedValue(
+      Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" })
+    );
 
     await expect(
       PaymentReceiptPage({ params: Promise.resolve({ id: PAYMENT_ID }) }),
-    ).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    ).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
     expect(mockGetPayment).not.toHaveBeenCalled();
   });
 });

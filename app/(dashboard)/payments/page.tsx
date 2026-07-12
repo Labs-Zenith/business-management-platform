@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatCOP } from "@/lib/money";
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listPayments } from "@/lib/services/payment-service";
 import { buildExportHref } from "@/lib/export/url";
@@ -41,7 +41,7 @@ function parsePageParam(raw: string | undefined): number {
 
 export default async function PaymentsPage({ searchParams }: PaymentsPageProps) {
   await loadStoreFromCookie();
-  const session = await requireSession();
+  const session = await requireSessionOrRedirect();
   const params = await searchParams;
 
   const result = await listPayments(session, {

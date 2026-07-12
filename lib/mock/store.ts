@@ -1,9 +1,10 @@
-import type { Business, Customer, Invoice, InvoiceItem, Payment } from "@/lib/services/ports";
+import type { Business, Customer, Invoice, InvoiceItem, Payment, Role } from "@/lib/services/ports";
 import { seedFixtures } from "./fixtures";
 
 /**
- * Links an authenticated user to the single business they belong to
- * (`docs/database-model.md` "profiles"). MVP rule: one user, one business.
+ * Links an authenticated user to a business they belong to, with the role
+ * they hold there (`docs/database-model.md` "profiles"). A `userId` may now
+ * own N profiles — one per business membership.
  */
 export type Profile = {
   id: string;
@@ -11,13 +12,14 @@ export type Profile = {
   businessId: string;
   fullName: string | null;
   email: string;
+  role: Role;
   createdAt: string;
   updatedAt: string;
 };
 
 export type MockStore = {
   businesses: Map<string, Business>;
-  /** Keyed by `userId`. */
+  /** Keyed by profile `id` — a single `userId` can own N profiles (one per business membership). */
   profiles: Map<string, Profile>;
   customers: Map<string, Customer>;
   invoices: Map<string, Invoice>;
@@ -64,7 +66,7 @@ export function clearStore(target: MockStore): void {
 export function hydrateStore(data: SerializedStore, target: MockStore = store): void {
   clearStore(target);
   for (const b of data.businesses) target.businesses.set(b.id, b);
-  for (const p of data.profiles) target.profiles.set(p.userId, p);
+  for (const p of data.profiles) target.profiles.set(p.id, p);
   for (const c of data.customers) target.customers.set(c.id, c);
   for (const i of data.invoices) target.invoices.set(i.id, i);
   for (const i of data.invoiceItems) target.invoiceItems.set(i.id, i);
@@ -86,6 +88,19 @@ export function createEmptyStore(): MockStore {
 
 export function generateId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Profiles (memberships) for a single user, ordered by `createdAt` ascending
+ * (index 0 = default business at login). Shared by `signIn` and
+ * `switchBusiness` (`lib/mock/auth-adapter.ts`) and `listMembershipsForUser`
+ * (`lib/mock/business-repo.ts`) so the filter+sort logic lives in exactly
+ * one place.
+ */
+export function listProfilesForUser(store: MockStore, userId: string): Profile[] {
+  return [...store.profiles.values()]
+    .filter((profile) => profile.userId === userId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 function simulateLatency(ms = 1): Promise<void> {

@@ -1,5 +1,5 @@
 import { formatCOP } from "@/lib/money";
-import { requireSession } from "@/lib/session";
+import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getInvoice } from "@/lib/services/invoice-service";
 import { getBusinessProfile } from "@/lib/services/business-service";
@@ -15,7 +15,7 @@ import { PrintButton } from "@/components/domain/receipts/print-button";
  * "Printable Invoice Comprobante" requirement. NOT a dashboard page: no
  * sidebar/nav, minimal `(print)` layout only.
  *
- * `requireSession()` runs before any data fetch (defense in depth, same as
+ * `requireSessionOrRedirect()` runs before any data fetch (defense in depth, same as
  * every other protected page/route) — these are INTERNAL documents per
  * `docs/security-plan.md`, not publicly accessible. `getInvoice` is already
  * scoped to `session.businessId` (`invoice-service.ts`, PR5) and throws
@@ -31,7 +31,7 @@ type InvoiceReceiptPageProps = {
 
 export default async function InvoiceReceiptPage({ params }: InvoiceReceiptPageProps) {
   await loadStoreFromCookie();
-  const session = await requireSession();
+  const session = await requireSessionOrRedirect();
   const { id } = await params;
   const [business, invoice] = await Promise.all([getBusinessProfile(session), getInvoice(session, id)]);
 

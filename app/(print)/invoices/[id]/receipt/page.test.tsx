@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { ApiError } from "@/lib/server/api-error";
 import type { Business, InvoiceDetail, Session } from "@/lib/services/ports";
 
-const mockRequireSession = vi.fn<() => Promise<Session>>();
+const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockGetInvoice = vi.fn<(session: Session, id: string) => Promise<InvoiceDetail>>();
 const mockGetBusinessProfile = vi.fn<(session: Session) => Promise<Business>>();
 
@@ -13,7 +13,7 @@ vi.mock("@/lib/mock/cookie-persistence", () => ({
 }));
 
 vi.mock("@/lib/session", () => ({
-  requireSession: () => mockRequireSession(),
+  requireSessionOrRedirect: () => mockRequireSessionOrRedirect(),
 }));
 
 vi.mock("@/lib/services/invoice-service", () => ({
@@ -30,6 +30,7 @@ const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
   businessId: "10000000-0000-4000-8000-000000000001",
   email: "demo@negociodemo.test",
+  role: "admin",
 };
 
 const BUSINESS: Business = {
@@ -88,13 +89,13 @@ const INVOICE_DETAIL: InvoiceDetail = {
 
 describe("InvoiceReceiptPage (printable comprobante)", () => {
   beforeEach(() => {
-    mockRequireSession.mockReset();
+    mockRequireSessionOrRedirect.mockReset();
     mockGetInvoice.mockReset();
     mockGetBusinessProfile.mockReset();
   });
 
   it("renders business/customer/invoice data AND the verbatim, non-removable DIAN legal notice", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetInvoice.mockResolvedValue(INVOICE_DETAIL);
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
@@ -116,7 +117,7 @@ describe("InvoiceReceiptPage (printable comprobante)", () => {
   });
 
   it("rejects a cross-business invoice id with NOT_FOUND instead of rendering another business's receipt", async () => {
-    mockRequireSession.mockResolvedValue(SESSION);
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetInvoice.mockRejectedValue(new ApiError("NOT_FOUND", "Invoice not found."));
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
@@ -125,12 +126,14 @@ describe("InvoiceReceiptPage (printable comprobante)", () => {
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("blocks unauthenticated access: propagates requireSession's UNAUTHENTICATED rejection and never calls getInvoice", async () => {
-    mockRequireSession.mockRejectedValue(new ApiError("UNAUTHENTICATED", "Authentication required."));
+  it("blocks unauthenticated access: redirects to /login instead of crashing, and never calls getInvoice", async () => {
+    mockRequireSessionOrRedirect.mockRejectedValue(
+      Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" })
+    );
 
     await expect(
       InvoiceReceiptPage({ params: Promise.resolve({ id: INVOICE_ID }) }),
-    ).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    ).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
     expect(mockGetInvoice).not.toHaveBeenCalled();
   });
 });
