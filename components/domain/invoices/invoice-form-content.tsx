@@ -23,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MoneyAmount } from "@/components/domain/money-amount";
+import { todayIsoDate } from "@/lib/dates";
+import { lineTotal, pesosToCents } from "@/lib/money";
 import { InvoiceItemFields } from "./invoice-item-fields";
 import { invoiceFormSchema, type InvoiceFormValues } from "./invoice-form-schema";
 
@@ -35,10 +37,6 @@ export type InvoiceFormContentProps = {
   /** Preselects the customer, e.g. when arriving from "Crear factura para este cliente". */
   defaultCustomerId?: string;
 };
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default function InvoiceFormContent({ customers, defaultCustomerId }: InvoiceFormContentProps) {
   const router = useRouter();
@@ -69,7 +67,14 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
       items.reduce((sum, item) => {
         const quantity = Number(item?.quantity) || 0;
         const unitPrice = Number(item?.unitPrice) || 0;
-        return sum + Math.round(quantity * unitPrice * 100);
+        // Mirrors `lib/services/invoice-service.ts`'s server-side computation
+        // exactly: convert the raw peso `unitPrice` to cents first
+        // (`pesosToCents`), then apply `lineTotal`'s round-half-up to the
+        // quantity multiplication — the two rounding steps must happen in
+        // this order (not `Math.round(quantity * unitPrice * 100)` in one
+        // shot) so the displayed running total never drifts from what the
+        // server persists.
+        return sum + lineTotal(quantity, pesosToCents(unitPrice));
       }, 0),
     [items],
   );
@@ -85,7 +90,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
         items: values.items.map((item) => ({
           description: item.description,
           quantity: item.quantity,
-          unitPrice: Math.round(item.unitPrice * 100),
+          unitPrice: pesosToCents(item.unitPrice),
         })),
       };
 

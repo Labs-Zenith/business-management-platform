@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatCOP, lineTotal, roundHalfUp } from "./money";
+import { formatCOP, lineTotal, pesosToCents, roundHalfUp } from "./money";
 
 describe("roundHalfUp", () => {
   it("rounds a fractional value up at the half boundary", () => {
@@ -38,4 +38,27 @@ describe("formatCOP", () => {
   it("formats zero cents", () => {
     expect(formatCOP(0)).toBe("$ 0");
   });
+});
+
+describe("pesosToCents", () => {
+  it("converts a whole-peso amount to cents", () => {
+    expect(pesosToCents(500)).toBe(50000);
+  });
+
+  it("returns 0 for a 0 peso amount", () => {
+    expect(pesosToCents(0)).toBe(0);
+  });
+
+  it.each([
+    { pesos: 1.005, expectedCents: 101 },
+    { pesos: 8.575, expectedCents: 858 },
+    { pesos: 5.015, expectedCents: 502 },
+  ])(
+    "converts $pesos pesos to $expectedCents cents without IEEE-754 rounding-down artifacts",
+    ({ pesos, expectedCents }) => {
+      // A naive `Math.round(pesos * 100)` would silently round DOWN here
+      // (e.g. `1.005 * 100` is `100.49999999999999`, not `100.5`).
+      expect(pesosToCents(pesos)).toBe(expectedCents);
+    },
+  );
 });

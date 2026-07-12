@@ -31,3 +31,25 @@ export function formatCOP(cents: number): string {
     maximumFractionDigits: 0,
   }).format(cents / 100);
 }
+
+/**
+ * Converts a whole-COP-peso amount (as entered by a user, e.g. an invoice's
+ * `unitPrice` or an expense/payment `amount`) into integer cents.
+ *
+ * UI-edge only — this is the single conversion site for "pesos typed by a
+ * human" -> "integer minor units"; do not scatter `Math.round(x * 100)`
+ * anywhere else. A plain `Math.round(pesos * 100)` silently rounds DOWN for
+ * some 2-3 decimal amounts due to IEEE-754 float imprecision (e.g.
+ * `1.005 * 100` is `100.49999999999999`, not `100.5`) — round-tripping
+ * through `toFixed(2)` first normalizes that imprecision away before the
+ * final rounding.
+ *
+ * Assumes `pesos >= 0`. `Math.round` rounds half-values toward zero for
+ * negative inputs (e.g. `Math.round(-100.5)` is `-100`, not `-101`), which is
+ * asymmetric with this function's round-half-up behavior for positive
+ * amounts. This is not handled here — callers must reject negative amounts
+ * upstream (both the client zod schema and the server already do).
+ */
+export function pesosToCents(pesos: number): number {
+  return Math.round(Number((pesos * 100).toFixed(2)));
+}

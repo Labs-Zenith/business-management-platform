@@ -43,17 +43,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { todayIsoDate } from "@/lib/dates";
+import { pesosToCents } from "@/lib/money";
 import { expenseFormSchema, type ExpenseFormValues } from "./expense-form-schema";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo crear el gasto. Verifica los datos e intenta de nuevo.";
-
-function todayIsoDate(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function defaultValues(): ExpenseFormValues {
   return { category: "otro", description: "", amount: 0, expenseDate: todayIsoDate(), notes: "" };
@@ -93,7 +87,7 @@ export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
       const payload = {
         category: values.category,
         description: values.description,
-        amount: Math.round(Number((values.amount * 100).toFixed(2))),
+        amount: pesosToCents(values.amount),
         expenseDate: values.expenseDate,
         ...(values.notes?.trim() ? { notes: values.notes.trim() } : {}),
       };

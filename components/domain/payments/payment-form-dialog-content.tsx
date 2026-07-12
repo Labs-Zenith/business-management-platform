@@ -26,7 +26,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent, type ReactElement } from "react";
-import { formatCOP } from "@/lib/money";
+import { todayIsoDate } from "@/lib/dates";
+import { formatCOP, pesosToCents } from "@/lib/money";
 import {
   Dialog,
   DialogContent,
@@ -42,10 +43,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo registrar el pago. Verifica los datos e intenta de nuevo.";
-
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 type PaymentFormValues = {
   paymentDate: string;
@@ -73,7 +70,7 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const amountCents = Math.round((Number(values.amount) || 0) * 100);
+  const amountCents = pesosToCents(Number(values.amount) || 0);
   const exceedsBalance = amountCents > balance;
 
   function updateField<K extends keyof PaymentFormValues>(key: K, value: PaymentFormValues[K]) {
