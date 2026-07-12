@@ -20,9 +20,9 @@ Chain strategy: feature-branch-chain
 
 | Unit | Goal | Likely PR | Notes |
 |------|------|-----------|-------|
-| 1 | Migration + ports + mock backend (store/fixtures/business-repo/auth-adapter) + permissions stub, fully unit-tested | PR 1 | Base = feature/tracker branch. Self-contained; mock backend is the only consumer in CI (no live Postgres). |
-| 2 | Postgres `listMembershipsForUser` + seed + `switch-business` route + route test | PR 2 | Base = PR 1 branch. Depends on `ports.ts` types and mock backend from PR 1. |
-| 3 | `business-switcher.tsx` + topbar/layout wiring | PR 3 | Base = PR 2 branch. Depends on the route from PR 2 and membership types from PR 1. |
+| 1 | Migration + ports + mock backend (store/fixtures/business-repo/auth-adapter) + permissions stub, fully unit-tested | PR 1 | Base = feature/tracker branch. Self-contained; mock backend is the only consumer in CI (no live Postgres). COMPLETE (commit d84bd24 on main). |
+| 2 | Postgres `listMembershipsForUser` + seed + `switch-business` route + route test | PR 2 | Base = PR 1 branch. Depends on `ports.ts` types and mock backend from PR 1. COMPLETE (implementation + 2 fix passes, uncommitted). |
+| 3 | `business-switcher.tsx` + topbar/layout wiring | PR 3 | Base = PR 2 branch. Depends on the route from PR 2 and membership types from PR 1. NOT STARTED. |
 
 ## Phase 1: Database Migration (Foundation)
 
