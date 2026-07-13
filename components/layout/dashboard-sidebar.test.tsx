@@ -19,7 +19,7 @@ describe("DashboardSidebar", () => {
   it("renders every default NAV_ITEMS link when no items prop is passed (backward-compatible)", () => {
     render(<DashboardSidebar />);
 
-    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Nómina", "Negocio"]) {
+    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Nómina", "Inventario", "Negocio"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });

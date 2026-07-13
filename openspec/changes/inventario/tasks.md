@@ -64,21 +64,21 @@ Chain strategy: feature-branch-chain
 
 ## Phase 6: Inventario Page + Nav + Dialogs (PR3)
 
-- [ ] 6.1 `components/layout/nav-items.ts`: add `{ href: "/inventario", label: "Inventario", icon: Package, capability: undefined }` (plain entry, no `capability` tag — visible to all roles via `navItemsForRole`'s `!item.capability` short-circuit).
-- [ ] 6.2 Create `app/(dashboard)/inventario/page.tsx`: `requireSession()`; `<Tabs>` with `Productos`/`Movimientos` `TabsPanel`s (both `keepMounted`, `MAX_DISPLAYED_ROWS = 50`), mirroring `nomina/page.tsx`'s structure minus any capability check.
-- [ ] 6.3 Create `components/domain/inventario/product-form-dialog-content.tsx` + `product-form-dialog.tsx` (lazy `dynamic(..., {ssr:false})` wrapper): fields name, sku (optional), unitCost (pesos→cents), minStockThreshold, active toggle (edit-only); POST/PATCH then `router.refresh()`.
-- [ ] 6.4 Create `components/domain/inventario/movement-form-dialog-content.tsx` + wrapper: fields productId (select, **active products only** via client-side filter mirroring Nomina's `activeEmployees` pattern), type (in/out), quantity, note (optional); POST then `router.refresh()`.
-- [ ] 6.5 Wire both dialogs into the page's Productos/Movimientos tabs from 6.2.
+- [x] 6.1 `components/layout/nav-items.ts`: add `{ href: "/inventario", label: "Inventario", icon: Package, capability: undefined }` (plain entry, no `capability` tag — visible to all roles via `navItemsForRole`'s `!item.capability` short-circuit).
+- [x] 6.2 Create `app/(dashboard)/inventario/page.tsx`: `requireSession()`; `<Tabs>` with `Productos`/`Movimientos` `TabsPanel`s (both `keepMounted`, `MAX_DISPLAYED_ROWS = 50`), mirroring `nomina/page.tsx`'s structure minus any capability check.
+- [x] 6.3 Create `components/domain/inventario/product-form-dialog-content.tsx` + `product-form-dialog.tsx` (lazy `dynamic(..., {ssr:false})` wrapper): fields name, sku (optional), unitCost (pesos→cents), minStockThreshold, active toggle (edit-only); POST/PATCH then `router.refresh()`.
+- [x] 6.4 Create `components/domain/inventario/movement-form-dialog-content.tsx` + wrapper: fields productId (select, **active products only** via client-side filter mirroring Nomina's `activeEmployees` pattern), type (in/out), quantity, note (optional); POST then `router.refresh()`.
+- [x] 6.5 Wire both dialogs into the page's Productos/Movimientos tabs from 6.2.
 
 ## Phase 7: PR3 Tests
 
-- [ ] 7.1 `app/(dashboard)/inventario/page.test.tsx`: any authenticated session renders both tabs with `keepMounted` content present (no not-found/redirect path, unlike Nomina).
-- [ ] 7.2 `product-form-dialog-content.test.tsx`: valid submit POSTs/PATCHes cents-converted payload (tricky-decimal `unitCost` value through `pesosToCents`), calls `router.refresh()`; active toggle hidden on create, shown on edit.
-- [ ] 7.3 `movement-form-dialog-content.test.tsx`: product select offers only active products (inactive excluded); valid submit POSTs correct payload; invalid/zero/negative quantity blocks submission client-side; server-side floor-at-zero rejection surfaces the error message without closing the dialog.
+- [x] 7.1 `app/(dashboard)/inventario/page.test.tsx`: any authenticated session renders both tabs with `keepMounted` content present (no not-found/redirect path, unlike Nomina).
+- [x] 7.2 `product-form-dialog-content.test.tsx`: valid submit POSTs/PATCHes cents-converted payload (tricky-decimal `unitCost` value through `pesosToCents`), calls `router.refresh()`; active toggle hidden on create, shown on edit.
+- [x] 7.3 `movement-form-dialog-content.test.tsx`: product select offers only active products (inactive excluded); valid submit POSTs correct payload; invalid/zero/negative quantity blocks submission client-side; server-side floor-at-zero rejection surfaces the error message without closing the dialog.
 
 ## Phase 8: Verification Gate
 
-- [ ] 8.1 `npm run typecheck`
-- [ ] 8.2 `npm run lint`
-- [ ] 8.3 `npm run test`
-- [ ] 8.4 `npm run build`
+- [x] 8.1 `npm run typecheck`
+- [x] 8.2 `npm run lint`
+- [x] 8.3 `npm run test`
+- [x] 8.4 `npm run build`

@@ -19,12 +19,12 @@ import DashboardBottomNav, { gridColsClass } from "./dashboard-bottom-nav";
  * without asserting className strings inside a render test.
  */
 describe("gridColsClass", () => {
-  it("maps 5 items (worker's filtered nav) to grid-cols-5", () => {
-    expect(gridColsClass(5)).toBe("grid-cols-5");
+  it("maps 6 items (worker's filtered nav, including Inventario) to grid-cols-6", () => {
+    expect(gridColsClass(6)).toBe("grid-cols-6");
   });
 
-  it("maps 6 items (admin's full nav, including Nómina) to grid-cols-6", () => {
-    expect(gridColsClass(6)).toBe("grid-cols-6");
+  it("maps 7 items (admin's full nav, including Nómina and Inventario) to grid-cols-7", () => {
+    expect(gridColsClass(7)).toBe("grid-cols-7");
   });
 
   it("falls back to grid-cols-5 for an unmapped item count", () => {
@@ -33,22 +33,23 @@ describe("gridColsClass", () => {
 });
 
 describe("DashboardBottomNav", () => {
-  it("renders every default NAV_ITEMS link when no items prop is passed (backward-compatible), 6 items total (admin's list, including Nómina)", () => {
+  it("renders every default NAV_ITEMS link when no items prop is passed (backward-compatible), 7 items total (admin's list, including Nómina and Inventario)", () => {
     render(<DashboardBottomNav />);
 
-    expect(NAV_ITEMS.length).toBe(6);
-    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Nómina", "Negocio"]) {
+    expect(NAV_ITEMS.length).toBe(7);
+    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Nómina", "Inventario", "Negocio"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });
 
-  it("renders only the items in a worker-filtered 5-item list (excludes Nómina)", () => {
+  it("renders only the items in a worker-filtered 6-item list (excludes Nómina, keeps Inventario)", () => {
     const workerItems: NavItem[] = NAV_ITEMS.filter((item) => item.href !== "/nomina");
-    expect(workerItems.length).toBe(5);
+    expect(workerItems.length).toBe(6);
 
     render(<DashboardBottomNav items={workerItems} />);
 
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Inventario" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Nómina" })).not.toBeInTheDocument();
   });
 

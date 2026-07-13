@@ -18,9 +18,14 @@
  * in each consumer. This is a UX complement only — the authoritative check
  * is `lib/session.ts`'s `requireCapability`/`requireCapabilityOrNotFound` at
  * the page/route layer; hiding a nav item never substitutes for that.
+ *
+ * `Inventario` (per `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s
+ * "No Role Gating on Inventory" requirement) is a plain entry with NO
+ * `capability` tag — visible to every role via `navItemsForRole`'s
+ * `!item.capability` short-circuit, unlike Nómina.
  */
 
-import { Banknote, CreditCard, FileText, LayoutDashboard, Settings, Users, type LucideIcon } from "lucide-react";
+import { Banknote, CreditCard, FileText, LayoutDashboard, Package, Settings, Users, type LucideIcon } from "lucide-react";
 import { can, type Capability } from "@/lib/services/permissions";
 import type { Role } from "@/lib/services/ports";
 
@@ -37,6 +42,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/invoices", label: "Facturas", icon: FileText },
   { href: "/payments", label: "Pagos", icon: CreditCard },
   { href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
+  { href: "/inventario", label: "Inventario", icon: Package },
   { href: "/settings", label: "Negocio", icon: Settings },
 ];
 

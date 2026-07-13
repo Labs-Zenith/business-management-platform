@@ -67,6 +67,38 @@ describe("middleware", () => {
     }
   });
 
+  /**
+   * Inventario (stock tracking) additions — presence-only, per
+   * `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s "No
+   * Role Gating on Inventory" requirement: unlike Nomina, there is no role
+   * check here OR at the page/route layer — any authenticated session may
+   * proceed.
+   */
+  it("redirects unauthenticated requests to the /inventario page to /login", () => {
+    const response = middleware(buildRequest("/inventario"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  it("redirects unauthenticated requests to /api/products to /login", () => {
+    const response = middleware(buildRequest("/api/products"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  it("redirects unauthenticated requests to /api/inventory-movements to /login", () => {
+    const response = middleware(buildRequest("/api/inventory-movements"));
+
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  it("allows a request with a session cookie through to /inventario, /api/products, and /api/inventory-movements", () => {
+    for (const path of ["/inventario", "/api/products", "/api/inventory-movements"]) {
+      const response = middleware(buildRequest(path, "opaque-token-value"));
+      expect(response.headers.get("location")).toBeNull();
+    }
+  });
+
   it("allows requests to a protected route through when a session cookie is present", () => {
     const response = middleware(buildRequest("/dashboard", "opaque-token-value"));
 

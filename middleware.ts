@@ -34,6 +34,14 @@ const PROTECTED_PATH_PREFIXES = [
   "/nomina",
   "/api/employees",
   "/api/payroll-payments",
+  // Inventario (stock tracking) — no role gating (any authenticated session),
+  // per `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s "No
+  // Role Gating on Inventory" requirement. Presence-only here, same as every
+  // other prefix above; the authoritative guard is `lib/session.ts`'s
+  // `requireSessionOrRedirect()` (page) / `requireSession()` (routes).
+  "/inventario",
+  "/api/products",
+  "/api/inventory-movements",
 ];
 
 function isProtectedPath(pathname: string): boolean {
@@ -68,5 +76,8 @@ export const config = {
     "/nomina/:path*",
     "/api/employees/:path*",
     "/api/payroll-payments/:path*",
+    "/inventario/:path*",
+    "/api/products/:path*",
+    "/api/inventory-movements/:path*",
   ],
 };

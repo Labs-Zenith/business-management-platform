@@ -29,6 +29,7 @@ function isActivePath(pathname: string, href: string): boolean {
 const GRID_COLS: Record<number, string> = {
   5: "grid-cols-5",
   6: "grid-cols-6",
+  7: "grid-cols-7",
 };
 
 export function gridColsClass(itemCount: number): string {
