@@ -202,9 +202,24 @@ const globalWithMockStore = globalThis as GlobalWithMockStore;
 export const store: MockStore =
   globalWithMockStore.__mockStore ?? (globalWithMockStore.__mockStore = buildSeededStore());
 
-/** Test-only helper: replaces the cached store with a freshly re-seeded one. */
+/**
+ * Test-only helper: re-seeds the shared store IN PLACE.
+ *
+ * Every mock repo (`productRepo`, `inventoryRepo`, `employeeRepo`, …) is a
+ * module-level singleton built once at import time via
+ * `createXRepository(store)`, closing over THIS exact object reference. If
+ * `resetStore` reassigned `globalWithMockStore.__mockStore` to a brand-new
+ * object, those already-constructed repos would keep pointing at the old
+ * one and never observe the reset — so tests relying on a pristine store in
+ * `beforeEach` would silently leak state across files/describe blocks (only
+ * passing by luck of Vitest's default, non-shuffled execution order).
+ *
+ * Clearing and re-seeding the existing Maps in place mutates the single
+ * object every repo already holds, so the reset is observed everywhere
+ * without touching how repos are constructed.
+ */
 export function resetStore(): MockStore {
-  const fresh = buildSeededStore();
-  globalWithMockStore.__mockStore = fresh;
-  return fresh;
+  clearStore(store);
+  seedFixtures(store);
+  return store;
 }
