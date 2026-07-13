@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { Paged, PaymentListQuery, PaymentWithRefs, Session } from "@/lib/services/ports";
+import { displayDate } from "@/components/ui/date-picker-test-helpers";
 
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockListPayments = vi.fn<(session: Session, query: PaymentListQuery) => Promise<Paged<PaymentWithRefs>>>();
@@ -91,6 +92,32 @@ describe("PaymentsPage", () => {
       page: 2,
       pageSize: 20,
     });
+  });
+
+  it("wires DateFilterField into the filter form's from/to fields with defaultValue coming from searchParams", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListPayments.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });
+
+    const { container } = render(
+      await PaymentsPage({
+        searchParams: Promise.resolve({ from: "2026-07-01", to: "2026-07-31" }),
+      }),
+    );
+
+    // `DateFilterField` swaps to a hidden input (the one that actually
+    // submits) + a `DatePicker` trigger once mounted (RTL's `render` flushes
+    // the mount effect synchronously via `act()`); the hidden input's value
+    // is the proof this is correctly wired from `searchParams`, not just
+    // that the service call receives the right query (already covered by
+    // the "passes ... search params through" test above).
+    const fromHidden = container.querySelector('input[type="hidden"][name="from"]') as HTMLInputElement;
+    const toHidden = container.querySelector('input[type="hidden"][name="to"]') as HTMLInputElement;
+    expect(fromHidden).toBeInTheDocument();
+    expect(toHidden).toBeInTheDocument();
+    expect(fromHidden.value).toBe("2026-07-01");
+    expect(toHidden.value).toBe("2026-07-31");
+    expect(screen.getByLabelText(/desde/i)).toHaveTextContent(displayDate("2026-07-01"));
+    expect(screen.getByLabelText(/hasta/i)).toHaveTextContent(displayDate("2026-07-31"));
   });
 
   it("shows an empty state when there are no payments", async () => {

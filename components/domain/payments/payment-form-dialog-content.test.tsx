@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { clearDay, pickDay } from "@/components/ui/date-picker-test-helpers";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -140,8 +143,14 @@ describe("PaymentFormDialog", () => {
     const pinnedInstant = new Date("2026-07-07T04:30:00Z");
     vi.setSystemTime(pinnedInstant);
 
-    const expectedLocalDate = `${pinnedInstant.getFullYear()}-${String(pinnedInstant.getMonth() + 1).padStart(2, "0")}-${String(pinnedInstant.getDate()).padStart(2, "0")}`;
-    const expectedUtcDate = pinnedInstant.toISOString().slice(0, 10);
+    const expectedLocalDate = new Date(
+      pinnedInstant.getFullYear(),
+      pinnedInstant.getMonth(),
+      pinnedInstant.getDate(),
+    );
+    const expectedLocalDateIso = `${expectedLocalDate.getFullYear()}-${String(expectedLocalDate.getMonth() + 1).padStart(2, "0")}-${String(expectedLocalDate.getDate()).padStart(2, "0")}`;
+    const expectedUtcDateIso = pinnedInstant.toISOString().slice(0, 10);
+    const expectedDisplayText = format(expectedLocalDate, "d MMM yyyy", { locale: es });
 
     const user = userEvent.setup();
     render(
@@ -149,11 +158,49 @@ describe("PaymentFormDialog", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /registrar pago/i }));
-    const dateInput = await screen.findByLabelText(/fecha/i);
 
-    expect(dateInput).toHaveValue(expectedLocalDate);
-    if (expectedLocalDate !== expectedUtcDate) {
-      expect(dateInput).not.toHaveValue(expectedUtcDate);
+    // `DatePicker`'s trigger is a `<button>`, not a native `<input>`, so the
+    // default value is asserted via its displayed text (`"d MMM yyyy"`
+    // formatted, `es` locale) rather than `.toHaveValue()`.
+    expect(await screen.findByLabelText(/fecha/i)).toHaveTextContent(expectedDisplayText);
+    if (expectedLocalDateIso !== expectedUtcDateIso) {
+      const buggyDisplayText = format(
+        new Date(`${expectedUtcDateIso}T00:00:00`),
+        "d MMM yyyy",
+        { locale: es },
+      );
+      expect(screen.getByLabelText(/fecha/i)).not.toHaveTextContent(buggyDisplayText);
     }
+  });
+
+  it("blocks submission client-side when paymentDate is cleared via the DatePicker's toggle-to-clear gesture (no request sent)", async () => {
+    // `paymentDate` is required client-side (see `payment-form-dialog-content.tsx`'s
+    // explicit `!values.paymentDate` check — this form has no zod resolver, so
+    // that check is the only thing standing in for RHF's `min(1, ...)` here).
+    const user = userEvent.setup();
+    vi.setSystemTime(new Date(2026, 6, 7));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <PaymentFormDialog invoiceId={INVOICE_ID} balance={200000} trigger={<button type="button">Registrar pago</button>} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /registrar pago/i }));
+    await user.type(await screen.findByLabelText(/monto/i), "800");
+
+    // Pick a non-today day first so the clear-gesture lookup (`clearDay`)
+    // never collides with react-day-picker's "Hoy, " accessible-name prefix.
+    const targetDate = new Date(2026, 6, 20);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha/i, dayLabel);
+    await clearDay(user, /fecha/i, dayLabel);
+
+    expect(screen.getByLabelText(/fecha/i)).toHaveTextContent(/seleccionar fecha/i);
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    expect(await screen.findByText(/fecha de pago requerida/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

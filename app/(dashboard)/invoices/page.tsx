@@ -7,8 +7,8 @@ import { listInvoices } from "@/lib/services/invoice-service";
 import type { InvoiceStatus } from "@/lib/services/status";
 import { buildExportHref } from "@/lib/export/url";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DateFilterField } from "@/components/domain/filters/date-filter-field";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 
 /**
@@ -145,18 +145,8 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
             ))}
           </select>
         </div>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor="from" className="text-sm text-muted-foreground">
-            Desde
-          </label>
-          <Input id="from" name="from" type="date" defaultValue={params.from ?? ""} className="w-full" />
-        </div>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor="to" className="text-sm text-muted-foreground">
-            Hasta
-          </label>
-          <Input id="to" name="to" type="date" defaultValue={params.to ?? ""} className="w-full" />
-        </div>
+        <DateFilterField name="from" id="from" label="Desde" defaultValue={params.from} />
+        <DateFilterField name="to" id="to" label="Hasta" defaultValue={params.to} />
         <Button type="submit" variant="outline" className="w-full sm:w-auto">
           Filtrar
         </Button>

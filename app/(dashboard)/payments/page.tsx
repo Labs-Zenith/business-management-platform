@@ -4,9 +4,9 @@ import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listPayments } from "@/lib/services/payment-service";
 import { buildExportHref } from "@/lib/export/url";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DateFilterField } from "@/components/domain/filters/date-filter-field";
 
 /**
  * Pagos screen, per `docs/ui-ux-flow.md`'s "Navegacion principal" ("Pagos"
@@ -90,18 +90,8 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
       </div>
 
       <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[10rem_10rem_auto]">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor="from" className="text-sm text-muted-foreground">
-            Desde
-          </label>
-          <Input id="from" name="from" type="date" defaultValue={params.from ?? ""} className="w-full" />
-        </div>
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <label htmlFor="to" className="text-sm text-muted-foreground">
-            Hasta
-          </label>
-          <Input id="to" name="to" type="date" defaultValue={params.to ?? ""} className="w-full" />
-        </div>
+        <DateFilterField name="from" id="from" label="Desde" defaultValue={params.from} />
+        <DateFilterField name="to" id="to" label="Hasta" defaultValue={params.to} />
         <Button type="submit" variant="outline" className="w-full sm:w-auto">
           Filtrar
         </Button>

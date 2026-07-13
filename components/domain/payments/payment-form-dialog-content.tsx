@@ -38,6 +38,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -89,6 +90,20 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
     event.preventDefault();
     setError(null);
 
+    // `paymentDate` is required, but `DatePicker` is a `<button>` trigger, not
+    // a native `<input>` — the HTML5 `required` attribute this field used to
+    // carry never actually enforced anything anyway (the `<form>` above sets
+    // `noValidate`), so this explicit check is the only thing that blocks a
+    // cleared date from being submitted. This form uses plain `useState` (no
+    // zod resolver), so the check is a manual `if (!value)` guard rather than
+    // the `Controller` + zod `min(1, ...)` mechanism invoice's `issueDate` and
+    // payroll's `referenceDate`/`paymentDate` use — different mechanism, same
+    // conceptual precedent: enforcing "required" on a `DatePicker` field,
+    // which has no native HTML `required` capability of its own.
+    if (!values.paymentDate) {
+      setError("Fecha de pago requerida.");
+      return;
+    }
     if (amountCents <= 0) {
       setError("El monto debe ser mayor a cero.");
       return;
@@ -139,13 +154,10 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
         <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payment-date">Fecha</Label>
-            <Input
+            <DatePicker
               id="payment-date"
-              name="paymentDate"
-              type="date"
-              required
               value={values.paymentDate}
-              onChange={(event) => updateField("paymentDate", event.target.value)}
+              onChange={(value) => updateField("paymentDate", value)}
             />
           </div>
           <div className="flex flex-col gap-1.5">
