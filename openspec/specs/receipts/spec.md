@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provide printable views for internal invoices and payment receipts, each carrying the mandatory non-fiscal legal notice, scoped to the authenticated business.
+Provide printable views for internal invoices and payment receipts, scoped to the authenticated business.
 
 ## Requirements
 
@@ -32,15 +32,31 @@ The system MUST provide a printable receipt for a registered payment, showing bu
 - WHEN a B1 session opens its printable receipt
 - THEN the view renders business data, customer data, amount, date, and method
 
-### Requirement: Mandatory Legal Notice
+### Requirement: No DIAN/Tax-Authority Notice
 
-Every printable comprobante (invoice or payment receipt) MUST display, verbatim and prominently, the notice: "Documento interno, no valido como factura electronica DIAN." This notice MUST NOT be omitted or made optional.
+Printable comprobantes (invoice and payment receipts) and the invoice PDF
+export MUST NOT display any DIAN or other tax-authority notice text, including
+but not limited to the string "Documento interno, no valido como factura
+electronica DIAN." No replacement legal or compliance notice is rendered in
+its place.
 
-#### Scenario: Notice present on every printable view
+#### Scenario: No DIAN notice on printable invoice receipt
 
-- GIVEN any printable invoice or payment receipt view
+- GIVEN a printable invoice receipt view
 - WHEN it is rendered
-- THEN the DIAN legal notice text is visible on the page
+- THEN no DIAN or tax-authority notice text is present on the page
+
+#### Scenario: No DIAN notice on printable payment receipt
+
+- GIVEN a printable payment receipt view
+- WHEN it is rendered
+- THEN no DIAN or tax-authority notice text is present on the page
+
+#### Scenario: No DIAN notice in invoice PDF export
+
+- GIVEN an invoice PDF export is generated
+- WHEN the PDF content is inspected
+- THEN no DIAN or tax-authority notice text is present anywhere in the document
 
 ### Requirement: business_id Scoping (RLS-Equivalent)
 
