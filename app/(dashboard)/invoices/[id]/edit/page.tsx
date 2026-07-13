@@ -4,6 +4,14 @@ import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { getInvoice } from "@/lib/services/invoice-service";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import InvoiceForm from "@/components/domain/invoices/invoice-form";
 
 /**
@@ -54,9 +62,21 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex flex-col gap-1">
-        <Link href={`/invoices/${id}`} className="text-sm text-muted-foreground hover:underline">
-          &larr; {invoice.number}
-        </Link>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink render={<Link href="/invoices" />}>Facturas</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink render={<Link href={`/invoices/${id}`} />}>{invoice.number}</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Editar</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
         <h1 className="text-lg font-semibold">Editar factura</h1>
       </div>
       <InvoiceForm

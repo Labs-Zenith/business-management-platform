@@ -134,7 +134,9 @@ describe("InvoiceDetailPage", () => {
 
     // Assertion 2: the rest of the page renders normally — full content,
     // no 404/redirect — these are two DISTINCT assertions, not conflated.
-    expect(screen.getByText("FAC-0001")).toBeInTheDocument();
+    // "FAC-0001" now appears twice (the breadcrumb's current-page item AND
+    // the `<h1>`) — assert on the heading specifically.
+    expect(screen.getByRole("heading", { name: "FAC-0001" })).toBeInTheDocument();
     expect(screen.getByText("Ana Gomez")).toBeInTheDocument();
     expect(screen.getByText("Consultoria")).toBeInTheDocument();
   });

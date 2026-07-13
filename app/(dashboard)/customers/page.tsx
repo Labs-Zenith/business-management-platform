@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 import { MoneyAmount } from "@/components/domain/money-amount";
 
 /**
@@ -60,7 +59,9 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
             Gestiona tus clientes y consulta su saldo pendiente.
           </p>
         </div>
-        <CustomerFormDialog mode="create" trigger={<Button className="w-full sm:w-auto">Crear cliente</Button>} />
+        <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/customers/new" />}>
+          Crear cliente
+        </Button>
       </div>
 
       <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
@@ -131,15 +132,14 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <CustomerFormDialog
-                    mode="edit"
-                    customer={customer}
-                    trigger={
-                      <Button variant="ghost" size="sm">
-                        Editar
-                      </Button>
-                    }
-                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    nativeButton={false}
+                    render={<Link href={`/customers/${customer.id}/edit`} />}
+                  >
+                    Editar
+                  </Button>
                 </TableCell>
               </TableRow>
             ))

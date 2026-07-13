@@ -5,9 +5,16 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getCustomer } from "@/lib/services/customer-service";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 import { MoneyAmount } from "@/components/domain/money-amount";
 
@@ -38,23 +45,30 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
     <div className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex flex-col gap-1">
-          <Link href="/customers" className="text-sm text-muted-foreground hover:underline">
-            &larr; Clientes
-          </Link>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href="/customers" />}>Clientes</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{customer.name}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <h1 className="text-lg font-semibold">{customer.name}</h1>
           <Badge variant={customer.isActive ? "default" : "outline"} className="w-fit">
             {customer.isActive ? "Activo" : "Inactivo"}
           </Badge>
         </div>
-        <CustomerFormDialog
-          mode="edit"
-          customer={customer}
-          trigger={
-            <Button variant="outline" className="w-full sm:w-auto">
-              Editar
-            </Button>
-          }
-        />
+        <Button
+          variant="outline"
+          className="w-full sm:w-auto"
+          nativeButton={false}
+          render={<Link href={`/customers/${customer.id}/edit`} />}
+        >
+          Editar
+        </Button>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

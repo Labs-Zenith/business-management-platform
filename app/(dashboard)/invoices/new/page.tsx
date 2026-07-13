@@ -2,6 +2,14 @@ import Link from "next/link";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import InvoiceForm from "@/components/domain/invoices/invoice-form";
 
 /**
@@ -28,9 +36,17 @@ export default async function NewInvoicePage({ searchParams }: NewInvoicePagePro
   return (
     <div className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex flex-col gap-1">
-        <Link href="/invoices" className="text-sm text-muted-foreground hover:underline">
-          &larr; Facturas
-        </Link>
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink render={<Link href="/invoices" />}>Facturas</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Nueva factura</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
         <h1 className="text-lg font-semibold">Crear factura</h1>
       </div>
       <InvoiceForm

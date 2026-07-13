@@ -72,7 +72,11 @@ describe("CustomerDetailPage", () => {
     // be normalized the same way to match.
     const normalize = (value: string) => value.replace(/ /g, " ");
 
-    expect(screen.getByText("Ana Gomez")).toBeInTheDocument();
+    // "Ana Gomez" now appears twice (the breadcrumb's current-page item AND
+    // the `<h1>`) — assert on the heading specifically, matching the
+    // invoice detail page test's equivalent fix for the same breadcrumb
+    // addition.
+    expect(screen.getByRole("heading", { name: "Ana Gomez" })).toBeInTheDocument();
     expect(screen.getByText(normalize(formatCOP(CUSTOMER_DETAIL.totalInvoiced)))).toBeInTheDocument();
     expect(screen.getByText(normalize(formatCOP(CUSTOMER_DETAIL.totalPaid)))).toBeInTheDocument();
     expect(screen.getByText(normalize(formatCOP(CUSTOMER_DETAIL.balance)))).toBeInTheDocument();
