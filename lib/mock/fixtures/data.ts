@@ -54,7 +54,11 @@ export const demoProfileFixture2 = {
   businessId: BUSINESS_ID_2,
   fullName: "Usuario Demo",
   email: "demo@negociodemo.test",
-  role: "admin" as const,
+  // `worker` (not `admin`) so switching to this second business demonstrates
+  // role-based nav filtering — Nómina and the audit-log panel are hidden for
+  // workers. The first business (`demoProfileFixture`) stays `admin`, so the
+  // same demo user holds different roles across their two memberships.
+  role: "worker" as const,
 };
 
 export type CustomerFixture = {

@@ -92,11 +92,14 @@ describe("POST /api/auth/switch-business (integration)", () => {
     const body = await response.json();
     // Full session shape: userId/email preserved unchanged across the
     // switch, businessId/role updated to the target membership's own values.
+    // The demo user is `admin` in business 1 but `worker` in business 2, so
+    // this also proves the switch adopts the target membership's OWN role
+    // rather than carrying over the previous session's role.
     expect(body.data.session).toEqual({
       userId: original.userId,
       email: original.email,
       businessId: BUSINESS_ID_2,
-      role: "admin",
+      role: "worker",
     });
     expect(mockCookieJar.get("session")!.value).not.toBe(sessionBefore);
   });

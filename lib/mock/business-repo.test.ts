@@ -17,7 +17,7 @@ describe("businessRepo.listMembershipsForUser", () => {
     expect(memberships[0]?.role).toBe("admin");
     expect(memberships[1]?.businessId).toBe(BUSINESS_ID_2);
     expect(memberships[1]?.businessName).toBe("Negocio Demo 2");
-    expect(memberships[1]?.role).toBe("admin");
+    expect(memberships[1]?.role).toBe("worker");
   });
 
   it("returns an empty array for a user with no memberships", async () => {
