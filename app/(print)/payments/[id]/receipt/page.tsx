@@ -5,7 +5,6 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getPayment } from "@/lib/services/payment-service";
 import { getBusinessProfile } from "@/lib/services/business-service";
 import type { PaymentWithRefs, Session } from "@/lib/services/ports";
-import { DianNotice } from "@/components/domain/receipts/dian-notice";
 import { PrintButton } from "@/components/domain/receipts/print-button";
 
 /**
@@ -65,8 +64,6 @@ export default async function PaymentReceiptPage({ params }: PaymentReceiptPageP
           <dd className="font-medium">{formatCOP(payment.amount)}</dd>
         </div>
       </dl>
-
-      <DianNotice />
     </div>
   );
 }

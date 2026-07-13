@@ -2,7 +2,7 @@
  * Layout for the `(print)` route group — printable comprobantes only
  * (`app/(print)/invoices/[id]/receipt/page.tsx`,
  * `app/(print)/payments/[id]/receipt/page.tsx`), per `design.md`'s File
- * Layout ("app/(print)/invoices/[id]/receipt/page.tsx (DIAN notice)").
+ * Layout.
  *
  * Deliberately minimal: no dashboard chrome/nav (unlike `(dashboard)`
  * pages) — just a narrow, centered, print-friendly container. Elements

@@ -94,7 +94,7 @@ describe("InvoiceReceiptPage (printable comprobante)", () => {
     mockGetBusinessProfile.mockReset();
   });
 
-  it("renders business/customer/invoice data AND the verbatim, non-removable DIAN legal notice", async () => {
+  it("renders business/customer/invoice data and never renders the removed DIAN notice", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetInvoice.mockResolvedValue(INVOICE_DETAIL);
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
@@ -110,10 +110,10 @@ describe("InvoiceReceiptPage (printable comprobante)", () => {
     expect(screen.getByText("FAC-0001")).toBeInTheDocument();
     expect(screen.getByText("Servicio de consultoria")).toBeInTheDocument();
 
-    // The EXACT, VERBATIM, non-removable legal notice — not a paraphrase.
+    // The DIAN legal notice was removed (Fase 2 plan item 1) — must never render.
     expect(
-      screen.getByText("Documento interno, no valido como factura electronica DIAN."),
-    ).toBeInTheDocument();
+      screen.queryByText("Documento interno, no valido como factura electronica DIAN."),
+    ).not.toBeInTheDocument();
   });
 
   it("rejects a cross-business invoice id with NOT_FOUND instead of rendering another business's receipt", async () => {

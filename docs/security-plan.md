@@ -157,14 +157,6 @@ En una fase posterior se puede agregar:
 - historial de cambios.
 - eventos de auditoria.
 
-## Aviso legal de documentos
-
-Todo comprobante interno debe mostrar:
-
-> Documento interno, no valido como factura electronica DIAN.
-
-Este aviso reduce el riesgo de confusion tributaria.
-
 ## Checklist de seguridad antes de beta
 
 - RLS activo en tablas operativas.
@@ -177,4 +169,3 @@ Este aviso reduce el riesgo de confusion tributaria.
 - Swagger no expone secretos.
 - Swagger esta protegido por sesion en produccion beta.
 - Variables configuradas fuera del repositorio.
-- Comprobantes incluyen aviso DIAN.

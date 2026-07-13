@@ -63,7 +63,6 @@ Definir los casos minimos para validar que el MVP es usable, seguro y consistent
 
 - Abrir vista imprimible de factura.
 - Abrir vista imprimible de recibo.
-- Confirmar aviso de documento interno no DIAN.
 
 ## Pruebas de seguridad
 

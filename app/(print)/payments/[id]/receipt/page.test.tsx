@@ -68,7 +68,7 @@ describe("PaymentReceiptPage (printable comprobante de pago)", () => {
     mockGetBusinessProfile.mockReset();
   });
 
-  it("renders business/customer/invoice-reference/payment data AND the verbatim, non-removable DIAN legal notice", async () => {
+  it("renders business/customer/invoice-reference/payment data and never renders the removed DIAN notice", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetPayment.mockResolvedValue(PAYMENT);
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
@@ -83,11 +83,11 @@ describe("PaymentReceiptPage (printable comprobante de pago)", () => {
     expect(screen.getByText("FAC-0001")).toBeInTheDocument();
     expect(screen.getByText("cash")).toBeInTheDocument();
 
-    // The EXACT, VERBATIM, non-removable legal notice — same text as the
-    // invoice receipt, not a paraphrase or translation.
+    // The DIAN legal notice was removed (Fase 2 plan item 1) — must never
+    // render, same as the invoice receipt.
     expect(
-      screen.getByText("Documento interno, no valido como factura electronica DIAN."),
-    ).toBeInTheDocument();
+      screen.queryByText("Documento interno, no valido como factura electronica DIAN."),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a mock comprobante for NOT_FOUND instead of failing or leaking another business's receipt", async () => {
@@ -112,7 +112,9 @@ describe("PaymentReceiptPage (printable comprobante de pago)", () => {
     expect(screen.getByText("Cliente demo")).toBeInTheDocument();
     expect(screen.getByText("Factura demo")).toBeInTheDocument();
     expect(screen.getByText("Mock")).toBeInTheDocument();
-    expect(screen.getByText("Documento interno, no valido como factura electronica DIAN.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Documento interno, no valido como factura electronica DIAN."),
+    ).not.toBeInTheDocument();
   });
 
   it("blocks unauthenticated access: redirects to /login instead of crashing, and never calls getPayment", async () => {

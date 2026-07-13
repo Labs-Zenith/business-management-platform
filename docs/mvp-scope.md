@@ -64,7 +64,6 @@ El MVP debe ser una app usable, no solo una demo visual. Si un cliente aprueba l
 
 - Vista imprimible de factura interna.
 - Vista imprimible de recibo de pago.
-- Aviso visible: "Documento interno, no valido como factura electronica DIAN."
 
 ## Fuera de alcance
 

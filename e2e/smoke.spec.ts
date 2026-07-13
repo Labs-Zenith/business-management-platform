@@ -45,8 +45,8 @@ const DEMO_LOGIN_PASSWORD = process.env.DEMO_LOGIN_PASSWORD || "demo1234";
  * assert the server-computed total and `pending` status -> register a
  * partial payment -> assert the balance decreases and status becomes
  * `partially_paid` -> open the invoice's printable receipt and assert the
- * exact, non-removable DIAN legal notice text
- * (`components/domain/receipts/dian-notice.tsx`) is visible.
+ * DIAN legal notice text is NOT rendered (removed per Fase 2 plan item 1;
+ * see `openspec/changes/dian-notice-removal`).
  *
  * `app/(dashboard)/layout.tsx` (added by a follow-up fix after PR10) now
  * provides a real shared nav shell, so the customers section change below
@@ -122,11 +122,11 @@ test.describe("Full MVP flow (real browser, real running server, real mock backe
     await expect(page.getByText(formatCOP(expectedBalanceCents), { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Parcialmente pagada", { exact: true })).toBeVisible();
 
-    // 8. Navigate to the invoice's printable receipt and assert the exact
-    // DIAN legal notice text is visible.
+    // 8. Navigate to the invoice's printable receipt and assert the DIAN
+    // legal notice text is NOT rendered (removed per Fase 2 plan item 1).
     await page.goto(`/invoices/${invoiceId}/receipt`);
     await expect(
       page.getByText("Documento interno, no valido como factura electronica DIAN.", { exact: true })
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 });

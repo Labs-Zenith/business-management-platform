@@ -4,8 +4,6 @@ import { INVOICE_STATUS_LABELS } from "@/lib/export/labels";
 import type { Business, InvoiceDetail, PaymentWithRefs } from "@/lib/services/ports";
 import type { InvoiceExportRow } from "@/lib/export/excel";
 
-const DIAN_NOTICE = "Documento interno, no valido como factura electronica DIAN.";
-
 type PdfTableColumn<T> = {
   header: string;
   width: number;
@@ -125,8 +123,6 @@ export async function renderInvoicePdf(business: Business, invoice: InvoiceDetai
     doc.font("Helvetica");
   }
 
-  doc.moveDown(2);
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#171717").text(DIAN_NOTICE);
   doc.end();
   return done;
 }

@@ -216,7 +216,6 @@ Contenido:
 - Items o pago.
 - Valores.
 - Fecha.
-- Aviso DIAN.
 
 ## Estados visuales
 

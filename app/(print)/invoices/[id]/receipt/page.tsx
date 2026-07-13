@@ -5,7 +5,6 @@ import { getInvoice } from "@/lib/services/invoice-service";
 import { getBusinessProfile } from "@/lib/services/business-service";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
-import { DianNotice } from "@/components/domain/receipts/dian-notice";
 import { PrintButton } from "@/components/domain/receipts/print-button";
 
 /**
@@ -89,8 +88,6 @@ export default async function InvoiceReceiptPage({ params }: InvoiceReceiptPageP
         <SummaryRow label="Pagado" value={formatCOP(invoice.paidAmount)} />
         <SummaryRow label="Saldo" value={formatCOP(invoice.balance)} />
       </dl>
-
-      <DianNotice />
     </div>
   );
 }
