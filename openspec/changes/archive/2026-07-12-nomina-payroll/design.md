@@ -257,5 +257,5 @@ Additive. Revert PR + `DROP TABLE payroll_payments, employees CASCADE`. Nomina-c
 
 ## Open Questions
 
-- [ ] **Bottom-nav column count**: `dashboard-bottom-nav.tsx` hardcodes `grid-cols-5`; admin now has 6 items. Resolve in tasks with a static `GRID_COLS: Record<number,string>` map (`{5:"grid-cols-5",6:"grid-cols-6"}`) keyed by `items.length` — Tailwind cannot safelist an interpolated class. Non-blocking, low risk.
-- [ ] Residual driver note (not a blocker): `sql.transaction` is **non-interactive** — safe here because the two inserts are data-independent. If a future change needs the payroll id *inside* the expense row, switch to a CTE (`payment-repo.ts` precedent). Flagged for awareness only.
+- [x] **Bottom-nav column count**: `dashboard-bottom-nav.tsx` hardcodes `grid-cols-5`; admin now has 6 items. Resolved with a static `GRID_COLS: Record<number, string>` map (`{5:"grid-cols-5",6:"grid-cols-6"}`) keyed by `items.length`, via an exported pure `gridColsClass(itemCount)` helper (Tailwind cannot safelist an interpolated class).
+- Residual driver note (not a blocker): `sql.transaction` is **non-interactive** — safe here because the two inserts are data-independent. If a future change needs the payroll id *inside* the expense row, switch to a CTE (`payment-repo.ts` precedent). Flagged for awareness only.

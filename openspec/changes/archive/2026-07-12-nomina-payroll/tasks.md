@@ -100,4 +100,14 @@ Chain strategy: feature-branch-chain
 - [x] 11.2 `npm run lint`
 - [x] 11.3 `npm run test`
 - [x] 11.4 `npm run build`
-</content>
+
+## Post-Apply Fix Pass (pre-archive, PR3 slice)
+
+A 3-lens review of the uncommitted PR3 diff found 5 gaps, all closed before commit `cbb515d`:
+1. Server-side `employee.active` re-validation added inside `createPayrollPayment` (was UI-only enforcement — real security gap; now checked after NOT_FOUND, before period computation).
+2. Renamed misleading `PAGE_SIZE` to `MAX_DISPLAYED_ROWS` in `nomina/page.tsx` with an MVP-limitation doc comment (no real pagination yet).
+3. IEEE-754 decimal precision tests added at the dialog input-wiring level (not just the isolated `pesosToCents` helper) for both employee and payroll-payment dialogs.
+4. Double-submit guard tests (deferred-promise pattern from `business-switcher.test.tsx`) added to both dialogs.
+5. Zero-active-employees empty-state test added to the payroll-payment dialog.
+
+All 4 verification gates re-run green after the fix pass: typecheck, lint, test (542/542, up from 515), build.

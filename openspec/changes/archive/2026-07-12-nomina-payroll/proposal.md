@@ -77,12 +77,12 @@ Revert the PR and run migration Down (`DROP TABLE payroll_payments, employees CA
 
 ## Success Criteria
 
-- [ ] Migration creates business-scoped `employees` (editable) + append-only `payroll_payments` (`period_type`/`period_start`/`period_end`, integer amounts).
-- [ ] Choosing `period_type` (quincenal/mensual) + a reference date correctly derives `period_start`/`period_end` (quincenal splits correctly at the 15th/16th across 28-31 day months; mensual spans the full calendar month).
-- [ ] `createPayrollPayment` atomically records the payment AND a `category:'nomina'` expense visible in Egresos.
-- [ ] `admin` sees "Nómina" and can use it; `worker` sees no nav item, gets 404 at `/nomina`, and 403 (`FORBIDDEN`) from every payroll API route.
-- [ ] Employees editable (name/salary/active) via `PATCH /api/employees/[id]`; payroll payments have no edit/delete.
-- [ ] Both mock and Postgres backends pass; payroll fixtures excluded from `seedMinimal`.
+- [x] Migration creates business-scoped `employees` (editable) + append-only `payroll_payments` (`period_type`/`period_start`/`period_end`, integer amounts).
+- [x] Choosing `period_type` (quincenal/mensual) + a reference date correctly derives `period_start`/`period_end` (quincenal splits correctly at the 15th/16th across 28-31 day months; mensual spans the full calendar month).
+- [x] `createPayrollPayment` atomically records the payment AND a `category:'nomina'` expense visible in Egresos.
+- [x] `admin` sees "Nómina" and can use it; `worker` sees no nav item, gets 404 at `/nomina`, and 403 (`FORBIDDEN`) from every payroll API route.
+- [x] Employees editable (name/salary/active) via `PATCH /api/employees/[id]`; payroll payments have no edit/delete.
+- [x] Both mock and Postgres backends pass; payroll fixtures excluded from `seedMinimal`.
 
 ## Proposal question round — resolved
 

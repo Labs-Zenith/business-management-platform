@@ -49,3 +49,9 @@ premise no longer holds now that `canViewPayroll` gates Nomina end-to-end.)
 - GIVEN a user's membership in business A has role `worker`
 - WHEN a session is issued scoped to business A
 - THEN `Session.role` is `worker`, matching the membership row exactly
+
+## Not touched
+
+- Membership Table Defines Role Per Business, Capability Check Helper,
+  Cross-Business Isolation Is Absolute — all preserved unchanged from the main
+  spec (not part of this delta).
