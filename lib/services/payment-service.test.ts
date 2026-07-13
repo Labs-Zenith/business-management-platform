@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
 import { lineTotal } from "@/lib/money";
 import { invoiceRepo } from "@/lib/mock/invoice-repo";
@@ -158,6 +158,61 @@ describe("createPayment (payment-service)", () => {
     await expect(
       createPayment(SESSION, invoice.id, { paymentDate: "2026-07-08", amount: 999999 }),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+/**
+ * `createPayment`'s `payment_recorded` audit instrumentation, per
+ * `openspec/changes/audit-log/specs/audit-logging/spec.md`'s "Instrumented
+ * Events for This Phase" requirement. Unlike `invoice-service.test.ts` (which
+ * mocks `repositories` entirely), this file already exercises the REAL mock
+ * store/repos, so `recordAuditLog`'s call flows through the REAL
+ * `lib/mock/audit-log-repo.ts` — asserting against `store.auditLogs`
+ * directly proves the end-to-end wiring, not just a mocked call.
+ */
+describe("createPayment — payment_recorded audit instrumentation", () => {
+  it("records a payment_recorded audit row (entityType='invoice', entityId=the invoice id) after a successful payment", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(200000));
+
+    await createPayment(SESSION, invoice.id, { paymentDate: "2026-07-08", amount: 80000 });
+
+    const entries = [...store.auditLogs.values()].filter(
+      (entry) => entry.entityType === "invoice" && entry.entityId === invoice.id,
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.action).toBe("payment_recorded");
+    expect(entries[0]!.businessId).toBe(BUSINESS_ID);
+    expect(entries[0]!.actorUserId).toBe(SESSION.userId);
+    expect(entries[0]!.detail).toBe("Amount: 80000");
+  });
+
+  it("does NOT record an audit row when the payment is rejected (overpay), no mutation at all", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(200000));
+
+    await expect(
+      createPayment(SESSION, invoice.id, { paymentDate: "2026-07-08", amount: 250000 }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    const entries = [...store.auditLogs.values()].filter((entry) => entry.entityId === invoice.id);
+    expect(entries).toHaveLength(0);
+  });
+
+  it("still returns the invoice detail successfully even if the audit-log repo's create rejects (best-effort, never affects the caller)", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(200000));
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { auditLogRepo } = await import("@/lib/mock/audit-log-repo");
+    const createSpy = vi.spyOn(auditLogRepo, "create").mockRejectedValueOnce(new Error("transient audit failure"));
+
+    const result = await createPayment(SESSION, invoice.id, { paymentDate: "2026-07-08", amount: 80000 });
+
+    expect(result.balance).toBe(120000);
+    expect(consoleErrorSpy).toHaveBeenCalled();
+
+    createSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 });
 

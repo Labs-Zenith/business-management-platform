@@ -43,3 +43,20 @@ export const invoiceCreateSchema = z
   .strict();
 
 export type InvoiceCreateInput = z.infer<typeof invoiceCreateSchema>;
+
+/**
+ * `PATCH /api/invoices/{id}` payload, per
+ * `openspec/changes/audit-log/design.md`'s "File Changes" and
+ * `lib/services/ports.ts`'s `InvoiceUpdate` contract. `number` was never a
+ * field on `invoiceCreateSchema` to begin with (it's always server-computed
+ * and immutable, and `InvoiceUpdate` doesn't even have the field), so the
+ * accepted input shape for create and update is genuinely identical —
+ * `invoiceUpdateSchema` is intentionally the SAME schema object as
+ * `invoiceCreateSchema`, not an independently-maintained duplicate. Keeping
+ * them aliased (rather than two copies that happen to match today) means
+ * `invoiceCreateSchema.test.ts`'s full boundary-condition coverage applies
+ * to both by construction, and the two can never silently drift apart.
+ */
+export const invoiceUpdateSchema = invoiceCreateSchema;
+
+export type InvoiceUpdateInput = z.infer<typeof invoiceUpdateSchema>;

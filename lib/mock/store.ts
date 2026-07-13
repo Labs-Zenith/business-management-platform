@@ -1,4 +1,5 @@
 import type {
+  AuditLogEntry,
   Business,
   Customer,
   Employee,
@@ -42,6 +43,7 @@ export type MockStore = {
   payrollPayments: Map<string, PayrollPayment>;
   products: Map<string, Product>;
   inventoryMovements: Map<string, InventoryMovement>;
+  auditLogs: Map<string, AuditLogEntry>;
   /** `businessId` -> last-used sequence number, for atomic invoice numbering. */
   invoiceSequences: Map<string, number>;
 };
@@ -59,6 +61,7 @@ export type SerializedStore = {
   payrollPayments: PayrollPayment[];
   products: Product[];
   inventoryMovements: InventoryMovement[];
+  auditLogs: AuditLogEntry[];
   invoiceSequences: Record<string, number>;
 };
 
@@ -75,6 +78,7 @@ export function serializeStore(target: MockStore = store): SerializedStore {
     payrollPayments: [...target.payrollPayments.values()],
     products: [...target.products.values()],
     inventoryMovements: [...target.inventoryMovements.values()],
+    auditLogs: [...target.auditLogs.values()],
     invoiceSequences: Object.fromEntries(target.invoiceSequences),
   };
 }
@@ -91,6 +95,7 @@ export function clearStore(target: MockStore): void {
   target.payrollPayments.clear();
   target.products.clear();
   target.inventoryMovements.clear();
+  target.auditLogs.clear();
   target.invoiceSequences.clear();
 }
 
@@ -114,6 +119,9 @@ export function hydrateStore(data: SerializedStore, target: MockStore = store): 
   // serialized before the inventario change has neither field at all.
   for (const p of data.products ?? []) target.products.set(p.id, p);
   for (const m of data.inventoryMovements ?? []) target.inventoryMovements.set(m.id, m);
+  // Same `?? []` requirement for `auditLogs` — a cookie serialized before the
+  // audit-log change has no `auditLogs` field at all.
+  for (const a of data.auditLogs ?? []) target.auditLogs.set(a.id, a);
   for (const [k, v] of Object.entries(data.invoiceSequences)) target.invoiceSequences.set(k, v);
 }
 
@@ -130,6 +138,7 @@ export function createEmptyStore(): MockStore {
     payrollPayments: new Map(),
     products: new Map(),
     inventoryMovements: new Map(),
+    auditLogs: new Map(),
     invoiceSequences: new Map(),
   };
 }

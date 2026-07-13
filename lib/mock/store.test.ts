@@ -12,7 +12,10 @@ import { createEmptyStore, hydrateStore, serializeStore, type Profile, type Seri
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const PROFILE_ID = "30000000-0000-4000-8000-000000000001";
 
-function buildLegacyPayload(): Omit<SerializedStore, "expenses" | "employees" | "payrollPayments" | "products" | "inventoryMovements"> {
+function buildLegacyPayload(): Omit<
+  SerializedStore,
+  "expenses" | "employees" | "payrollPayments" | "products" | "inventoryMovements" | "auditLogs"
+> {
   const business: Business = {
     id: BUSINESS_ID,
     name: "Negocio Legacy",
@@ -134,6 +137,35 @@ describe("hydrateStore — backward compatibility with pre-expenses cookies (R4)
     expect(() => hydrateStore(legacyPayload, target)).not.toThrow();
     expect(target.products.size).toBe(0);
     expect(target.inventoryMovements.size).toBe(0);
+  });
+
+  it("does not throw when the payload is missing the auditLogs field entirely (audit-log regression)", () => {
+    const legacyPayload = buildLegacyPayload() as SerializedStore; // simulates JSON.parse of a cookie predating audit-log
+    const target = createEmptyStore();
+
+    expect(() => hydrateStore(legacyPayload, target)).not.toThrow();
+    expect(target.auditLogs.size).toBe(0);
+  });
+
+  it("still hydrates auditLogs normally when the field IS present (current-format cookie)", () => {
+    const target = createEmptyStore();
+    target.auditLogs.set("b0000000-0000-4000-8000-000000000001", {
+      id: "b0000000-0000-4000-8000-000000000001",
+      businessId: BUSINESS_ID,
+      entityType: "invoice",
+      entityId: "50000000-0000-4000-8000-000000000001",
+      action: "invoice_created",
+      actorUserId: "20000000-0000-4000-8000-000000000001",
+      detail: "FAC-0001",
+      createdAt: "2026-07-01T00:00:00.000Z",
+    });
+    const snapshot = serializeStore(target);
+
+    const rehydrated = createEmptyStore();
+    hydrateStore(snapshot, rehydrated);
+
+    expect(rehydrated.auditLogs.size).toBe(1);
+    expect(rehydrated.auditLogs.get("b0000000-0000-4000-8000-000000000001")?.action).toBe("invoice_created");
   });
 
   it("still hydrates products/inventoryMovements normally when both fields ARE present (current-format cookie)", () => {

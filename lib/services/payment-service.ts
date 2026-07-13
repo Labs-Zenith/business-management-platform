@@ -24,6 +24,7 @@
  */
 
 import { ApiError } from "@/lib/server/api-error";
+import { recordAuditLog } from "@/lib/services/audit-log-service";
 import { repositories } from "@/lib/services/repositories";
 import type { InvoiceDetail, Paged, PaymentInput, PaymentListQuery, PaymentWithRefs, Session } from "@/lib/services/ports";
 
@@ -69,5 +70,15 @@ export async function createPayment(
   // registration happens entirely inside the repository under
   // `withLock(invoiceId)` (PR1's `lib/mock/payment-repo.ts`) — this service
   // only ever hands it `session.businessId` and the validated payload.
-  return repositories.payments.createForInvoice(session.businessId, invoiceId, persist);
+  const detail = await repositories.payments.createForInvoice(session.businessId, invoiceId, persist);
+
+  // Best-effort, sequential, AFTER the mutation already committed — see
+  // `recordAuditLog`'s SAFETY-CRITICAL doc comment: a failure here never
+  // affects the payment already recorded and the invoice detail returned
+  // below. `entityType` stays `"invoice"` (not `"payment"`) per
+  // `openspec/changes/audit-log/design.md` — the MovementsPanel queries by
+  // invoice, not by payment.
+  await recordAuditLog(session, "invoice", invoiceId, "payment_recorded", `Amount: ${persist.amount}`);
+
+  return detail;
 }

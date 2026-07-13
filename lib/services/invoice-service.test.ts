@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
 import { lineTotal } from "@/lib/money";
 import type {
+  AuditLogCreate,
+  AuditLogEntry,
   Customer,
   CustomerDetail,
   Invoice,
@@ -29,6 +31,7 @@ const mockInvoicesCreate = vi.fn<(businessId: string, data: InvoicePersist) => P
 const mockInvoicesList = vi.fn<(businessId: string, query: InvoiceListQuery) => Promise<Paged<InvoiceWithFinance>>>();
 const mockInvoicesGetById = vi.fn<(businessId: string, id: string) => Promise<InvoiceDetail | null>>();
 const mockInvoicesUpdate = vi.fn<(businessId: string, id: string, data: InvoicePersist) => Promise<InvoiceDetail | null>>();
+const mockAuditLogCreate = vi.fn<(businessId: string, data: AuditLogCreate) => Promise<AuditLogEntry>>();
 
 vi.mock("@/lib/services/repositories", () => ({
   repositories: {
@@ -40,6 +43,9 @@ vi.mock("@/lib/services/repositories", () => ({
       list: (businessId: string, query: InvoiceListQuery) => mockInvoicesList(businessId, query),
       getById: (businessId: string, id: string) => mockInvoicesGetById(businessId, id),
       update: (businessId: string, id: string, data: InvoicePersist) => mockInvoicesUpdate(businessId, id, data),
+    },
+    auditLog: {
+      create: (businessId: string, data: AuditLogCreate) => mockAuditLogCreate(businessId, data),
     },
   },
 }));
@@ -117,6 +123,8 @@ describe("createInvoice", () => {
   beforeEach(() => {
     mockCustomersGetById.mockReset();
     mockInvoicesCreate.mockReset();
+    mockAuditLogCreate.mockReset();
+    mockAuditLogCreate.mockResolvedValue({} as AuditLogEntry);
   });
 
   it("computes lineTotal/subtotal/total/status server-side and persists under session.businessId", async () => {
@@ -229,6 +237,35 @@ describe("createInvoice", () => {
 
     await expect(createInvoice(SESSION, invalidInput)).rejects.toBeInstanceOf(ApiError);
   });
+
+  it("records an invoice_created audit row (entityType='invoice', entityId=the new invoice's id) after a successful create", async () => {
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    const created = buildInvoiceDetail();
+    mockInvoicesCreate.mockResolvedValue(created);
+
+    await createInvoice(SESSION, VALID_INPUT);
+
+    expect(mockAuditLogCreate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      expect.objectContaining({
+        entityType: "invoice",
+        entityId: created.id,
+        action: "invoice_created",
+        actorUserId: SESSION.userId,
+      }),
+    );
+  });
+
+  it("still returns the created invoice successfully even when the audit-log insert rejects (best-effort, never affects the caller)", async () => {
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    const created = buildInvoiceDetail();
+    mockInvoicesCreate.mockResolvedValue(created);
+    mockAuditLogCreate.mockRejectedValue(new Error("transient audit failure"));
+
+    const result = await createInvoice(SESSION, VALID_INPUT);
+
+    expect(result).toEqual(created);
+  });
 });
 
 describe("listInvoices", () => {
@@ -285,6 +322,8 @@ describe("updateInvoice", () => {
     mockInvoicesGetById.mockReset();
     mockCustomersGetById.mockReset();
     mockInvoicesUpdate.mockReset();
+    mockAuditLogCreate.mockReset();
+    mockAuditLogCreate.mockResolvedValue({} as AuditLogEntry);
   });
 
   it("rejects with CONFLICT before reaching the repository when the invoice has any payment recorded (paidAmount !== 0), and never calls repositories.invoices.update", async () => {
@@ -409,5 +448,52 @@ describe("updateInvoice", () => {
     await expect(updateInvoice(SESSION, zeroPaymentInvoice.id, VALID_UPDATE)).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
+  });
+
+  it("records an invoice_updated audit row (entityType='invoice', entityId=the REPO's returned id, not the caller-supplied id argument) after a successful update", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending" });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    // Deliberately a DIFFERENT id than zeroPaymentInvoice's — otherwise this
+    // assertion can't discriminate "used the repo's returned updated.id"
+    // (correct) from "used the caller-supplied id argument" (would also look
+    // correct if the two ids happened to match by construction).
+    const updated = buildInvoiceDetail({ id: "50000000-0000-4000-8000-000000000777" });
+    mockInvoicesUpdate.mockResolvedValue(updated);
+
+    await updateInvoice(SESSION, zeroPaymentInvoice.id, VALID_UPDATE);
+
+    expect(updated.id).not.toBe(zeroPaymentInvoice.id);
+    expect(mockAuditLogCreate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      expect.objectContaining({
+        entityType: "invoice",
+        entityId: updated.id,
+        action: "invoice_updated",
+        actorUserId: SESSION.userId,
+      }),
+    );
+  });
+
+  it("still returns the updated invoice successfully even when the audit-log insert rejects (best-effort, never affects the caller)", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending" });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    const updated = buildInvoiceDetail();
+    mockInvoicesUpdate.mockResolvedValue(updated);
+    mockAuditLogCreate.mockRejectedValue(new Error("transient audit failure"));
+
+    const result = await updateInvoice(SESSION, zeroPaymentInvoice.id, VALID_UPDATE);
+
+    expect(result).toEqual(updated);
+  });
+
+  it("does NOT record an audit row when the edit-lock rejects with CONFLICT (no repo call was even attempted)", async () => {
+    const paidInvoice = buildInvoiceDetail({ status: "partially_paid" });
+    mockInvoicesGetById.mockResolvedValue({ ...paidInvoice, paidAmount: 50000, balance: paidInvoice.total - 50000 });
+
+    await expect(updateInvoice(SESSION, paidInvoice.id, VALID_UPDATE)).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(mockAuditLogCreate).not.toHaveBeenCalled();
   });
 });

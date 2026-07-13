@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { invoiceCreateSchema } from "./invoice";
+import { invoiceCreateSchema, invoiceUpdateSchema } from "./invoice";
 
 const VALID_PAYLOAD = {
   customerId: "40000000-0000-4000-8000-000000000001",
@@ -144,5 +144,11 @@ describe("invoiceCreateSchema", () => {
     const result = invoiceCreateSchema.safeParse({ ...VALID_PAYLOAD, issueDate: "not-a-date" });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("invoiceUpdateSchema", () => {
+  it("is the exact same schema object as invoiceCreateSchema (intentional alias, not an independently-maintained duplicate — locks in the decision so a future reader doesn't 're-fix' this by re-diverging them)", () => {
+    expect(invoiceUpdateSchema).toBe(invoiceCreateSchema);
   });
 });

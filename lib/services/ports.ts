@@ -473,6 +473,50 @@ export interface ProductRepository {
   update(businessId: string, id: string, data: ProductUpdate): Promise<Product | null>;
 }
 
+// ---------------------------------------------------------------------------
+// Audit Log (append-only — Expense-style)
+// ---------------------------------------------------------------------------
+
+/**
+ * Append-only, business-scoped audit trail row, per
+ * `openspec/changes/audit-log/specs/audit-logging/spec.md`. `entityType` and
+ * `action` are deliberately free TEXT (no CHECK constraint / union type) so
+ * new instrumented events don't require a schema/type change — see
+ * `openspec/changes/audit-log/design.md`'s "Architecture Decisions".
+ * `entityType` is `"invoice"` for every row this phase produces (payments
+ * included), so the panel query stays `WHERE entity_type='invoice' AND
+ * entity_id=:invoiceId`.
+ */
+export type AuditLogEntry = {
+  id: string;
+  businessId: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actorUserId: string;
+  detail: string | null;
+  createdAt: string;
+};
+
+/**
+ * Repository-facing create payload. Append-only (Expense-style):
+ * `businessId` is always a separate argument, never a field.
+ */
+export type AuditLogCreate = {
+  entityType: string;
+  entityId: string;
+  action: string;
+  actorUserId: string;
+  detail?: string | null;
+};
+
+export interface AuditLogRepository {
+  /** Business-scoped, filtered by `entityType`/`entityId`, ordered `createdAt` DESC. */
+  list(businessId: string, entityType: string, entityId: string): Promise<AuditLogEntry[]>;
+  /** Plain insert — no lock, no sequence, no balance invariant. No update/delete surface (append-only). */
+  create(businessId: string, data: AuditLogCreate): Promise<AuditLogEntry>;
+}
+
 export type MovementType = "in" | "out";
 
 /**

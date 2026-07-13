@@ -36,13 +36,17 @@ vi.mock("next/headers", () => ({
 }));
 
 const { GET: listGet, POST: listPost } = await import("./route");
-const { GET: detailGet } = await import("./[id]/route");
+const { GET: detailGet, PATCH: detailPatch } = await import("./[id]/route");
 
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_BUSINESS_ID = "10000000-0000-4000-8000-000000000099";
 const DEMO_EMAIL = "demo@negociodemo.test";
 const DEMO_PASSWORD = "demo1234";
 const CUSTOMER_ID = "40000000-0000-4000-8000-000000000001";
+// Seeded zero-payment invoice (pending, no payments) — safe to edit.
+const ZERO_PAYMENT_INVOICE_ID = "50000000-0000-4000-8000-000000000001";
+// Seeded invoice with an existing payment (partially_paid) — edit-locked.
+const PAID_INVOICE_ID = "50000000-0000-4000-8000-000000000007";
 
 function buildContext(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -52,6 +56,22 @@ async function signIn(): Promise<void> {
   const session = await repositories.auth.signIn(DEMO_EMAIL, DEMO_PASSWORD);
   if (!session) {
     throw new Error("Test setup failed: demo sign-in did not succeed.");
+  }
+}
+
+/**
+ * Signs in as the demo user, then re-issues the session cookie with role
+ * `"worker"` in the SAME business (mirrors
+ * `app/api/employees/employees-routes.test.ts`'s helper) — used to prove
+ * `PATCH /api/invoices/{id}` has NO capability gate (unlike
+ * `PATCH /api/employees/{id}`'s `viewPayroll` gate): any authenticated
+ * session, admin or worker, may edit an invoice.
+ */
+async function signInAsWorker(): Promise<void> {
+  await signIn();
+  const switched = await repositories.auth.switchBusiness(BUSINESS_ID, "worker");
+  if (!switched) {
+    throw new Error("Test setup failed: switchBusiness to worker did not succeed.");
   }
 }
 
@@ -381,5 +401,163 @@ describe("GET /api/invoices/{id}", () => {
     const body = await response.json();
     expect(body.error.code).toBe("NOT_FOUND");
     expect(JSON.stringify(body)).not.toContain("Cliente De Otro Negocio");
+  });
+});
+
+/**
+ * `PATCH /api/invoices/{id}`, per
+ * `openspec/changes/audit-log/specs/invoices/spec.md`'s "Invoice Editing
+ * Locked to Zero-Payment Invoices" requirement. Session-gated only — NO
+ * capability gate (unlike `PATCH /api/employees/{id}`'s `viewPayroll` gate):
+ * mirrors `app/api/products/[id]/route.ts`'s convention exactly.
+ */
+describe("PATCH /api/invoices/{id}", () => {
+  beforeEach(() => {
+    resetStore();
+    mockCookieJar.clear();
+    process.env.APP_ORIGIN = "http://localhost:3000";
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_APP_ORIGIN === undefined) {
+      delete process.env.APP_ORIGIN;
+    } else {
+      process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
+    }
+  });
+
+  const VALID_UPDATE = {
+    customerId: CUSTOMER_ID,
+    issueDate: "2026-07-09",
+    dueDate: "2026-08-09",
+    items: [{ description: "Servicio editado", quantity: 1, unitPrice: 350000 }],
+    notes: "Editado via PATCH",
+  };
+
+  function patchRequest(id: string, body: unknown, headers: Record<string, string> = {}) {
+    return new Request(`http://localhost:3000/api/invoices/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", origin: "http://localhost:3000", ...headers },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("rejects unauthenticated requests with 401 UNAUTHENTICATED, applying no change", async () => {
+    const before = store.invoices.get(ZERO_PAYMENT_INVOICE_ID);
+
+    const response = await detailPatch(
+      patchRequest(ZERO_PAYMENT_INVOICE_ID, VALID_UPDATE),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(401);
+    expect(store.invoices.get(ZERO_PAYMENT_INVOICE_ID)).toEqual(before);
+  });
+
+  it("applies a valid update for an admin session on a zero-payment invoice, recomputing subtotal/total/status", async () => {
+    await signIn();
+
+    const response = await detailPatch(
+      patchRequest(ZERO_PAYMENT_INVOICE_ID, VALID_UPDATE),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.total).toBe(350000);
+    expect(body.data.subtotal).toBe(350000);
+    expect(body.data.notes).toBe("Editado via PATCH");
+    expect(body.data.items).toHaveLength(1);
+    expect(body.data.items[0].description).toBe("Servicio editado");
+  });
+
+  it("applies a valid update for a WORKER session too — NO capability gate on this route (unlike PATCH /api/employees/{id})", async () => {
+    await signInAsWorker();
+
+    const response = await detailPatch(
+      patchRequest(ZERO_PAYMENT_INVOICE_ID, VALID_UPDATE),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(200);
+  });
+
+  it("rejects a paid invoice with 409 CONFLICT, a clean error (not a 500), applying ZERO mutation", async () => {
+    await signIn();
+    const before = { ...store.invoices.get(PAID_INVOICE_ID)! };
+    const itemsBefore = [...store.invoiceItems.values()].filter((item) => item.invoiceId === PAID_INVOICE_ID);
+
+    const response = await detailPatch(
+      patchRequest(PAID_INVOICE_ID, VALID_UPDATE),
+      buildContext(PAID_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.error.code).toBe("CONFLICT");
+    expect(store.invoices.get(PAID_INVOICE_ID)).toEqual(before);
+    const itemsAfter = [...store.invoiceItems.values()].filter((item) => item.invoiceId === PAID_INVOICE_ID);
+    expect(itemsAfter).toEqual(itemsBefore);
+  });
+
+  it("returns 404 NOT_FOUND for an invoice belonging to a different business, applying no change", async () => {
+    await signIn();
+    const otherInvoice = seedOtherBusinessInvoice();
+
+    const response = await detailPatch(patchRequest(otherInvoice.id, VALID_UPDATE), buildContext(otherInvoice.id));
+
+    expect(response.status).toBe(404);
+    const body = await response.json();
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("rejects a mismatched Origin header with 403 FORBIDDEN, applying no change", async () => {
+    await signIn();
+    const before = store.invoices.get(ZERO_PAYMENT_INVOICE_ID);
+
+    const response = await detailPatch(
+      patchRequest(ZERO_PAYMENT_INVOICE_ID, VALID_UPDATE, { origin: "http://evil.test" }),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(403);
+    expect(store.invoices.get(ZERO_PAYMENT_INVOICE_ID)).toEqual(before);
+  });
+
+  it("rejects (via strict schema) a forged number/status/subtotal/total/business_id field with 400 VALIDATION_ERROR, applying no change", async () => {
+    await signIn();
+    const before = store.invoices.get(ZERO_PAYMENT_INVOICE_ID);
+
+    const response = await detailPatch(
+      patchRequest(ZERO_PAYMENT_INVOICE_ID, {
+        ...VALID_UPDATE,
+        number: "FAC-FORGED",
+        status: "paid",
+        subtotal: 1,
+        total: 1,
+        business_id: OTHER_BUSINESS_ID,
+      }),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(store.invoices.get(ZERO_PAYMENT_INVOICE_ID)).toEqual(before);
+  });
+
+  it("records an invoice_updated audit row after a successful PATCH", async () => {
+    await signIn();
+
+    const response = await detailPatch(
+      patchRequest(ZERO_PAYMENT_INVOICE_ID, VALID_UPDATE),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(200);
+    const entries = [...store.auditLogs.values()].filter(
+      (entry) => entry.entityType === "invoice" && entry.entityId === ZERO_PAYMENT_INVOICE_ID,
+    );
+    expect(entries.some((entry) => entry.action === "invoice_updated")).toBe(true);
   });
 });

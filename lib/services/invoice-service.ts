@@ -28,6 +28,7 @@
 
 import { lineTotal } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
+import { recordAuditLog } from "@/lib/services/audit-log-service";
 import { repositories } from "@/lib/services/repositories";
 import { computeStatus } from "@/lib/services/status";
 import type {
@@ -130,7 +131,14 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
   // the repository under `withLock(businessId)` (PR1's
   // `lib/mock/invoice-repo.ts`) — this service only ever hands it
   // server-computed data.
-  return repositories.invoices.create(session.businessId, persist);
+  const invoice = await repositories.invoices.create(session.businessId, persist);
+
+  // Best-effort, sequential, AFTER the mutation already committed — see
+  // `recordAuditLog`'s SAFETY-CRITICAL doc comment: a failure here never
+  // affects the invoice already created and returned below.
+  await recordAuditLog(session, "invoice", invoice.id, "invoice_created", invoice.number);
+
+  return invoice;
 }
 
 /**
@@ -191,5 +199,11 @@ export async function updateInvoice(session: Session, id: string, data: InvoiceU
   if (!updated) {
     throw new ApiError("NOT_FOUND", "Invoice not found.");
   }
+
+  // Best-effort, sequential, AFTER the mutation already committed — see
+  // `recordAuditLog`'s SAFETY-CRITICAL doc comment: a failure here never
+  // affects the updated invoice already persisted and returned below.
+  await recordAuditLog(session, "invoice", updated.id, "invoice_updated", updated.number);
+
   return updated;
 }
