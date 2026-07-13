@@ -1,6 +1,17 @@
 import { lineTotal } from "@/lib/money";
 import { computeStatus } from "@/lib/services/status";
-import type { Business, Customer, Employee, Expense, Invoice, InvoiceItem, Payment, PayrollPayment } from "@/lib/services/ports";
+import type {
+  Business,
+  Customer,
+  Employee,
+  Expense,
+  InventoryMovement,
+  Invoice,
+  InvoiceItem,
+  Payment,
+  PayrollPayment,
+  Product,
+} from "@/lib/services/ports";
 import type { MockStore, Profile } from "../store";
 import { generateId, nextInvoiceNumber } from "../store";
 import {
@@ -13,8 +24,10 @@ import {
   demoProfileFixture2,
   employeeFixtures,
   expenseFixtures,
+  inventoryMovementFixtures,
   invoiceFixtures,
   payrollPaymentFixtures,
+  productFixtures,
 } from "./data";
 
 /**
@@ -183,5 +196,33 @@ export function seedFixtures(store: MockStore): void {
       createdAt: nowIso,
     };
     store.payrollPayments.set(payrollPayment.id, payrollPayment);
+  }
+
+  for (const productFixture of productFixtures) {
+    const product: Product = {
+      id: productFixture.id,
+      businessId: BUSINESS_ID,
+      name: productFixture.name,
+      sku: productFixture.sku,
+      unitCost: productFixture.unitCost,
+      minStockThreshold: productFixture.minStockThreshold,
+      active: productFixture.active,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    store.products.set(product.id, product);
+  }
+
+  for (const movementFixture of inventoryMovementFixtures) {
+    const movement: InventoryMovement = {
+      id: movementFixture.id,
+      businessId: BUSINESS_ID,
+      productId: movementFixture.productId,
+      type: movementFixture.type,
+      quantity: movementFixture.quantity,
+      note: movementFixture.note,
+      createdAt: daysFromNow(movementFixture.dayOffset) + "T00:00:00.000Z",
+    };
+    store.inventoryMovements.set(movement.id, movement);
   }
 }

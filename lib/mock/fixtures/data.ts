@@ -458,3 +458,58 @@ export const payrollPaymentFixtures: PayrollPaymentFixture[] = [
     notes: "Nomina mensual de mayo",
   },
 ];
+
+export type ProductFixture = {
+  id: string;
+  name: string;
+  sku: string | null;
+  unitCost: number; // integer cents
+  minStockThreshold: number;
+  active: boolean;
+};
+
+function productId(n: number): string {
+  return `90000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
+/**
+ * A handful of demo products mixing SKU-present/absent and varying stock
+ * levels (including one below its own threshold) so the Inventario page has
+ * real data to show out of the box — excluded from `seedMinimal` (matches
+ * invoices/payments/expenses/employees — cookie-size reasons).
+ */
+export const productFixtures: ProductFixture[] = [
+  { id: productId(1), name: "Shampoo Profesional 1L", sku: "SHP-001", unitCost: 25000, minStockThreshold: 10, active: true },
+  { id: productId(2), name: "Tijera de Corte", sku: "TIJ-002", unitCost: 80000, minStockThreshold: 3, active: true },
+  { id: productId(3), name: "Toallas Desechables", sku: null, unitCost: 5000, minStockThreshold: 20, active: true },
+  { id: productId(4), name: "Secador de Cabello", sku: "SEC-004", unitCost: 150000, minStockThreshold: 2, active: false },
+];
+
+export type InventoryMovementFixture = {
+  id: string;
+  productId: string;
+  type: "in" | "out";
+  quantity: number;
+  dayOffset: number;
+  note: string | null;
+};
+
+function inventoryMovementId(n: number): string {
+  return `a0000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+}
+
+/**
+ * Seed movement history. Product 1 (Shampoo): +30 -8 = 22 (above its
+ * threshold of 10). Product 2 (Tijera): +5 -4 = 1 (BELOW its threshold of
+ * 3 — the one deliberately low-stock demo product). Product 3 (Toallas):
+ * +50 -10 = 40 (above its threshold of 20). Product 4 (inactive) has no
+ * movements at all — computed quantity 0.
+ */
+export const inventoryMovementFixtures: InventoryMovementFixture[] = [
+  { id: inventoryMovementId(1), productId: productId(1), type: "in", quantity: 30, dayOffset: -20, note: "Compra inicial" },
+  { id: inventoryMovementId(2), productId: productId(1), type: "out", quantity: 8, dayOffset: -5, note: "Uso en salon" },
+  { id: inventoryMovementId(3), productId: productId(2), type: "in", quantity: 5, dayOffset: -15, note: "Compra inicial" },
+  { id: inventoryMovementId(4), productId: productId(2), type: "out", quantity: 4, dayOffset: -2, note: "Uso en salon" },
+  { id: inventoryMovementId(5), productId: productId(3), type: "in", quantity: 50, dayOffset: -25, note: "Compra al por mayor" },
+  { id: inventoryMovementId(6), productId: productId(3), type: "out", quantity: 10, dayOffset: -3, note: null },
+];

@@ -393,3 +393,104 @@ export interface PayrollPaymentRepository {
   /** Atomic: inserts the payroll payment AND its `category:'nomina'` expense in ONE transaction. */
   create(businessId: string, data: PayrollPaymentPersist, expense: ExpenseInput): Promise<PayrollPayment>;
 }
+
+// ---------------------------------------------------------------------------
+// Products (editable — Employee-style) & Inventory Movements (append-only)
+// ---------------------------------------------------------------------------
+
+/**
+ * `products` stores NO quantity/value column — `currentQuantity`/
+ * `totalValue`/`isLowStock` are always derived at read time by the repo layer
+ * (`ProductWithStock`) from the `inventory_movements` ledger, structurally
+ * identical to how `invoice-repo.ts#withFinance` derives `balance`/`status`
+ * from `payments`. `unitCost` is an integer minor unit (COP cents).
+ */
+export type Product = {
+  id: string;
+  businessId: string;
+  name: string;
+  sku: string | null;
+  unitCost: number;
+  minStockThreshold: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Computed view returned by `list`/`getById` — never persisted. */
+export type ProductWithStock = Product & {
+  currentQuantity: number;
+  totalValue: number;
+  isLowStock: boolean;
+};
+
+export type ProductCreate = {
+  name: string;
+  sku?: string | null;
+  unitCost: number;
+  minStockThreshold?: number;
+};
+
+export type ProductUpdate = Partial<ProductCreate> & { active?: boolean };
+
+export type ProductListQuery = {
+  q?: string;
+  status?: "active" | "inactive";
+  page: number;
+  pageSize: number;
+};
+
+export interface ProductRepository {
+  list(businessId: string, query: ProductListQuery): Promise<Paged<ProductWithStock>>;
+  getById(businessId: string, id: string): Promise<ProductWithStock | null>;
+  create(businessId: string, data: ProductCreate): Promise<Product>;
+  update(businessId: string, id: string, data: ProductUpdate): Promise<Product | null>;
+}
+
+export type MovementType = "in" | "out";
+
+/**
+ * Repository-facing create payload. Append-only (Payment/Expense-style):
+ * `businessId` is always a separate argument, never a field.
+ */
+export type InventoryMovementCreate = {
+  productId: string;
+  type: MovementType;
+  quantity: number;
+  note?: string | null;
+};
+
+export type InventoryMovement = {
+  id: string;
+  businessId: string;
+  productId: string;
+  type: MovementType;
+  quantity: number;
+  note: string | null;
+  createdAt: string;
+};
+
+export type InventoryMovementWithProduct = InventoryMovement & {
+  product: Pick<Product, "id" | "name">;
+};
+
+export type InventoryMovementListQuery = {
+  productId?: string;
+  type?: MovementType;
+  from?: string;
+  to?: string;
+  page: number;
+  pageSize: number;
+};
+
+export interface InventoryMovementRepository {
+  list(businessId: string, query: InventoryMovementListQuery): Promise<Paged<InventoryMovementWithProduct>>;
+  getById(businessId: string, id: string): Promise<InventoryMovementWithProduct | null>;
+  /**
+   * Atomic, floor-at-zero: rejects an `out` movement that would drive the
+   * product's computed quantity below zero with ZERO mutation — mirroring
+   * `PaymentRepository.createForInvoice`'s overpay-rejection pattern (locked
+   * read-check-write in mock; single guarded CTE in Postgres).
+   */
+  create(businessId: string, data: InventoryMovementCreate): Promise<InventoryMovement>;
+}

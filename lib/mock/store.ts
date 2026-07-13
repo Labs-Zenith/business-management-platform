@@ -1,4 +1,16 @@
-import type { Business, Customer, Employee, Expense, Invoice, InvoiceItem, Payment, PayrollPayment, Role } from "@/lib/services/ports";
+import type {
+  Business,
+  Customer,
+  Employee,
+  Expense,
+  InventoryMovement,
+  Invoice,
+  InvoiceItem,
+  Payment,
+  PayrollPayment,
+  Product,
+  Role,
+} from "@/lib/services/ports";
 import { seedFixtures } from "./fixtures";
 
 /**
@@ -28,6 +40,8 @@ export type MockStore = {
   expenses: Map<string, Expense>;
   employees: Map<string, Employee>;
   payrollPayments: Map<string, PayrollPayment>;
+  products: Map<string, Product>;
+  inventoryMovements: Map<string, InventoryMovement>;
   /** `businessId` -> last-used sequence number, for atomic invoice numbering. */
   invoiceSequences: Map<string, number>;
 };
@@ -43,6 +57,8 @@ export type SerializedStore = {
   expenses: Expense[];
   employees: Employee[];
   payrollPayments: PayrollPayment[];
+  products: Product[];
+  inventoryMovements: InventoryMovement[];
   invoiceSequences: Record<string, number>;
 };
 
@@ -57,6 +73,8 @@ export function serializeStore(target: MockStore = store): SerializedStore {
     expenses: [...target.expenses.values()],
     employees: [...target.employees.values()],
     payrollPayments: [...target.payrollPayments.values()],
+    products: [...target.products.values()],
+    inventoryMovements: [...target.inventoryMovements.values()],
     invoiceSequences: Object.fromEntries(target.invoiceSequences),
   };
 }
@@ -71,6 +89,8 @@ export function clearStore(target: MockStore): void {
   target.expenses.clear();
   target.employees.clear();
   target.payrollPayments.clear();
+  target.products.clear();
+  target.inventoryMovements.clear();
   target.invoiceSequences.clear();
 }
 
@@ -90,6 +110,10 @@ export function hydrateStore(data: SerializedStore, target: MockStore = store): 
   // serialized before the nomina-payroll change has neither field at all.
   for (const e of data.employees ?? []) target.employees.set(e.id, e);
   for (const p of data.payrollPayments ?? []) target.payrollPayments.set(p.id, p);
+  // Same `?? []` requirement for `products`/`inventoryMovements` — a cookie
+  // serialized before the inventario change has neither field at all.
+  for (const p of data.products ?? []) target.products.set(p.id, p);
+  for (const m of data.inventoryMovements ?? []) target.inventoryMovements.set(m.id, m);
   for (const [k, v] of Object.entries(data.invoiceSequences)) target.invoiceSequences.set(k, v);
 }
 
@@ -104,6 +128,8 @@ export function createEmptyStore(): MockStore {
     expenses: new Map(),
     employees: new Map(),
     payrollPayments: new Map(),
+    products: new Map(),
+    inventoryMovements: new Map(),
     invoiceSequences: new Map(),
   };
 }

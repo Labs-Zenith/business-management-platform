@@ -12,7 +12,7 @@ import { createEmptyStore, hydrateStore, serializeStore, type Profile, type Seri
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const PROFILE_ID = "30000000-0000-4000-8000-000000000001";
 
-function buildLegacyPayload(): Omit<SerializedStore, "expenses" | "employees" | "payrollPayments"> {
+function buildLegacyPayload(): Omit<SerializedStore, "expenses" | "employees" | "payrollPayments" | "products" | "inventoryMovements"> {
   const business: Business = {
     id: BUSINESS_ID,
     name: "Negocio Legacy",
@@ -125,5 +125,46 @@ describe("hydrateStore — backward compatibility with pre-expenses cookies (R4)
 
     expect(rehydrated.expenses.size).toBe(1);
     expect(rehydrated.expenses.get("60000000-0000-4000-8000-000000000001")?.description).toBe("Gasto de prueba");
+  });
+
+  it("does not throw when the payload is missing the products/inventoryMovements fields entirely (inventario regression)", () => {
+    const legacyPayload = buildLegacyPayload() as SerializedStore; // simulates JSON.parse of a cookie predating products/inventoryMovements
+    const target = createEmptyStore();
+
+    expect(() => hydrateStore(legacyPayload, target)).not.toThrow();
+    expect(target.products.size).toBe(0);
+    expect(target.inventoryMovements.size).toBe(0);
+  });
+
+  it("still hydrates products/inventoryMovements normally when both fields ARE present (current-format cookie)", () => {
+    const target = createEmptyStore();
+    target.products.set("90000000-0000-4000-8000-000000000001", {
+      id: "90000000-0000-4000-8000-000000000001",
+      businessId: BUSINESS_ID,
+      name: "Shampoo Profesional",
+      sku: "SHP-001",
+      unitCost: 25000,
+      minStockThreshold: 10,
+      active: true,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    });
+    target.inventoryMovements.set("a0000000-0000-4000-8000-000000000001", {
+      id: "a0000000-0000-4000-8000-000000000001",
+      businessId: BUSINESS_ID,
+      productId: "90000000-0000-4000-8000-000000000001",
+      type: "in",
+      quantity: 10,
+      note: null,
+      createdAt: "2026-07-01T00:00:00.000Z",
+    });
+    const snapshot = serializeStore(target);
+
+    const rehydrated = createEmptyStore();
+    hydrateStore(snapshot, rehydrated);
+
+    expect(rehydrated.products.size).toBe(1);
+    expect(rehydrated.inventoryMovements.size).toBe(1);
+    expect(rehydrated.products.get("90000000-0000-4000-8000-000000000001")?.name).toBe("Shampoo Profesional");
   });
 });

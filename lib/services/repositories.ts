@@ -20,18 +20,22 @@ import { businessRepo as mockBusinessRepo } from "@/lib/mock/business-repo";
 import { customerRepo as mockCustomerRepo } from "@/lib/mock/customer-repo";
 import { employeeRepo as mockEmployeeRepo } from "@/lib/mock/employee-repo";
 import { expenseRepo as mockExpenseRepo } from "@/lib/mock/expense-repo";
+import { inventoryRepo as mockInventoryRepo } from "@/lib/mock/inventory-repo";
 import { invoiceRepo as mockInvoiceRepo } from "@/lib/mock/invoice-repo";
 import { paymentRepo as mockPaymentRepo } from "@/lib/mock/payment-repo";
 import { payrollRepo as mockPayrollRepo } from "@/lib/mock/payroll-repo";
+import { productRepo as mockProductRepo } from "@/lib/mock/product-repo";
 
 import { isDbConfigured } from "@/lib/db/client";
 import { businessRepo as dbBusinessRepo } from "@/lib/db/business-repo";
 import { customerRepo as dbCustomerRepo } from "@/lib/db/customer-repo";
 import { employeeRepo as dbEmployeeRepo } from "@/lib/db/employee-repo";
 import { expenseRepo as dbExpenseRepo } from "@/lib/db/expense-repo";
+import { inventoryRepo as dbInventoryRepo } from "@/lib/db/inventory-repo";
 import { invoiceRepo as dbInvoiceRepo } from "@/lib/db/invoice-repo";
 import { paymentRepo as dbPaymentRepo } from "@/lib/db/payment-repo";
 import { payrollRepo as dbPayrollRepo } from "@/lib/db/payroll-repo";
+import { productRepo as dbProductRepo } from "@/lib/db/product-repo";
 
 export const repositories = {
   auth: authAdapter,
@@ -42,4 +46,6 @@ export const repositories = {
   expenses: isDbConfigured ? dbExpenseRepo : mockExpenseRepo,
   employees: isDbConfigured ? dbEmployeeRepo : mockEmployeeRepo,
   payroll: isDbConfigured ? dbPayrollRepo : mockPayrollRepo,
+  products: isDbConfigured ? dbProductRepo : mockProductRepo,
+  inventory: isDbConfigured ? dbInventoryRepo : mockInventoryRepo,
 };
