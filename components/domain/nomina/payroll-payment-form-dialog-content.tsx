@@ -37,7 +37,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState, type ReactElement } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import {
   Dialog,
   DialogContent,
@@ -48,6 +48,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -197,7 +198,28 @@ export default function PayrollPaymentFormDialog({ employees, trigger }: Payroll
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payroll-reference-date">Fecha de referencia</Label>
-            <Input id="payroll-reference-date" type="date" {...register("referenceDate")} />
+            {/*
+              `referenceDate` is required (`payrollPaymentFormSchema`'s
+              `z.string().trim().min(1, ...)`, no clearable/optional
+              behavior like invoice's `dueDate`) and, unlike every other
+              migrated field so far, ALSO drives the live period-preview
+              above via `useWatch({ control, name: "referenceDate" })`
+              (defined earlier in this component). `Controller`'s
+              `field.onChange` writes to the exact same RHF field state
+              `register()` did, so that `useWatch` subscriber keeps firing
+              and `preview` keeps recomputing on every pick — the
+              `computePeriod`/`periodDays`/`useWatch` logic itself is
+              untouched, only this input mechanism changed. See
+              `payroll-payment-form-dialog-content.test.tsx`'s "live period
+              preview" tests for the empirical proof this survives.
+            */}
+            <Controller
+              control={control}
+              name="referenceDate"
+              render={({ field }) => (
+                <DatePicker id="payroll-reference-date" value={field.value} onChange={field.onChange} />
+              )}
+            />
             {errors.referenceDate ? (
               <p className="text-xs text-destructive">{errors.referenceDate.message}</p>
             ) : null}
@@ -209,7 +231,13 @@ export default function PayrollPaymentFormDialog({ employees, trigger }: Payroll
           ) : null}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payroll-payment-date">Fecha de pago</Label>
-            <Input id="payroll-payment-date" type="date" {...register("paymentDate")} />
+            <Controller
+              control={control}
+              name="paymentDate"
+              render={({ field }) => (
+                <DatePicker id="payroll-payment-date" value={field.value} onChange={field.onChange} />
+              )}
+            />
             {errors.paymentDate ? <p className="text-xs text-destructive">{errors.paymentDate.message}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">

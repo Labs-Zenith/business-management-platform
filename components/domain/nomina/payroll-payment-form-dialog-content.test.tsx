@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { computePeriod, periodDays } from "@/lib/services/payroll-period";
+import { clearDay, displayDate, pickDay } from "@/components/ui/date-picker-test-helpers";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -33,6 +36,8 @@ describe("PayrollPaymentFormDialog", () => {
 
   it("POSTs the correct payload (employeeId, amount in cents, periodType, dates, notes) to /api/payroll-payments, closes, and refreshes on success", async () => {
     const user = userEvent.setup();
+    // Pin "today" so the Calendar opens on a known month without navigation.
+    vi.setSystemTime(new Date(2026, 6, 7));
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ data: { id: "payment-1" } }),
@@ -48,8 +53,12 @@ describe("PayrollPaymentFormDialog", () => {
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
     await user.selectOptions(screen.getByLabelText(/tipo de periodo/i), "mensual");
-    fireEvent.change(screen.getByLabelText(/fecha de referencia/i), { target: { value: "2026-07-20" } });
-    fireEvent.change(screen.getByLabelText(/fecha de pago/i), { target: { value: "2026-07-20" } });
+
+    const targetDate = new Date(2026, 6, 20);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha de referencia/i, dayLabel);
+    await pickDay(user, /fecha de pago/i, dayLabel);
+
     await user.type(screen.getByLabelText(/nota/i), "Pago julio");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
@@ -218,8 +227,11 @@ describe("PayrollPaymentFormDialog", () => {
 
     await openDialog(user);
 
-    expect(await screen.findByLabelText(/fecha de referencia/i)).toHaveValue(expectedLocalDate);
-    expect(screen.getByLabelText(/fecha de pago/i)).toHaveValue(expectedLocalDate);
+    // The native `type="date"` inputs are gone — both triggers are now
+    // `<button>`s labeled via `<Label htmlFor>`, displaying the
+    // `DatePicker`'s "d MMM yyyy" formatted text instead of an ISO `value`.
+    expect(await screen.findByLabelText(/fecha de referencia/i)).toHaveTextContent(displayDate(expectedLocalDate));
+    expect(screen.getByLabelText(/fecha de pago/i)).toHaveTextContent(displayDate(expectedLocalDate));
   });
 
   it("renders the empty-state fallback option and blocks submission via required-field validation when there are zero active employees", async () => {
@@ -243,15 +255,52 @@ describe("PayrollPaymentFormDialog", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("blocks submission client-side when paymentDate is cleared via the DatePicker's toggle-to-clear gesture (no request sent)", async () => {
+    // `paymentDate` is required (`payrollPaymentFormSchema`'s
+    // `z.string().trim().min(1, ...)`), mirroring `invoice-form-content.test.tsx`'s
+    // "blocks submission client-side when issueDate is cleared..." precedent.
+    // Unlike `referenceDate`, `paymentDate` does not drive the live period
+    // preview, so no preview assertion is needed here.
+    const user = userEvent.setup();
+    vi.setSystemTime(new Date(2026, 6, 7));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+    );
+
+    await openDialog(user);
+    await user.clear(screen.getByLabelText(/monto/i));
+    await user.type(screen.getByLabelText(/monto/i), "500");
+
+    // Pick a non-today day first so the clear-gesture lookup (`clearDay`)
+    // never collides with react-day-picker's "Hoy, " accessible-name prefix.
+    const targetDate = new Date(2026, 6, 20);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha de pago/i, dayLabel);
+    await clearDay(user, /fecha de pago/i, dayLabel);
+
+    expect(screen.getByLabelText(/fecha de pago/i)).toHaveTextContent(/seleccionar fecha/i);
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    expect(await screen.findByText(/fecha de pago requerida/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   describe("live period preview", () => {
     it("shows the quincenal first-half range for a reference date in the first half of the month", async () => {
       const user = userEvent.setup();
+      vi.setSystemTime(new Date(2026, 6, 7));
       render(
         <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
       );
 
       await openDialog(user);
-      fireEvent.change(await screen.findByLabelText(/fecha de referencia/i), { target: { value: "2026-07-05" } });
+      const targetDate = new Date(2026, 6, 5);
+      const dayLabel = format(targetDate, "PPPP", { locale: es });
+      await pickDay(user, /fecha de referencia/i, dayLabel);
 
       const expected = computePeriod("quincenal", "2026-07-05");
       const expectedDays = periodDays(expected.periodStart, expected.periodEnd);
@@ -261,39 +310,55 @@ describe("PayrollPaymentFormDialog", () => {
       expect(preview).toHaveTextContent(`${expectedDays}`);
     });
 
-    it("updates the preview when the reference date crosses the 15th/16th boundary (quincenal)", async () => {
+    it("updates the preview when the reference date crosses the 15th/16th boundary (quincenal), picked via the Calendar", async () => {
+      // THE single most important test in this change: proves the
+      // `useWatch({ control, name: "referenceDate" })` -> `computePeriod`/
+      // `periodDays` preview wiring (byte-for-byte unchanged per design.md)
+      // still reacts correctly when `referenceDate` is now driven by
+      // `Controller`'s `field.onChange` (via the Calendar UI) instead of
+      // `register()`'s native `onChange` — not just that the field's value
+      // changes, but that the LIVE preview text re-renders with the
+      // correctly recomputed range for each newly picked date.
       const user = userEvent.setup();
+      vi.setSystemTime(new Date(2026, 6, 1));
       render(
         <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
       );
 
       await openDialog(user);
-      const referenceDateInput = await screen.findByLabelText(/fecha de referencia/i);
 
-      fireEvent.change(referenceDateInput, { target: { value: "2026-07-15" } });
+      const day15 = new Date(2026, 6, 15);
+      const day15Label = format(day15, "PPPP", { locale: es });
+      await pickDay(user, /fecha de referencia/i, day15Label);
+
       const firstHalf = computePeriod("quincenal", "2026-07-15");
-      expect(await screen.findByTestId("payroll-period-preview")).toHaveTextContent(
-        `${firstHalf.periodStart}`,
-      );
+      expect(await screen.findByTestId("payroll-period-preview")).toHaveTextContent(`${firstHalf.periodStart}`);
       expect(screen.getByTestId("payroll-period-preview")).toHaveTextContent(`${firstHalf.periodEnd}`);
 
-      fireEvent.change(referenceDateInput, { target: { value: "2026-07-16" } });
+      // Re-open the picker and pick the 16th — crossing the quincenal
+      // boundary — proving the preview recomputes AGAIN for the new date,
+      // not just once on first pick.
+      const day16 = new Date(2026, 6, 16);
+      const day16Label = format(day16, "PPPP", { locale: es });
+      await pickDay(user, /fecha de referencia/i, day16Label);
+
       const secondHalf = computePeriod("quincenal", "2026-07-16");
       expect(secondHalf.periodStart).not.toBe(firstHalf.periodStart);
-      expect(await screen.findByTestId("payroll-period-preview")).toHaveTextContent(
-        `${secondHalf.periodStart}`,
-      );
+      expect(await screen.findByTestId("payroll-period-preview")).toHaveTextContent(`${secondHalf.periodStart}`);
       expect(screen.getByTestId("payroll-period-preview")).toHaveTextContent(`${secondHalf.periodEnd}`);
     });
 
-    it("updates the preview when periodType toggles between quincenal and mensual for the same reference date", async () => {
+    it("updates the preview when periodType toggles between quincenal and mensual for the same Calendar-picked reference date", async () => {
       const user = userEvent.setup();
+      vi.setSystemTime(new Date(2026, 6, 7));
       render(
         <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
       );
 
       await openDialog(user);
-      fireEvent.change(await screen.findByLabelText(/fecha de referencia/i), { target: { value: "2026-07-20" } });
+      const targetDate = new Date(2026, 6, 20);
+      const dayLabel = format(targetDate, "PPPP", { locale: es });
+      await pickDay(user, /fecha de referencia/i, dayLabel);
 
       const quincenal = computePeriod("quincenal", "2026-07-20");
       expect(await screen.findByTestId("payroll-period-preview")).toHaveTextContent(`${quincenal.periodStart}`);
@@ -305,6 +370,52 @@ describe("PayrollPaymentFormDialog", () => {
       expect(mensual.periodStart).not.toBe(quincenal.periodStart);
       expect(await screen.findByTestId("payroll-period-preview")).toHaveTextContent(`${mensual.periodStart}`);
       expect(screen.getByTestId("payroll-period-preview")).toHaveTextContent(`${mensual.periodEnd}`);
+    });
+
+    it("hides the preview and blocks submission client-side when referenceDate is cleared via the DatePicker's toggle-to-clear gesture (no request sent)", async () => {
+      // `referenceDate` is required (`payrollPaymentFormSchema`'s
+      // `z.string().trim().min(1, ...)`), mirroring
+      // `invoice-form-content.test.tsx`'s "blocks submission client-side when
+      // issueDate is cleared..." precedent. `referenceDate` ALSO drives the
+      // live period preview via
+      // `referenceDate && !Number.isNaN(Date.parse(referenceDate))` (see
+      // `payroll-payment-form-dialog-content.tsx`) — once cleared back to
+      // `""`, that guard is falsy and the preview `<p data-testid=
+      // "payroll-period-preview">` is not rendered at all (rather than
+      // continuing to show the previously-computed, now-stale range), so this
+      // test proves both the validation-blocking AND the preview's graceful
+      // disappearance.
+      const user = userEvent.setup();
+      vi.setSystemTime(new Date(2026, 6, 7));
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(
+        <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      );
+
+      await openDialog(user);
+      await user.clear(screen.getByLabelText(/monto/i));
+      await user.type(screen.getByLabelText(/monto/i), "500");
+
+      // Pick a non-today day first so the clear-gesture lookup (`clearDay`)
+      // never collides with react-day-picker's "Hoy, " accessible-name prefix.
+      const targetDate = new Date(2026, 6, 20);
+      const dayLabel = format(targetDate, "PPPP", { locale: es });
+      await pickDay(user, /fecha de referencia/i, dayLabel);
+
+      expect(await screen.findByTestId("payroll-period-preview")).toBeInTheDocument();
+
+      await clearDay(user, /fecha de referencia/i, dayLabel);
+
+      expect(screen.getByLabelText(/fecha de referencia/i)).toHaveTextContent(/seleccionar fecha/i);
+      expect(screen.queryByTestId("payroll-period-preview")).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      expect(await screen.findByText(/fecha de referencia requerida/i)).toBeInTheDocument();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("payroll-period-preview")).not.toBeInTheDocument();
     });
   });
 });

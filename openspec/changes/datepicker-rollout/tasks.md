@@ -49,11 +49,11 @@ Chain strategy: feature-branch-chain
 
 ## Phase 3: Payroll RHF Migration — Isolated, Highest Risk (PR3)
 
-- [ ] 3.1 In `components/domain/nomina/payroll-payment-form-dialog-content.tsx`, replace `referenceDate` and `paymentDate` native inputs with `Controller`-wrapped `DatePicker`, using `field.onChange(newIso)` exactly as design.md specifies.
-- [ ] 3.2 Leave the existing `useWatch({control, name: "referenceDate"})` → `computePeriod`/`periodDays` preview block, and the `periodType` `register()`/`useWatch` code, byte-for-byte unchanged.
-- [ ] 3.3 Update `components/domain/nomina/payroll-payment-form-dialog-content.test.tsx`: replace date-setting steps with `pickDay`; keep existing `computePeriod`/`periodDays` assertions.
-- [ ] 3.4 Add an EXPLICIT new test proving the live period-preview updates when a date is picked via the Calendar UI (not just that field value changes): pick a `referenceDate` day via `pickDay`, then assert the rendered preview text/period days reflects the new date — this is the single most important test in this change.
-- [ ] 3.5 Verify: `npm run test -- payroll-payment-form-dialog-content`, `npx tsc --noEmit`, `npm run build`.
+- [x] 3.1 In `components/domain/nomina/payroll-payment-form-dialog-content.tsx`, replace `referenceDate` and `paymentDate` native inputs with `Controller`-wrapped `DatePicker`, using `field.onChange(newIso)` exactly as design.md specifies.
+- [x] 3.2 Leave the existing `useWatch({control, name: "referenceDate"})` → `computePeriod`/`periodDays` preview block, and the `periodType` `register()`/`useWatch` code, byte-for-byte unchanged.
+- [x] 3.3 Update `components/domain/nomina/payroll-payment-form-dialog-content.test.tsx`: replace date-setting steps with `pickDay`; keep existing `computePeriod`/`periodDays` assertions.
+- [x] 3.4 Add an EXPLICIT new test proving the live period-preview updates when a date is picked via the Calendar UI (not just that field value changes): pick a `referenceDate` day via `pickDay`, then assert the rendered preview text/period days reflects the new date — this is the single most important test in this change.
+- [x] 3.5 Verify: `npm run test -- payroll-payment-form-dialog-content`, `npx tsc --noEmit`, `npm run build`.
 
 ## Phase 4: Payment Dialog + Native-GET Filter Islands (PR4)
 
