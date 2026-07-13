@@ -94,16 +94,14 @@ describe("DashboardPage (Ingresos/Egresos tabs)", () => {
     expect(screen.getByRole("button", { name: "Crear factura" })).toBeInTheDocument();
   });
 
-  it("offers Excel and PDF export links for the full dashboard, with no filter params", () => {
+  it("offers a single Exportar trigger for the full dashboard export (format picked from its dropdown)", () => {
     render(<DashboardPage />);
 
-    expect(screen.getByRole("button", { name: "Excel" })).toHaveAttribute(
-      "href",
-      "/api/dashboard/export?format=xlsx",
-    );
-    expect(screen.getByRole("button", { name: "PDF" })).toHaveAttribute(
-      "href",
-      "/api/dashboard/export?format=pdf",
-    );
+    expect(screen.getByRole("button", { name: /exportar/i })).toBeInTheDocument();
+    // The old separate Excel/PDF buttons are gone from the header — picking
+    // the format now happens inside DashboardExportMenu's dropdown, which is
+    // covered by that component's own co-located test.
+    expect(screen.queryByRole("button", { name: "Excel" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "PDF" })).not.toBeInTheDocument();
   });
 });
