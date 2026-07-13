@@ -39,8 +39,8 @@ Chain strategy: pending
 
 ## Phase 3: Export Route (PR 3)
 
-- [ ] 3.1 Create `app/api/dashboard/export/route.ts`: `export const runtime = "nodejs"`; `GET = withApiHandler` calling `requireSession()`, `parseExportFormat`, then `Promise.all([getDashboardSummary, getDashboardCharts, getExpensesSummary])` into `DashboardExportData`. Dispatch xlsx→`renderDashboardWorkbook`, pdf→`renderDashboardExportPdf`; return `binaryAttachment(buf, mime, "dashboard", ext)`. Mirror `app/api/invoices/export/route.ts`.
-- [ ] 3.2 Create `app/api/dashboard/export/dashboard-export-route.test.ts` mirroring `invoices-export-route.test.ts` (hoisted `mockCookieJar`, `next/headers` mock, demo sign-in, `resetStore`): xlsx returns 200 + 8 worksheets + `content-disposition` `dashboard-`; pdf returns `%PDF`; `format=csv`→400 `VALIDATION_ERROR`.
+- [x] 3.1 Create `app/api/dashboard/export/route.ts`: `export const runtime = "nodejs"`; `GET = withApiHandler` calling `requireSession()`, `parseExportFormat`, then `Promise.all([getDashboardSummary, getDashboardCharts, getExpensesSummary])` into `DashboardExportData`. Dispatch xlsx→`renderDashboardWorkbook`, pdf→`renderDashboardExportPdf`; return `binaryAttachment(buf, mime, "dashboard", ext)`. Mirror `app/api/invoices/export/route.ts`.
+- [x] 3.2 Create `app/api/dashboard/export/dashboard-export-route.test.ts` mirroring `invoices-export-route.test.ts` (hoisted `mockCookieJar`, `next/headers` mock, demo sign-in, `resetStore`): xlsx returns 200 + 8 worksheets + `content-disposition` `dashboard-`; pdf returns `%PDF`; `format=csv`→400 `VALIDATION_ERROR`.
 
 ## Phase 4: UI Export Buttons (PR 4)
 
