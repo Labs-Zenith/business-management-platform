@@ -24,7 +24,7 @@ Products are editable (Employee-style CRUD). Movements are append-only (Payment/
                                                       │
                                               repositories.inventory.create
                                                       │  (atomic guard)
-                        mock: withLock(productId) recompute+reject   pg: CTE+INSERT FOR UPDATE
+                        mock: withLock(productId) recompute+reject   pg: two-statement sql.transaction (lock, then guarded INSERT)
                                                       │
     Page (Productos tab) ──list()──→ repo SUMs movements per product ──→ ProductWithStock[]
 
@@ -37,7 +37,7 @@ Products are editable (Employee-style CRUD). Movements are append-only (Payment/
 | `lib/mock/product-repo.ts` | Create | Editable CRUD + SUM-derived stock |
 | `lib/db/product-repo.ts` | Create | Same, Postgres |
 | `lib/mock/inventory-repo.ts` | Create | Append-only + `withLock` out-guard |
-| `lib/db/inventory-repo.ts` | Create | Append-only + CTE out-guard |
+| `lib/db/inventory-repo.ts` | Create | Append-only + two-statement transaction out-guard |
 | `lib/services/product-service.ts` | Create | Employee-service-style CRUD |
 | `lib/services/inventory-service.ts` | Create | `recordMovement()` pass-through |
 | `lib/services/repositories.ts` | Modify | Wire `products` + `inventory` (mock/db) |
@@ -211,7 +211,7 @@ Add `products: Map<string, Product>` and `inventoryMovements: Map<string, Invent
 |-------|------|----------|
 | Unit | Stock SUM (in−out), `isLowStock`, `totalValue` | Repo-level, both backends |
 | Unit | Out-guard rejects over-draw with zero mutation | Snapshot store before/after (mirror `payment-service.test.ts`) |
-| Concurrency | Two parallel out-movements can't over-draw | `Promise.all` under `withLock` (mock); document pg `FOR UPDATE` |
+| Concurrency | Two parallel out-movements can't over-draw | `Promise.all` under `withLock` (mock); two-statement `sql.transaction` verified empirically against real Postgres 16 (Docker) |
 | Route | `requireSession()` (no capability gate), `checkOrigin` on POST/PATCH | Mirror employee route tests |
 
 ## Migration / Rollout

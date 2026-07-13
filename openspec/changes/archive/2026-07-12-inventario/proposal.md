@@ -48,7 +48,7 @@ Fase 2 plan point 7. Businesses have no way to track product stock. Add a produc
 | Risk | Likelihood | Mitigation |
 |------|------------|------------|
 | Per-product SUM on every list render | Med | Accepted cost class — same as `invoices.list()` payment aggregation; not a new risk category |
-| Concurrent out movements over-draw stock | Low | Locked read-check-write (mock) / guarded CTE (Postgres), zero mutation on reject |
+| Concurrent out movements over-draw stock | Low | Locked read-check-write (mock) / guarded transaction (Postgres), zero mutation on reject |
 | Multi-tenant leak | Low | All queries scoped by `business_id`; getById cross-business → `null` |
 
 ## Rollback Plan
@@ -61,6 +61,6 @@ Revert the branch; run `migrate down` (drops `inventory_movements` then `product
 
 ## Success Criteria
 
-- [ ] Recording in/out movements changes computed quantity correctly; out beyond stock is rejected with no mutation.
-- [ ] Products report shows quantity, total value, and low-stock flag per product's own threshold.
-- [ ] Postgres and mock backends produce identical behavior; `npm run test` and `npm run build` pass.
+- [x] Recording in/out movements changes computed quantity correctly; out beyond stock is rejected with no mutation.
+- [x] Products report shows quantity, total value, and low-stock flag per product's own threshold.
+- [x] Postgres and mock backends produce identical behavior; `npm run test` and `npm run build` pass.
