@@ -23,7 +23,7 @@ export async function TopDebtors() {
         <CardTitle>Clientes con mayor saldo</CardTitle>
       </CardHeader>
       <CardContent>
-        <Table>
+        <Table className="min-w-[360px]">
           <TableHeader>
             <TableRow>
               <TableHead>Cliente</TableHead>

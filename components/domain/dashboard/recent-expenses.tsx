@@ -23,7 +23,7 @@ export async function RecentExpenses() {
         <CardTitle>Gastos recientes</CardTitle>
       </CardHeader>
       <CardContent>
-        <Table>
+        <Table className="min-w-[640px]">
           <TableHeader>
             <TableRow>
               <TableHead>Fecha</TableHead>

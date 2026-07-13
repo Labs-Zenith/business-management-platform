@@ -34,7 +34,7 @@ export async function MovementsPanel({ session, entityType, entityId }: Movement
         <CardTitle>Movimientos</CardTitle>
       </CardHeader>
       <CardContent>
-        <Table>
+        <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow>
               <TableHead>Accion</TableHead>

@@ -36,7 +36,7 @@ export async function OverdueList() {
         <CardTitle>Facturas vencidas</CardTitle>
       </CardHeader>
       <CardContent>
-        <Table>
+        <Table className="min-w-[640px]">
           <TableHeader>
             <TableRow>
               <TableHead>Numero</TableHead>
