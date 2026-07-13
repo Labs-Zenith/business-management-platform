@@ -28,6 +28,7 @@ const mockCustomersGetById = vi.fn<(businessId: string, id: string) => Promise<C
 const mockInvoicesCreate = vi.fn<(businessId: string, data: InvoicePersist) => Promise<InvoiceDetail>>();
 const mockInvoicesList = vi.fn<(businessId: string, query: InvoiceListQuery) => Promise<Paged<InvoiceWithFinance>>>();
 const mockInvoicesGetById = vi.fn<(businessId: string, id: string) => Promise<InvoiceDetail | null>>();
+const mockInvoicesUpdate = vi.fn<(businessId: string, id: string, data: InvoicePersist) => Promise<InvoiceDetail | null>>();
 
 vi.mock("@/lib/services/repositories", () => ({
   repositories: {
@@ -38,11 +39,12 @@ vi.mock("@/lib/services/repositories", () => ({
       create: (businessId: string, data: InvoicePersist) => mockInvoicesCreate(businessId, data),
       list: (businessId: string, query: InvoiceListQuery) => mockInvoicesList(businessId, query),
       getById: (businessId: string, id: string) => mockInvoicesGetById(businessId, id),
+      update: (businessId: string, id: string, data: InvoicePersist) => mockInvoicesUpdate(businessId, id, data),
     },
   },
 }));
 
-import { createInvoice, getInvoice, listInvoices } from "./invoice-service";
+import { createInvoice, getInvoice, listInvoices, updateInvoice } from "./invoice-service";
 
 const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
@@ -266,6 +268,146 @@ describe("getInvoice", () => {
     await expect(getInvoice(SESSION, "cross-business-invoice-id")).rejects.toMatchObject({
       code: "NOT_FOUND",
       status: 404,
+    });
+  });
+});
+
+describe("updateInvoice", () => {
+  const VALID_UPDATE = {
+    customerId: CUSTOMER_ID,
+    issueDate: "2026-07-09",
+    dueDate: "2026-08-09",
+    items: [{ description: "Servicio editado", quantity: 1, unitPrice: 300000 }],
+    notes: null,
+  };
+
+  beforeEach(() => {
+    mockInvoicesGetById.mockReset();
+    mockCustomersGetById.mockReset();
+    mockInvoicesUpdate.mockReset();
+  });
+
+  it("rejects with CONFLICT before reaching the repository when the invoice has any payment recorded (paidAmount !== 0), and never calls repositories.invoices.update", async () => {
+    const paidInvoice = buildInvoiceDetail({ status: "partially_paid" });
+    mockInvoicesGetById.mockResolvedValue({ ...paidInvoice, paidAmount: 50000, balance: paidInvoice.total - 50000 });
+
+    await expect(updateInvoice(SESSION, paidInvoice.id, VALID_UPDATE)).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(mockCustomersGetById).not.toHaveBeenCalled();
+    expect(mockInvoicesUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects with CONFLICT for a fully-paid invoice (paidAmount === total, balance === 0), same edit-lock rule as any paidAmount > 0", async () => {
+    const fullyPaid = buildInvoiceDetail({ status: "paid" });
+    mockInvoicesGetById.mockResolvedValue({ ...fullyPaid, paidAmount: fullyPaid.total, balance: 0 });
+
+    await expect(updateInvoice(SESSION, fullyPaid.id, VALID_UPDATE)).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(mockInvoicesUpdate).not.toHaveBeenCalled();
+  });
+
+  it("proceeds to the repository when the invoice has zero payments, computing subtotal/total/status server-side and never accepting number", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending" });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    mockInvoicesUpdate.mockResolvedValue(buildInvoiceDetail());
+
+    await updateInvoice(SESSION, zeroPaymentInvoice.id, VALID_UPDATE);
+
+    expect(mockCustomersGetById).toHaveBeenCalledWith(SESSION.businessId, CUSTOMER_ID);
+    expect(mockInvoicesUpdate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      zeroPaymentInvoice.id,
+      expect.objectContaining({
+        customerId: CUSTOMER_ID,
+        subtotal: lineTotal(1, 300000),
+        total: lineTotal(1, 300000),
+        status: "pending",
+      }),
+    );
+    const persisted = mockInvoicesUpdate.mock.calls[0][2] as unknown as Record<string, unknown>;
+    expect(persisted.number).toBeUndefined();
+  });
+
+  it("rejects an unknown/cross-business customerId with NOT_FOUND, never calling repositories.invoices.update", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending" });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(null);
+
+    await expect(updateInvoice(SESSION, zeroPaymentInvoice.id, VALID_UPDATE)).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(mockInvoicesUpdate).not.toHaveBeenCalled();
+  });
+
+  it("aborts with VALIDATION_ERROR before any repo call when an item has quantity <= 0", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending" });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+
+    const invalidInput = { ...VALID_UPDATE, items: [{ description: "Invalido", quantity: 0, unitPrice: 100000 }] };
+
+    await expect(updateInvoice(SESSION, zeroPaymentInvoice.id, invalidInput)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(mockInvoicesUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects an edit down to ZERO items with VALIDATION_ERROR before any repo call (an edit must not be a backdoor to an empty invoice, matching createInvoice's schema-level .min(1))", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending" });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+
+    const emptyItems = { ...VALID_UPDATE, items: [] as typeof VALID_UPDATE.items };
+
+    await expect(updateInvoice(SESSION, zeroPaymentInvoice.id, emptyItems)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(mockInvoicesUpdate).not.toHaveBeenCalled();
+  });
+
+  it("ignores/overwrites forged number/status/total/subtotal/business_id even when force-cast directly onto the input object", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending" });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    mockInvoicesUpdate.mockResolvedValue(buildInvoiceDetail());
+
+    const forged = {
+      ...VALID_UPDATE,
+      number: "FAC-FORGED",
+      status: "paid",
+      subtotal: 1,
+      total: 1,
+      business_id: OTHER_BUSINESS_ID,
+    } as unknown as typeof VALID_UPDATE;
+
+    await updateInvoice(SESSION, zeroPaymentInvoice.id, forged);
+
+    expect(mockInvoicesUpdate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      zeroPaymentInvoice.id,
+      expect.objectContaining({
+        total: lineTotal(1, 300000),
+        subtotal: lineTotal(1, 300000),
+        status: "pending",
+      }),
+    );
+    expect(mockInvoicesUpdate).not.toHaveBeenCalledWith(OTHER_BUSINESS_ID, expect.anything(), expect.anything());
+    const persisted = mockInvoicesUpdate.mock.calls[0][2] as unknown as Record<string, unknown>;
+    expect(persisted.number).toBeUndefined();
+    expect(persisted.business_id).toBeUndefined();
+  });
+
+  it("throws NOT_FOUND when the repository's update resolves null (e.g. deleted/cross-business between check and write)", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending" });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    mockInvoicesUpdate.mockResolvedValue(null);
+
+    await expect(updateInvoice(SESSION, zeroPaymentInvoice.id, VALID_UPDATE)).rejects.toMatchObject({
+      code: "NOT_FOUND",
     });
   });
 });

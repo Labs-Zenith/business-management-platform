@@ -23,6 +23,10 @@ const { mockSql } = vi.hoisted(() => {
 vi.mock("./client", () => ({
   sql: mockSql,
   isDbConfigured: true,
+  // Shared helper (Fix 6) delegates to the mocked `sql.transaction` so the
+  // existing `mockSql.transaction` assertions keep working unchanged.
+  runTransaction: (queries: unknown[]) =>
+    (mockSql.transaction as unknown as (q: unknown[]) => Promise<unknown[]>)(queries),
 }));
 
 const { inventoryRepo } = await import("./inventory-repo");

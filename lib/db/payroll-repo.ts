@@ -7,18 +7,16 @@ import type {
   PayrollPaymentRepository,
   PayrollPaymentWithEmployee,
 } from "@/lib/services/ports";
-import { sql } from "./client";
+import { runTransaction, sql } from "./client";
 
 /**
- * `create` is the codebase's FIRST true multi-statement transaction. Uses
- * the Neon HTTP driver's `sql.transaction([...])` (confirmed in
- * `node_modules/@neondatabase/serverless/index.d.ts` — `NeonQueryFunction.transaction`),
- * which runs an array of queries as a single non-interactive Postgres
- * transaction over one HTTPS request (atomic: both succeed or neither
- * persists). The two INSERTs here are data-independent (no FK between
- * `expenses` and `payroll_payments`, neither needs the other's generated
- * id), so the driver's only limitation — non-interactive, can't feed one
- * query's result into another within the same call — does not apply.
+ * `create` is the codebase's FIRST true multi-statement transaction, via the
+ * shared `runTransaction` helper (Neon's non-interactive `sql.transaction`;
+ * see `client.ts` for the canonical mechanism note). The two INSERTs here are
+ * data-independent (no FK between `expenses` and `payroll_payments`, neither
+ * needs the other's generated id), so the non-interactive limitation does not
+ * apply. NOTE: unlike `inventory`/`payment`/`invoice`, this is NOT a
+ * `FOR UPDATE` concurrency guard — just an all-or-nothing atomic double insert.
  */
 
 type PayrollPaymentRow = {
@@ -93,12 +91,6 @@ export const payrollRepo: PayrollPaymentRepository = {
   },
 
   async create(businessId: string, data: PayrollPaymentPersist, expense: ExpenseInput): Promise<PayrollPayment> {
-    // `as unknown as Parameters<typeof sql.transaction>[0]`: each tagged-
-    // template call below infers a slightly different `NeonQueryPromise`
-    // instantiation (one has a `RETURNING *` result shape, the other does
-    // not), which the driver's homogeneous-array `transaction()` signature
-    // can't unify on its own — this cast is purely a TS ergonomics fix, not
-    // a behavior change; both queries still run as one real transaction.
     const queries = [
       sql`INSERT INTO payroll_payments
             (id, business_id, employee_id, amount, period_type, period_start, period_end, payment_date, notes)
@@ -109,9 +101,8 @@ export const payrollRepo: PayrollPaymentRepository = {
           VALUES (gen_random_uuid(), ${businessId}, ${expense.category}, ${expense.expenseDate}, ${expense.description},
                   ${expense.amount}, ${expense.notes ?? null})`,
     ];
-    const runTransaction = sql.transaction as (queries: unknown[]) => Promise<unknown[]>;
 
-    const [payrollRows] = (await runTransaction(queries)) as unknown as [PayrollPaymentRow[], unknown];
+    const [payrollRows] = await runTransaction<[PayrollPaymentRow[], unknown]>(queries);
 
     return toPayrollPayment(payrollRows[0]!);
   },

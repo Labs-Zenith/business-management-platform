@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/server/api-error";
 import { computeStatus } from "@/lib/services/status";
 import type {
   Customer,
@@ -136,6 +137,66 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
         }
 
         return toInvoiceDetail(store, invoice);
+      });
+    },
+
+    async update(businessId: string, id: string, data: InvoicePersist): Promise<InvoiceDetail | null> {
+      // Same lock key `payment-repo.ts#createForInvoice` uses for this
+      // invoice — both writers serialize on the SAME in-process mutex, which
+      // is what makes the read-check-write sequence below atomic against a
+      // concurrent payment registration (see
+      // `openspec/changes/audit-log/design.md`'s "Edit-Lock Race Mechanism").
+      return withLock(id, async () => {
+        const existing = store.invoices.get(id);
+        if (!existing || existing.businessId !== businessId) {
+          // Cross-business or missing: `null`, never leaked — matches
+          // `getById`'s convention; the service maps this to `NOT_FOUND`.
+          return null;
+        }
+
+        // Defense in depth: re-verify zero-payments here too, even though
+        // `updateInvoice` (service) already checked — never trust that the
+        // service layer is the only caller.
+        if (paymentsForInvoice(store, id).length > 0) {
+          throw new ApiError("CONFLICT", "Invoice cannot be edited once a payment has been recorded.");
+        }
+
+        // Replace items wholesale: delete all existing items for this
+        // invoice, then insert the new set — only after the payment guard
+        // above already passed, so a rejected edit never touches items.
+        for (const [itemId, item] of store.invoiceItems) {
+          if (item.invoiceId === id) {
+            store.invoiceItems.delete(itemId);
+          }
+        }
+        const newItems: InvoiceItem[] = data.items.map((item) => ({
+          id: generateId(),
+          invoiceId: id,
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          lineTotal: item.lineTotal,
+        }));
+        for (const item of newItems) {
+          store.invoiceItems.set(item.id, item);
+        }
+
+        const updated: Invoice = {
+          ...existing,
+          // `number` is deliberately NOT overwritten — immutable, per
+          // `InvoiceUpdate`'s contract.
+          customerId: data.customerId,
+          issueDate: data.issueDate,
+          dueDate: data.dueDate,
+          subtotal: data.subtotal,
+          total: data.total,
+          status: data.status,
+          notes: data.notes,
+          updatedAt: new Date().toISOString(),
+        };
+        store.invoices.set(id, updated);
+
+        return toInvoiceDetail(store, updated);
       });
     },
   };

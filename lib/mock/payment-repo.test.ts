@@ -130,6 +130,37 @@ describe("paymentRepo.createForInvoice — overpay race (safety-critical)", () =
     expect(unchanged!.payments).toHaveLength(0);
   });
 
+  it("accepts a payment whose amount EXACTLY equals the remaining balance (the `<=` boundary), driving the invoice to fully paid without rejecting it as an overpay", async () => {
+    // Exact-boundary case: the mock guard is `if (data.amount > balance)
+    // reject`, so an amount EQUAL to the balance must be accepted — proving
+    // the boundary is `<=`, not an accidental `<` that would wrongly reject a
+    // full/exact payment. Distinct from the overpay (amount > balance) and
+    // generic-partial cases already covered above.
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(200000));
+
+    // First a partial payment, leaving a non-round remaining balance...
+    await paymentRepo.createForInvoice(BUSINESS_ID, invoice.id, {
+      paymentDate: "2026-07-08",
+      amount: 120000,
+      method: "cash",
+      notes: null,
+    });
+
+    // ...then a second payment for EXACTLY the remaining 80000 balance.
+    const updated = await paymentRepo.createForInvoice(BUSINESS_ID, invoice.id, {
+      paymentDate: "2026-07-09",
+      amount: 80000,
+      method: "transfer",
+      notes: null,
+    });
+
+    expect(updated.paidAmount).toBe(200000);
+    expect(updated.balance).toBe(0);
+    expect(updated.status).toBe("paid");
+    expect(updated.payments).toHaveLength(2);
+  });
+
   it("derives customer_id from the invoice, ignoring any client-supplied customer id", async () => {
     resetStore();
     const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(100000));

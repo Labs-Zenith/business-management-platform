@@ -196,11 +196,37 @@ export type InvoiceListQuery = {
   pageSize: number;
 };
 
+/**
+ * Service-facing edit input (mirrors `InvoiceCreateInput`'s shape exactly).
+ * `number` is deliberately excluded — it is immutable and never accepted on
+ * edit, matching `openspec/changes/audit-log/design.md`'s "Interfaces /
+ * Contracts" section.
+ */
+export type InvoiceUpdate = {
+  customerId: string;
+  issueDate: string;
+  dueDate?: string | null;
+  items: InvoiceItemInput[];
+  notes?: string | null;
+};
+
 export interface InvoiceRepository {
   list(businessId: string, query: InvoiceListQuery): Promise<Paged<InvoiceWithFinance>>;
   getById(businessId: string, id: string): Promise<InvoiceDetail | null>;
   /** Atomic: generates the per-business `number` and persists invoice+items together. */
   create(businessId: string, data: InvoicePersist): Promise<InvoiceDetail>;
+  /**
+   * Edit-lock defense in depth (see
+   * `openspec/changes/audit-log/design.md`'s "Edit-Lock Race Mechanism"):
+   * atomically re-verifies zero-payments before persisting, regardless of
+   * what the service layer already checked. Returns `null` if `id` is
+   * missing or belongs to a different business (never leaked, matching
+   * `getById`'s convention). Throws `ApiError("CONFLICT", ...)` if the
+   * invoice has any payment recorded — zero mutation on rejection. `number`
+   * is never accepted here; the existing invoice's `number` is preserved
+   * untouched. Items are replaced wholesale (delete + re-insert).
+   */
+  update(businessId: string, id: string, data: InvoicePersist): Promise<InvoiceDetail | null>;
 }
 
 // ---------------------------------------------------------------------------

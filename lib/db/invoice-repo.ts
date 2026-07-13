@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/server/api-error";
 import type {
   Customer,
   Invoice,
@@ -11,7 +12,7 @@ import type {
   PaymentWithRefs,
 } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
-import { sql } from "./client";
+import { runTransaction, sql } from "./client";
 
 type InvoiceRow = {
   id: string;
@@ -156,6 +157,31 @@ async function buildDetail(invoice: Invoice): Promise<InvoiceDetail> {
   return { ...withFinanceData, customer, items: itemRows.map(toItem), payments };
 }
 
+/**
+ * `update`'s edit-lock guard, which must serialize with
+ * `payment-repo.ts#createForInvoice`'s overpay guard on the SAME `invoices`
+ * row — the shared TWO-STATEMENT `FOR UPDATE` pattern (see `client.ts`'s
+ * `runTransaction` canonical note for the mechanism and why a single
+ * inline-`FOR UPDATE` statement is insufficient).
+ *
+ * FILE-SPECIFIC details:
+ *   - Statement 1 locks the `invoices` row (empty result -> `null` NOT_FOUND).
+ *     Statement 2 is the FRESH `NOT EXISTS(payments)` guarded header UPDATE.
+ *     Statements 3+ replace the line items (a guarded DELETE + one guarded
+ *     `INSERT ... SELECT ... WHERE EXISTS(...)` per item) — ALL inside the
+ *     SAME `sql.transaction([...])`, so an edit's header and its items are
+ *     replaced atomically. Because the transaction is non-interactive (every
+ *     statement runs regardless of the others' results), EACH item statement
+ *     carries the same "belongs to this business AND NOT EXISTS(payments)"
+ *     guard the header UPDATE uses — so a payment-locked or cross-business
+ *     edit is a total no-op, never a header committed with mismatched items.
+ *   - Empirical run count (real Postgres 16 container, two concurrent `pg`
+ *     connections, hold-open-then-release): baseline no-lock BROKEN 6/6;
+ *     single-statement `FOR UPDATE` (payment side only) BROKEN 3/3;
+ *     two-statement fix on BOTH writers CORRECT 10/10. See
+ *     `openspec/changes/audit-log/design.md`'s "Open Questions" and the
+ *     re-runnable `lib/db/invoice-payment-concurrency.integration.test.ts`.
+ */
 export const invoiceRepo: InvoiceRepository = {
   async list(businessId: string, query: InvoiceListQuery): Promise<Paged<InvoiceWithFinance>> {
     const invoiceRows = (await sql`SELECT * FROM invoices WHERE business_id = ${businessId}`) as unknown as InvoiceRow[];
@@ -206,5 +232,87 @@ export const invoiceRepo: InvoiceRepository = {
     }
 
     return buildDetail(invoice);
+  },
+
+  async update(businessId: string, id: string, data: InvoicePersist): Promise<InvoiceDetail | null> {
+    // See the file-level doc comment above and `client.ts`'s canonical note.
+    // EVERY statement (header UPDATE, item DELETE, each item INSERT) is
+    // guarded by the SAME "belongs to this business AND NOT EXISTS(payments)"
+    // condition and runs in ONE `sql.transaction([...])`. Because the
+    // transaction is non-interactive (statement N+1 cannot be skipped based on
+    // statement N's result), guarding only the header would let a
+    // payment-locked edit still wipe/replace items — so the DELETE and every
+    // INSERT carry the guard too and become no-ops when it fails. Net effect:
+    // header + items are replaced atomically, or nothing is touched at all.
+    const queries = [
+      // Statement 1: acquire and HOLD the invoice row lock for the whole
+      // transaction. Empty result -> NOT_FOUND (missing/cross-business),
+      // returned as `null`, without leaking cross-business existence.
+      sql`SELECT id FROM invoices WHERE id = ${id} AND business_id = ${businessId} FOR UPDATE`,
+      // Statement 2: fresh-snapshot NOT EXISTS(payments) guarded header
+      // UPDATE (no `FOR UPDATE` — statement 1 is the sole lock holder).
+      sql`
+        UPDATE invoices SET
+          customer_id = ${data.customerId},
+          issue_date = ${data.issueDate},
+          due_date = ${data.dueDate},
+          subtotal = ${data.subtotal},
+          total = ${data.total},
+          status = ${data.status},
+          notes = ${data.notes},
+          updated_at = now()
+        WHERE id = ${id} AND business_id = ${businessId}
+          AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = invoices.id)
+        RETURNING *
+      `,
+      // Statement 3: guarded wholesale item DELETE — a no-op unless the
+      // invoice still belongs to this business AND has zero payments (the
+      // exact same guard the header UPDATE uses).
+      sql`
+        DELETE FROM invoice_items
+        WHERE invoice_id = ${id}
+          AND EXISTS (
+            SELECT 1 FROM invoices i
+            WHERE i.id = ${id} AND i.business_id = ${businessId}
+              AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = i.id)
+          )
+      `,
+      // Statements 4..N: one guarded INSERT per item, written as
+      // `INSERT ... SELECT ... WHERE EXISTS(guard)` so an insert is a no-op
+      // (zero rows) whenever the guard is false — never a partial re-insert
+      // against a payment-locked or cross-business invoice.
+      ...data.items.map(
+        (item) => sql`
+          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total)
+          SELECT gen_random_uuid(), ${id}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}
+          WHERE EXISTS (
+            SELECT 1 FROM invoices i
+            WHERE i.id = ${id} AND i.business_id = ${businessId}
+              AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = i.id)
+          )
+        `,
+      ),
+    ];
+
+    const results = await runTransaction<unknown[]>(queries);
+    const lockRows = results[0] as { id: string }[];
+    const updatedRows = results[1] as InvoiceRow[];
+
+    if (lockRows.length === 0) {
+      // Missing or cross-business: `null`, never leaked — matches
+      // `getById`'s convention; the service maps this to `NOT_FOUND`.
+      return null;
+    }
+    if (updatedRows.length === 0) {
+      // Invoice exists, but statement 2's `NOT EXISTS` guard excluded the
+      // update -> at least one payment is recorded -> reject. The guarded
+      // DELETE/INSERTs in the SAME transaction were no-ops too, so ZERO
+      // mutation occurred (not a NOT_FOUND, not a torn header/items state).
+      throw new ApiError("CONFLICT", "Invoice cannot be edited once a payment has been recorded.");
+    }
+
+    // Header + items already committed atomically above; re-read for the
+    // returned detail.
+    return buildDetail(toInvoice(updatedRows[0]!));
   },
 };

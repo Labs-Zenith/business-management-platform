@@ -1,7 +1,30 @@
 import { ApiError } from "@/lib/server/api-error";
 import type { InvoiceDetail, Paged, PaymentInput, PaymentListQuery, PaymentRepository, PaymentWithRefs } from "@/lib/services/ports";
-import { sql } from "./client";
+import { runTransaction, sql } from "./client";
 import { invoiceRepo } from "./invoice-repo";
+
+/**
+ * `createForInvoice`'s overpay guard, which must serialize with
+ * `invoice-repo.ts#update`'s edit-lock on the SAME `invoices` row — the shared
+ * TWO-STATEMENT `FOR UPDATE` pattern (see `client.ts`'s `runTransaction`
+ * canonical note for the mechanism and why a single inline-`FOR UPDATE` CTE is
+ * insufficient).
+ *
+ * FILE-SPECIFIC details:
+ *   - Statement 1 locks the `invoices` row; statement 2 is the existing
+ *     balance-CTE `INSERT … RETURNING id`. This writer only inserts into the
+ *     sibling `payments` table — it never modifies the locked `invoices` row —
+ *     which is precisely why a single-statement `FOR UPDATE` here leaves a
+ *     concurrent edit's `NOT EXISTS(payments)` stale (nothing for EvalPlanQual
+ *     to reconcile on the unchanged invoices tuple). BOTH writers therefore
+ *     need the two-statement split.
+ *   - Empirical run count (real Postgres 16 container, two concurrent `pg`
+ *     connections, hold-open-then-release): baseline no-lock BROKEN 6/6;
+ *     single-statement `FOR UPDATE` here only BROKEN 3/3 (payment-first);
+ *     two-statement fix on BOTH writers CORRECT 10/10 (5 payment-first + 5
+ *     edit-first incl. the downward-edit regression). See
+ *     `openspec/changes/audit-log/design.md`'s "Open Questions".
+ */
 
 type PaymentRow = {
   id: string;
@@ -69,34 +92,44 @@ export const paymentRepo: PaymentRepository = {
   },
 
   async createForInvoice(businessId: string, invoiceId: string, data: PaymentInput): Promise<InvoiceDetail> {
-    // Friendly pre-check for NOT_FOUND (cross-business/missing invoice).
-    const invoiceRows = (await sql`SELECT id FROM invoices WHERE id = ${invoiceId} AND business_id = ${businessId}`) as {
-      id: string;
-    }[];
-    if (invoiceRows.length === 0) {
+    // Two statements, ONE real transaction (see `client.ts`'s canonical note
+    // and this file's doc comment). Shares the invoice row lock with
+    // `invoice-repo.ts#update`'s edit guard.
+    const queries = [
+      // Statement 1: acquire and HOLD the invoice row lock for the whole
+      // transaction. Its result is used ONLY to distinguish NOT_FOUND
+      // (missing/cross-business) from the overpay rejection below.
+      sql`SELECT id, customer_id FROM invoices WHERE id = ${invoiceId} AND business_id = ${businessId} FOR UPDATE`,
+      // Statement 2: fresh-snapshot balance guard + conditional insert. Runs
+      // AFTER statement 1 already holds the lock, so a concurrent edit's own
+      // lock-acquisition (invoice-repo.ts#update's statement 1) blocks until
+      // this transaction commits — by which time its own statement 2 takes a
+      // snapshot that already reflects this transaction's committed payment.
+      // No `FOR UPDATE` needed here: statement 1 is the sole lock holder;
+      // re-locking would only invite the EvalPlanQual stale-subquery hazard
+      // the two-statement split avoids (see the doc comment above).
+      sql`
+        WITH bal AS (
+          SELECT i.id, i.customer_id,
+            i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS balance
+          FROM invoices i
+          WHERE i.id = ${invoiceId} AND i.business_id = ${businessId}
+        )
+        INSERT INTO payments (id, business_id, invoice_id, customer_id, payment_date, amount, method, notes)
+        SELECT gen_random_uuid(), ${businessId}, bal.id, bal.customer_id, ${data.paymentDate}, ${data.amount}, ${data.method ?? null}, ${data.notes ?? null}
+        FROM bal
+        WHERE ${data.amount} <= bal.balance
+        RETURNING id
+      `,
+    ];
+
+    const [lockRows, inserted] = await runTransaction<[{ id: string; customer_id: string }[], { id: string }[]]>(
+      queries,
+    );
+
+    if (lockRows.length === 0) {
       throw new ApiError("NOT_FOUND", "Invoice not found");
     }
-
-    // Atomic, overpay-safe insert: a single statement computing the current
-    // balance (invoice.total minus the sum of existing payments) and only
-    // inserting if the new amount fits — Postgres guarantees this whole
-    // CTE+INSERT is one atomic unit, race-free across any number of
-    // concurrent serverless instances (replacing the mock's in-process
-    // withLock(invoiceId), which can't protect across instances).
-    const inserted = (await sql`
-      WITH bal AS (
-        SELECT i.id, i.customer_id,
-          i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS balance
-        FROM invoices i
-        WHERE i.id = ${invoiceId} AND i.business_id = ${businessId}
-      )
-      INSERT INTO payments (id, business_id, invoice_id, customer_id, payment_date, amount, method, notes)
-      SELECT gen_random_uuid(), ${businessId}, bal.id, bal.customer_id, ${data.paymentDate}, ${data.amount}, ${data.method ?? null}, ${data.notes ?? null}
-      FROM bal
-      WHERE ${data.amount} <= bal.balance
-      RETURNING id
-    `) as unknown as { id: string }[];
-
     if (inserted.length === 0) {
       throw new ApiError("VALIDATION_ERROR", "Payment amount exceeds the invoice's pending balance");
     }

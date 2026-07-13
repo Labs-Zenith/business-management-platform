@@ -7,61 +7,27 @@ import type {
   InventoryMovementWithProduct,
   Paged,
 } from "@/lib/services/ports";
-import { sql } from "./client";
+import { runTransaction, sql } from "./client";
 
 /**
  * Append-only (list/getById/create only — no update/delete). `list` mirrors
  * `db/employee-repo.ts`'s strategy (fetch business-scoped rows, join product
  * names in JS). `create` is the safety-critical floor-at-zero guard.
  *
- * Atomic guard approach — TWO-STATEMENT transaction (`sql.transaction([...])`,
- * the same Neon non-interactive-transaction mechanism `payroll-repo.ts`
- * already uses). Both statements run as ONE real Postgres transaction
- * (`BEGIN … COMMIT`) at the driver's default isolation, READ COMMITTED
- * (`client.ts` calls `neon(connectionString)` with no `isolationLevel`, so
- * no `SET TRANSACTION ISOLATION LEVEL` is emitted and the server default
- * applies):
+ * Concurrency guard: the shared TWO-STATEMENT `FOR UPDATE` pattern — see
+ * `client.ts`'s `runTransaction` canonical note for the mechanism and why a
+ * single inline-`FOR UPDATE` statement is insufficient.
  *
- *   Statement 1: `SELECT id FROM products WHERE id = … AND business_id = …
- *                 FOR UPDATE` — acquires and HOLDS the product row lock for
- *                 the WHOLE transaction's duration. Its rows are used only to
- *                 tell NOT_FOUND (no row) apart from a floor-at-zero reject.
- *   Statement 2: the `SUM`-over-`inventory_movements` guard + conditional
- *                `INSERT ... SELECT ... WHERE`, run SECOND.
- *
- * WHY THE PREVIOUS SINGLE-STATEMENT VERSION WAS WRONG (empirically proven):
- * the old code put `FOR UPDATE` on the `products` row INSIDE the same single
- * CTE that also SUMs the *child* table `inventory_movements`. Under Postgres'
- * EvalPlanQual mechanism, when a `FOR UPDATE` statement blocks on a locked
- * row and later resumes after the blocker commits, only the LOCKED row's own
- * columns are re-checked against the newest committed version — a correlated
- * subquery over a DIFFERENT table in that SAME statement is NOT re-evaluated
- * with a fresh snapshot; it keeps the stale SUM it computed before the wait.
- * Result: two concurrent `out 7` against 10 units of stock BOTH succeeded,
- * driving computed stock to -4. Reproduced 3/3 against real Postgres 16.
- *
- * WHY THE TWO-STATEMENT VERSION IS CORRECT: statement 1 acquires the lock but
- * reads nothing from the movement ledger. Statement 2 computes the SUM in a
- * SEPARATE statement, which under READ COMMITTED takes its OWN fresh snapshot
- * at statement start. A concurrent transaction's statement 1 blocks on the
- * row lock until this transaction fully commits; only THEN does its statement
- * 2 run and take a snapshot — one that already reflects this transaction's
- * committed movement. The check-then-act race the single-statement version
- * could not close is thereby closed. (`sql.transaction` is non-interactive —
- * all queries submitted upfront — which is fine here: statement 2's SQL text
- * does not depend on statement 1's returned data, only on running AFTER it
- * within the same lock-holding transaction.)
- *
- * VERIFICATION: empirically verified against a REAL Postgres 16 container
- * (Docker) loaded with this change's exact schema. Two concurrent `out 7`
- * requests were fired against a product seeded to 10 units, over two parallel
- * `pg` connections each replicating this two-statement transaction verbatim
- * (`BEGIN`; statement 1 `FOR UPDATE`; statement 2 CTE INSERT; `COMMIT`) at
- * READ COMMITTED. Result across 3/3 runs: EXACTLY ONE insert succeeded, the
- * other was cleanly rejected (zero rows inserted), final computed stock = 3.
- * The same harness run against the OLD single-statement CTE reproduced the
- * -4 overdraw 3/3, confirming the harness genuinely exercises the race and
- * that the fix — not luck — is what closes it.
+ * FILE-SPECIFIC details:
+ *   - Statement 1 locks the `products` row; statement 2 is the
+ *     `SUM`-over-`inventory_movements` floor-at-zero guard + conditional
+ *     `INSERT ... SELECT ... WHERE`. (The correlated aggregate is over a
+ *     DIFFERENT table than the locked row — exactly the EvalPlanQual hazard
+ *     the split avoids.)
+ *   - Empirical run count: verified against a real Postgres 16 container —
+ *     two concurrent `out 7` against a product seeded to 10 units gave EXACTLY
+ *     ONE success 3/3 (final stock = 3); the old single-CTE version reproduced
+ *     the -4 overdraw 3/3.
  */
 
 type MovementRow = {
@@ -125,21 +91,16 @@ export const inventoryRepo: InventoryMovementRepository = {
   },
 
   async create(businessId: string, data: InventoryMovementCreate): Promise<InventoryMovement> {
-    // See the file-level doc comment for the full correctness argument. Two
-    // statements, ONE real transaction:
+    // Two statements, ONE real transaction (see `client.ts`'s canonical note):
     const queries = [
       // Statement 1: acquire and HOLD the product row lock for the whole
-      // transaction. Its result set is used ONLY to distinguish NOT_FOUND
-      // (no matching row for this business) from a floor-at-zero rejection,
-      // without leaking whether the id exists under a different business.
+      // transaction. Its result set distinguishes NOT_FOUND from a
+      // floor-at-zero rejection without leaking cross-business existence.
       sql`SELECT id FROM products WHERE id = ${data.productId} AND business_id = ${businessId} FOR UPDATE`,
-      // Statement 2: fresh-snapshot SUM guard + conditional insert. Runs
-      // AFTER statement 1 already holds the lock, so a concurrent
-      // transaction's own statement 1 blocks until this transaction commits —
-      // by which time this statement's READ COMMITTED snapshot already
-      // reflects any earlier-committed movement. No `FOR UPDATE` needed here:
-      // statement 1 is the sole lock holder, and re-locking would only invite
-      // the EvalPlanQual stale-subquery hazard the two-statement split avoids.
+      // Statement 2: fresh-snapshot SUM guard + conditional insert, run AFTER
+      // statement 1 holds the lock (no `FOR UPDATE` here — it is the sole lock
+      // holder; re-locking would reintroduce the EvalPlanQual stale-subquery
+      // hazard the split avoids).
       sql`
         WITH bal AS (
           SELECT p.id,
@@ -156,13 +117,7 @@ export const inventoryRepo: InventoryMovementRepository = {
       `,
     ];
 
-    // `as unknown as ...`: the two tagged-template calls infer different
-    // `NeonQueryPromise` result shapes that the driver's homogeneous-array
-    // `transaction()` signature can't unify — the same purely-TS cast
-    // workaround established in `lib/db/payroll-repo.ts`, not a behavior
-    // change; both queries still run as one real transaction.
-    const runTransaction = sql.transaction as (queries: unknown[]) => Promise<unknown[]>;
-    const [lockRows, inserted] = (await runTransaction(queries)) as unknown as [{ id: string }[], MovementRow[]];
+    const [lockRows, inserted] = await runTransaction<[{ id: string }[], MovementRow[]]>(queries);
 
     if (lockRows.length === 0) {
       // Statement 1 matched no product row for this business.
