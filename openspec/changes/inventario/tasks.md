@@ -57,10 +57,10 @@ Chain strategy: feature-branch-chain
 
 ## Phase 5: API Routes (PR2)
 
-- [ ] 5.1 Create `app/api/products/route.ts`: `GET` (`requireSession()`, pagination, `listProducts`), `POST` (`checkOrigin`, `productCreateSchema.safeParse`, `createProduct`, 201) — no capability gate.
-- [ ] 5.2 Create `app/api/products/[id]/route.ts`: `PATCH` (`requireSession()`, `checkOrigin`, `productUpdateSchema.safeParse`, `updateProduct`, 404 if missing — no delete verb).
-- [ ] 5.3 Create `app/api/inventory-movements/route.ts`: `GET` (`requireSession()`, pagination/filters, `listMovements`), `POST` (`checkOrigin`, `inventoryMovementCreateSchema.safeParse`, `recordMovement`, 201).
-- [ ] 5.4 Tests (`products-routes.test.ts`, `inventory-movements-routes.test.ts`): any authenticated session (no role restriction) succeeds; cross-business isolation; `checkOrigin` enforcement on POST/PATCH; `VALIDATION_ERROR` on bad payloads; the floor-at-zero rejection surfaces as `VALIDATION_ERROR` through the route.
+- [x] 5.1 Create `app/api/products/route.ts`: `GET` (`requireSession()`, pagination, `listProducts`), `POST` (`checkOrigin`, `productCreateSchema.safeParse`, `createProduct`, 201) — no capability gate.
+- [x] 5.2 Create `app/api/products/[id]/route.ts`: `PATCH` (`requireSession()`, `checkOrigin`, `productUpdateSchema.safeParse`, `updateProduct`, 404 if missing — no delete verb).
+- [x] 5.3 Create `app/api/inventory-movements/route.ts`: `GET` (`requireSession()`, pagination/filters, `listMovements`), `POST` (`checkOrigin`, `inventoryMovementCreateSchema.safeParse`, `recordMovement`, 201).
+- [x] 5.4 Tests (`products-routes.test.ts`, `inventory-movements-routes.test.ts`): any authenticated session (no role restriction) succeeds; cross-business isolation; `checkOrigin` enforcement on POST/PATCH; `VALIDATION_ERROR` on bad payloads; the floor-at-zero rejection surfaces as `VALIDATION_ERROR` through the route.
 
 ## Phase 6: Inventario Page + Nav + Dialogs (PR3)
 
