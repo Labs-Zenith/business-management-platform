@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
-import { lineTotal } from "@/lib/money";
+import { formatCOP, lineTotal } from "@/lib/money";
 import type {
   AuditLogCreate,
   AuditLogEntry,
@@ -326,14 +326,38 @@ describe("updateInvoice", () => {
     mockAuditLogCreate.mockResolvedValue({} as AuditLogEntry);
   });
 
-  it("rejects with CONFLICT before reaching the repository when the invoice has any payment recorded (paidAmount !== 0), and never calls repositories.invoices.update", async () => {
-    const paidInvoice = buildInvoiceDetail({ status: "partially_paid" });
-    mockInvoicesGetById.mockResolvedValue({ ...paidInvoice, paidAmount: 50000, balance: paidInvoice.total - 50000 });
+  it("proceeds to the repository when the invoice is PARTIALLY paid (balance > 0), computing status from the REAL paidAmount (not 0)", async () => {
+    const partiallyPaid = buildInvoiceDetail({ status: "partially_paid" });
+    const paidAmount = 50000;
+    mockInvoicesGetById.mockResolvedValue({ ...partiallyPaid, paidAmount, balance: partiallyPaid.total - paidAmount });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    // VALID_UPDATE's single item (1 x 300000 = 300000) stays well above
+    // paidAmount (50000), so the below-paid guard does not trigger here.
+    mockInvoicesUpdate.mockResolvedValue(buildInvoiceDetail());
 
-    await expect(updateInvoice(SESSION, paidInvoice.id, VALID_UPDATE)).rejects.toMatchObject({
-      code: "CONFLICT",
+    await updateInvoice(SESSION, partiallyPaid.id, VALID_UPDATE);
+
+    expect(mockInvoicesUpdate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      partiallyPaid.id,
+      expect.objectContaining({
+        total: lineTotal(1, 300000),
+        // status computed with the REAL paidAmount (50000), not 0 — a
+        // balance > 0 invoice with paidAmount > 0 is "partially_paid".
+        status: "partially_paid",
+      }),
+    );
+  });
+
+  it("rejects with VALIDATION_ERROR (not CONFLICT) when the submitted new total would drop BELOW the amount already paid, and never calls repositories.invoices.update", async () => {
+    const partiallyPaid = buildInvoiceDetail({ status: "partially_paid" });
+    const paidAmount = 500000; // above VALID_UPDATE's new total (300000)
+    mockInvoicesGetById.mockResolvedValue({ ...partiallyPaid, paidAmount, balance: partiallyPaid.total - paidAmount });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+
+    await expect(updateInvoice(SESSION, partiallyPaid.id, VALID_UPDATE)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
     });
-    expect(mockCustomersGetById).not.toHaveBeenCalled();
     expect(mockInvoicesUpdate).not.toHaveBeenCalled();
   });
 
@@ -488,12 +512,88 @@ describe("updateInvoice", () => {
     expect(result).toEqual(updated);
   });
 
-  it("does NOT record an audit row when the edit-lock rejects with CONFLICT (no repo call was even attempted)", async () => {
-    const paidInvoice = buildInvoiceDetail({ status: "partially_paid" });
-    mockInvoicesGetById.mockResolvedValue({ ...paidInvoice, paidAmount: 50000, balance: paidInvoice.total - 50000 });
+  it("does NOT record an audit row when the edit-lock rejects with CONFLICT (fully paid, no repo call was even attempted)", async () => {
+    const fullyPaid = buildInvoiceDetail({ status: "paid" });
+    mockInvoicesGetById.mockResolvedValue({ ...fullyPaid, paidAmount: fullyPaid.total, balance: 0 });
 
-    await expect(updateInvoice(SESSION, paidInvoice.id, VALID_UPDATE)).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(updateInvoice(SESSION, fullyPaid.id, VALID_UPDATE)).rejects.toMatchObject({ code: "CONFLICT" });
 
     expect(mockAuditLogCreate).not.toHaveBeenCalled();
+  });
+
+  it("does NOT record an audit row when the below-paid-total VALIDATION_ERROR rejects (no repo call was even attempted)", async () => {
+    const partiallyPaid = buildInvoiceDetail({ status: "partially_paid" });
+    const paidAmount = 500000; // above VALID_UPDATE's new total (300000)
+    mockInvoicesGetById.mockResolvedValue({ ...partiallyPaid, paidAmount, balance: partiallyPaid.total - paidAmount });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+
+    await expect(updateInvoice(SESSION, partiallyPaid.id, VALID_UPDATE)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+
+    expect(mockAuditLogCreate).not.toHaveBeenCalled();
+  });
+
+  it("records the invoice_updated audit detail as the EXACT composed string 'Total: <old COP> → <new COP>' (COP-formatted, not raw cents)", async () => {
+    const zeroPaymentInvoice = buildInvoiceDetail({ status: "pending", total: 1000000 });
+    mockInvoicesGetById.mockResolvedValue({ ...zeroPaymentInvoice, paidAmount: 0, balance: zeroPaymentInvoice.total });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    const updated = buildInvoiceDetail({ total: 300000 });
+    mockInvoicesUpdate.mockResolvedValue(updated);
+
+    await updateInvoice(SESSION, zeroPaymentInvoice.id, VALID_UPDATE);
+
+    // Exact composed string, mirroring how payment-service.test.ts asserts
+    // its exact `Monto:` string — not just a loose shape/regex match.
+    expect(mockAuditLogCreate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      expect.objectContaining({
+        action: "invoice_updated",
+        detail: `Total: ${formatCOP(zeroPaymentInvoice.total)} → ${formatCOP(updated.total)}`,
+      }),
+    );
+  });
+
+  it("proceeds to the repository when a partially-paid invoice's edit is a NO-OP total change (new total == current total), keeping status partially_paid", async () => {
+    const partiallyPaid = buildInvoiceDetail({ status: "partially_paid", total: 300000 });
+    const paidAmount = 100000;
+    mockInvoicesGetById.mockResolvedValue({ ...partiallyPaid, paidAmount, balance: partiallyPaid.total - paidAmount });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    // VALID_UPDATE's single item (1 x 300000 = 300000) equals the invoice's
+    // CURRENT total exactly — a no-op total change, still well above
+    // paidAmount (100000), so the below-paid guard does not trigger.
+    mockInvoicesUpdate.mockResolvedValue(buildInvoiceDetail({ status: "partially_paid", total: 300000 }));
+
+    await updateInvoice(SESSION, partiallyPaid.id, VALID_UPDATE);
+
+    expect(mockInvoicesUpdate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      partiallyPaid.id,
+      expect.objectContaining({
+        total: lineTotal(1, 300000),
+        status: "partially_paid",
+      }),
+    );
+  });
+
+  it("proceeds to the repository when a partially-paid invoice's edit INCREASES the total", async () => {
+    const partiallyPaid = buildInvoiceDetail({ status: "partially_paid", total: 100000 });
+    const paidAmount = 50000;
+    mockInvoicesGetById.mockResolvedValue({ ...partiallyPaid, paidAmount, balance: partiallyPaid.total - paidAmount });
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    // VALID_UPDATE's single item (1 x 300000 = 300000) is an INCREASE over
+    // the invoice's current total (100000), well above paidAmount (50000).
+    mockInvoicesUpdate.mockResolvedValue(buildInvoiceDetail({ status: "partially_paid", total: 300000 }));
+
+    await updateInvoice(SESSION, partiallyPaid.id, VALID_UPDATE);
+
+    expect(mockInvoicesUpdate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      partiallyPaid.id,
+      expect.objectContaining({
+        total: lineTotal(1, 300000),
+        status: "partially_paid",
+      }),
+    );
   });
 });

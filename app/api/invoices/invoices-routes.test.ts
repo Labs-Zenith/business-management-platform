@@ -45,8 +45,13 @@ const DEMO_PASSWORD = "demo1234";
 const CUSTOMER_ID = "40000000-0000-4000-8000-000000000001";
 // Seeded zero-payment invoice (pending, no payments) — safe to edit.
 const ZERO_PAYMENT_INVOICE_ID = "50000000-0000-4000-8000-000000000001";
-// Seeded invoice with an existing payment (partially_paid) — edit-locked.
-const PAID_INVOICE_ID = "50000000-0000-4000-8000-000000000007";
+// Seeded invoice with a PARTIAL payment (balance > 0) — editable under the
+// not-fully-paid rule, as long as the new total does not drop below what's
+// already paid (fixture 7: total 500000, paid 200000).
+const PARTIALLY_PAID_INVOICE_ID = "50000000-0000-4000-8000-000000000007";
+// Seeded FULLY paid invoice (balance === 0) — permanently edit-locked
+// (fixture 10: total 400000, paid 400000).
+const FULLY_PAID_INVOICE_ID = "50000000-0000-4000-8000-000000000010";
 
 function buildContext(id: string) {
   return { params: Promise.resolve({ id }) };
@@ -406,10 +411,10 @@ describe("GET /api/invoices/{id}", () => {
 
 /**
  * `PATCH /api/invoices/{id}`, per
- * `openspec/changes/audit-log/specs/invoices/spec.md`'s "Invoice Editing
- * Locked to Zero-Payment Invoices" requirement. Session-gated only — NO
- * capability gate (unlike `PATCH /api/employees/{id}`'s `viewPayroll` gate):
- * mirrors `app/api/products/[id]/route.ts`'s convention exactly.
+ * `openspec/changes/invoice-edit-partial/specs/invoices/spec.md`'s "Invoice
+ * Editing Locked to Fully-Paid Invoices" requirement. Session-gated only —
+ * NO capability gate (unlike `PATCH /api/employees/{id}`'s `viewPayroll`
+ * gate): mirrors `app/api/products/[id]/route.ts`'s convention exactly.
  */
 describe("PATCH /api/invoices/{id}", () => {
   beforeEach(() => {
@@ -482,21 +487,65 @@ describe("PATCH /api/invoices/{id}", () => {
     expect(response.status).toBe(200);
   });
 
-  it("rejects a paid invoice with 409 CONFLICT, a clean error (not a 500), applying ZERO mutation", async () => {
+  it("applies a valid update to a PARTIALLY-paid invoice (balance > 0), recomputing status from the real paidAmount", async () => {
     await signIn();
-    const before = { ...store.invoices.get(PAID_INVOICE_ID)! };
-    const itemsBefore = [...store.invoiceItems.values()].filter((item) => item.invoiceId === PAID_INVOICE_ID);
+    // Fixture 7: total 500000, paid 200000 (balance 300000 > 0). The update's
+    // new total (350000) is >= 200000, so the below-paid guard passes too.
+    const response = await detailPatch(
+      patchRequest(PARTIALLY_PAID_INVOICE_ID, VALID_UPDATE),
+      buildContext(PARTIALLY_PAID_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.total).toBe(350000);
+    expect(body.data.paidAmount).toBe(200000);
+    expect(body.data.status).toBe("partially_paid");
+  });
+
+  it("rejects an edit whose new total would drop BELOW the amount already paid, with 400 VALIDATION_ERROR, applying ZERO mutation", async () => {
+    await signIn();
+    const before = { ...store.invoices.get(PARTIALLY_PAID_INVOICE_ID)! };
+    const itemsBefore = [...store.invoiceItems.values()].filter(
+      (item) => item.invoiceId === PARTIALLY_PAID_INVOICE_ID,
+    );
+
+    // Fixture 7 has paid 200000; this update's new total (100000) is below it.
+    const belowPaidUpdate = {
+      ...VALID_UPDATE,
+      items: [{ description: "Servicio editado", quantity: 1, unitPrice: 100000 }],
+    };
 
     const response = await detailPatch(
-      patchRequest(PAID_INVOICE_ID, VALID_UPDATE),
-      buildContext(PAID_INVOICE_ID),
+      patchRequest(PARTIALLY_PAID_INVOICE_ID, belowPaidUpdate),
+      buildContext(PARTIALLY_PAID_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(store.invoices.get(PARTIALLY_PAID_INVOICE_ID)).toEqual(before);
+    const itemsAfter = [...store.invoiceItems.values()].filter(
+      (item) => item.invoiceId === PARTIALLY_PAID_INVOICE_ID,
+    );
+    expect(itemsAfter).toEqual(itemsBefore);
+  });
+
+  it("rejects a FULLY paid invoice with 409 CONFLICT, a clean error (not a 500), applying ZERO mutation", async () => {
+    await signIn();
+    const before = { ...store.invoices.get(FULLY_PAID_INVOICE_ID)! };
+    const itemsBefore = [...store.invoiceItems.values()].filter((item) => item.invoiceId === FULLY_PAID_INVOICE_ID);
+
+    const response = await detailPatch(
+      patchRequest(FULLY_PAID_INVOICE_ID, VALID_UPDATE),
+      buildContext(FULLY_PAID_INVOICE_ID),
     );
 
     expect(response.status).toBe(409);
     const body = await response.json();
     expect(body.error.code).toBe("CONFLICT");
-    expect(store.invoices.get(PAID_INVOICE_ID)).toEqual(before);
-    const itemsAfter = [...store.invoiceItems.values()].filter((item) => item.invoiceId === PAID_INVOICE_ID);
+    expect(store.invoices.get(FULLY_PAID_INVOICE_ID)).toEqual(before);
+    const itemsAfter = [...store.invoiceItems.values()].filter((item) => item.invoiceId === FULLY_PAID_INVOICE_ID);
     expect(itemsAfter).toEqual(itemsBefore);
   });
 

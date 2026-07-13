@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
-import { lineTotal } from "@/lib/money";
+import { formatCOP, lineTotal } from "@/lib/money";
 import { invoiceRepo } from "@/lib/mock/invoice-repo";
 import { resetStore, store } from "@/lib/mock/store";
 import { customerFixtures } from "@/lib/mock/fixtures/data";
@@ -184,7 +184,7 @@ describe("createPayment — payment_recorded audit instrumentation", () => {
     expect(entries[0]!.action).toBe("payment_recorded");
     expect(entries[0]!.businessId).toBe(BUSINESS_ID);
     expect(entries[0]!.actorUserId).toBe(SESSION.userId);
-    expect(entries[0]!.detail).toBe("Amount: 80000");
+    expect(entries[0]!.detail).toBe(`Monto: ${formatCOP(80000)}`);
   });
 
   it("does NOT record an audit row when the payment is rejected (overpay), no mutation at all", async () => {

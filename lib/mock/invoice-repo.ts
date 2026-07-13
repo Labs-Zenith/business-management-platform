@@ -146,6 +146,10 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
       // is what makes the read-check-write sequence below atomic against a
       // concurrent payment registration (see
       // `openspec/changes/audit-log/design.md`'s "Edit-Lock Race Mechanism").
+      // Guard predicate (`invoice-edit-partial`): editable while NOT fully
+      // paid (`existing.total - paidAmount > 0`); additionally, the
+      // submitted new `data.total` must never drop below `paidAmount` (money
+      // already collected can never be un-collected by an edit).
       return withLock(id, async () => {
         const existing = store.invoices.get(id);
         if (!existing || existing.businessId !== businessId) {
@@ -154,11 +158,24 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           return null;
         }
 
-        // Defense in depth: re-verify zero-payments here too, even though
-        // `updateInvoice` (service) already checked — never trust that the
-        // service layer is the only caller.
-        if (paymentsForInvoice(store, id).length > 0) {
-          throw new ApiError("CONFLICT", "Invoice cannot be edited once a payment has been recorded.");
+        // Defense in depth: re-verify the not-fully-paid + new-total-not-
+        // below-paid invariant here too, even though `updateInvoice` (service)
+        // already checked — never trust that the service layer is the only
+        // caller. This is the atomic race-only fallback (a payment landing
+        // concurrently between the service's check and this lock), so BOTH
+        // branches below throw `CONFLICT` — a concurrent payment is a
+        // conflict at this layer, even for the branch that mirrors what the
+        // service layer would otherwise reject as `VALIDATION_ERROR`. The two
+        // messages are kept distinct for operator debuggability, but the
+        // error CODE is intentionally the same `CONFLICT` for both, matching
+        // the db-backed repository's single ANDed guard (which cannot
+        // distinguish the two causes at all).
+        const paidAmount = paymentsForInvoice(store, id).reduce((sum, p) => sum + p.amount, 0);
+        if (existing.total - paidAmount <= 0) {
+          throw new ApiError("CONFLICT", "Invoice cannot be edited once it is fully paid.");
+        }
+        if (data.total < paidAmount) {
+          throw new ApiError("CONFLICT", "The invoice total cannot be reduced below the amount already paid.");
         }
 
         // Replace items wholesale: delete all existing items for this

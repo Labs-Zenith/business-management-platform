@@ -45,6 +45,14 @@ import type { Client as PgClient } from "pg";
  * `FOR UPDATE` which blocks on that lock; we poll `pg_stat_activity` until it
  * is genuinely waiting, then commit the first and let the second proceed. This
  * forces the exact interleave a fixed sleep could only hope to hit.
+ *
+ * ALSO INCLUDED: an "EXACT-EQUALITY BOUNDARY" test that needs NO concurrency
+ * at all — it reproduces the header-update-before-items data-corruption bug
+ * deterministically against real Postgres (single client, single
+ * transaction), at the boundary where the edit's new total exactly equals
+ * `paidAmount`. All statement executions in this file (both the concurrency
+ * scenarios and the boundary test) run in the SAME order as the shipped
+ * repository: lock, item DELETE, item INSERT(s), header UPDATE LAST.
  */
 
 const RUN_INTEGRATION = Boolean(process.env.RUN_DB_INTEGRATION_TESTS);
@@ -76,23 +84,29 @@ const PAYMENT_INSERT_SQL = `
   RETURNING id`;
 
 const EDIT_LOCK_SQL = "SELECT id FROM invoices WHERE id = $1 AND business_id = $2 FOR UPDATE";
+// Compound guard (`invoice-edit-partial`): (a) the invoice's CURRENT balance
+// (total - paid) must be > 0 (not fully paid), AND (b) the submitted NEW
+// total ($10 here) must be >= paid (never shrink below money already
+// collected). Each production `${}` is a DISTINCT placeholder (even when the
+// same value), so the guard's id/businessId/new-total get their own params —
+// otherwise Postgres deduces inconsistent types for a placeholder reused as
+// both text and uuid.
 const EDIT_UPDATE_SQL = `
   UPDATE invoices SET
     customer_id = $1, issue_date = $2, due_date = $3, subtotal = $4, total = $5,
     status = $6, notes = $7, updated_at = now()
   WHERE id = $8 AND business_id = $9
-    AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = invoices.id)
+    AND (invoices.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = invoices.id), 0)) > 0
+    AND $10 >= COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = invoices.id), 0)
   RETURNING id`;
-// Each production `${}` is a DISTINCT placeholder (even when the same value),
-// so the guard's id/businessId get their own params — otherwise Postgres
-// deduces inconsistent types for a placeholder reused as both text and uuid.
 const EDIT_DELETE_SQL = `
   DELETE FROM invoice_items
   WHERE invoice_id = $1
     AND EXISTS (
       SELECT 1 FROM invoices i
       WHERE i.id = $2 AND i.business_id = $3
-        AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = i.id)
+        AND (i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)) > 0
+        AND $4 >= COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)
     )`;
 const EDIT_INSERT_SQL = `
   INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total)
@@ -100,7 +114,8 @@ const EDIT_INSERT_SQL = `
   WHERE EXISTS (
     SELECT 1 FROM invoices i
     WHERE i.id = $6 AND i.business_id = $7
-      AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.invoice_id = i.id)
+      AND (i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)) > 0
+      AND $8 >= COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)
   )`;
 
 function sleep(ms: number): Promise<void> {
@@ -220,7 +235,7 @@ describe.skipIf(!RUN_INTEGRATION)("invoice-edit vs payment-record concurrency (r
     await Promise.all([clientA?.end(), clientB?.end(), setup?.end()].map((p) => p?.catch?.(() => {}) ?? p));
   }, 30000);
 
-  it("payment-first ordering: a payment that commits first blocks and then REJECTS a concurrent edit (never both)", async () => {
+  it("payment-first ordering: a FULL payment that commits first blocks and then REJECTS a concurrent edit as fully paid (never both)", async () => {
     const RUNS = 5;
     for (let run = 0; run < RUNS; run += 1) {
       await seedInvoice();
@@ -234,7 +249,8 @@ describe.skipIf(!RUN_INTEGRATION)("invoice-edit vs payment-record concurrency (r
       const editLock = clientB.query(EDIT_LOCK_SQL, [INVOICE_ID, BUSINESS_ID]);
       await waitForBlocked();
 
-      // clientA records a full payment and commits, releasing the lock.
+      // clientA records a FULL payment (fully paying the 100000 total) and
+      // commits, releasing the lock.
       const pay = await clientA.query(PAYMENT_INSERT_SQL, [
         INVOICE_ID,
         BUSINESS_ID,
@@ -248,9 +264,25 @@ describe.skipIf(!RUN_INTEGRATION)("invoice-edit vs payment-record concurrency (r
       expect(pay.rowCount).toBe(1); // payment succeeded
       await clientA.query("COMMIT");
 
-      // clientB unblocks; its guarded UPDATE now sees the committed payment and
-      // must affect ZERO rows (edit rejected), same for delete/insert.
+      // clientB unblocks; its guarded DELETE/INSERT/UPDATE now see the
+      // invoice is FULLY PAID (balance == 0) and must affect ZERO rows (edit
+      // rejected). Execution order mirrors the shipped repository EXACTLY:
+      // item DELETE, then item INSERT, then the header UPDATE LAST — so the
+      // header's own mutation of `invoices.total` can never leak into an
+      // earlier item guard's read (see `lib/db/invoice-repo.ts`'s "ORDER IS
+      // SAFETY-CRITICAL" comment for why the header must run last).
       await editLock;
+      const del = await clientB.query(EDIT_DELETE_SQL, [INVOICE_ID, INVOICE_ID, BUSINESS_ID, 50000]);
+      const ins = await clientB.query(EDIT_INSERT_SQL, [
+        INVOICE_ID,
+        "Edited",
+        5,
+        10000,
+        50000,
+        INVOICE_ID,
+        BUSINESS_ID,
+        50000,
+      ]);
       const upd = await clientB.query(EDIT_UPDATE_SQL, [
         CUSTOMER_ID,
         "2026-07-09",
@@ -261,12 +293,11 @@ describe.skipIf(!RUN_INTEGRATION)("invoice-edit vs payment-record concurrency (r
         "edited",
         INVOICE_ID,
         BUSINESS_ID,
+        50000, // $10: the guard's own new-total placeholder
       ]);
-      const del = await clientB.query(EDIT_DELETE_SQL, [INVOICE_ID, INVOICE_ID, BUSINESS_ID]);
-      const ins = await clientB.query(EDIT_INSERT_SQL, [INVOICE_ID, "Edited", 5, 10000, 50000, INVOICE_ID, BUSINESS_ID]);
       await clientB.query("COMMIT");
 
-      expect(upd.rowCount).toBe(0); // edit rejected
+      expect(upd.rowCount).toBe(0); // edit rejected (fully paid)
       expect(del.rowCount).toBe(0); // items untouched
       expect(ins.rowCount).toBe(0); // no new item inserted
 
@@ -283,15 +314,98 @@ describe.skipIf(!RUN_INTEGRATION)("invoice-edit vs payment-record concurrency (r
     }
   }, 60000);
 
+  it("partial-payment ordering: a PARTIAL payment that commits first does NOT block a concurrent edit whose new total still covers what's paid", async () => {
+    const RUNS = 5;
+    for (let run = 0; run < RUNS; run += 1) {
+      await seedInvoice();
+
+      // clientA (payment) acquires and HOLDS the invoice lock.
+      await clientA.query("BEGIN");
+      await clientA.query(PAYMENT_LOCK_SQL, [INVOICE_ID, BUSINESS_ID]);
+
+      // clientB (edit) begins and issues its FOR UPDATE — this BLOCKS.
+      await clientB.query("BEGIN");
+      const editLock = clientB.query(EDIT_LOCK_SQL, [INVOICE_ID, BUSINESS_ID]);
+      await waitForBlocked();
+
+      // clientA records a PARTIAL payment (30000 of the 100000 total) and
+      // commits, releasing the lock. Balance is still > 0 afterward.
+      const pay = await clientA.query(PAYMENT_INSERT_SQL, [
+        INVOICE_ID,
+        BUSINESS_ID,
+        BUSINESS_ID,
+        "2026-07-05",
+        30000,
+        "cash",
+        null,
+        30000, // $8: the `${amount} <= bal.balance` guard's own placeholder
+      ]);
+      expect(pay.rowCount).toBe(1); // payment succeeded
+      await clientA.query("COMMIT");
+
+      // clientB unblocks; the invoice is only PARTIALLY paid (balance
+      // 70000 > 0) and the edit's new total (50000) is still >= the amount
+      // already paid (30000) -> the guard PASSES, edit succeeds. Execution
+      // order mirrors the shipped repository: item DELETE, then item INSERT,
+      // then the header UPDATE LAST.
+      await editLock;
+      const del = await clientB.query(EDIT_DELETE_SQL, [INVOICE_ID, INVOICE_ID, BUSINESS_ID, 50000]);
+      const ins = await clientB.query(EDIT_INSERT_SQL, [
+        INVOICE_ID,
+        "Edited",
+        5,
+        10000,
+        50000,
+        INVOICE_ID,
+        BUSINESS_ID,
+        50000,
+      ]);
+      const upd = await clientB.query(EDIT_UPDATE_SQL, [
+        CUSTOMER_ID,
+        "2026-07-09",
+        "2026-08-09",
+        50000,
+        50000,
+        "partially_paid",
+        "edited",
+        INVOICE_ID,
+        BUSINESS_ID,
+        50000, // $10: the guard's own new-total placeholder
+      ]);
+      await clientB.query("COMMIT");
+
+      expect(upd.rowCount).toBe(1); // edit applied
+      expect(del.rowCount).toBe(1); // original item removed
+      expect(ins.rowCount).toBe(1); // new item inserted
+
+      const state = await invoiceState();
+      // Both writers succeeded: the partial payment AND the edit.
+      expect(state.paymentCount).toBe(1);
+      expect(state.paid).toBe(30000);
+      expect(state.total).toBe(50000); // the edit's new total
+      expect(state.itemsTotal).toBe(50000);
+      expect(state.itemCount).toBe(1);
+      // Consistency invariants: totals match items, paid never exceeds total.
+      expect(state.total).toBe(state.itemsTotal);
+      expect(state.paid).toBeLessThanOrEqual(state.total);
+    }
+  }, 60000);
+
   it("edit-first ordering (downward edit): an edit that commits first blocks and then REJECTS a payment that would overpay the NEW total (never both)", async () => {
     const RUNS = 5;
     for (let run = 0; run < RUNS; run += 1) {
       await seedInvoice();
 
       // clientB (edit) acquires the lock, lowers the total to 50000, replaces
-      // items, and is HELD OPEN (not yet committed).
+      // items, and is HELD OPEN (not yet committed). Invoice has zero
+      // payments at this point, so the guard's "not fully paid" and "new
+      // total >= paid (0)" conditions both pass trivially. Execution order
+      // mirrors the shipped repository: item DELETE, then item INSERT, then
+      // the header UPDATE LAST.
       await clientB.query("BEGIN");
       await clientB.query(EDIT_LOCK_SQL, [INVOICE_ID, BUSINESS_ID]);
+      await clientB.query(EDIT_DELETE_SQL, [INVOICE_ID, INVOICE_ID, BUSINESS_ID, 50000]);
+      await clientB.query(EDIT_INSERT_SQL, [INVOICE_ID, "Edited", 5, 10000, 50000, INVOICE_ID, BUSINESS_ID, 50000]);
       const upd = await clientB.query(EDIT_UPDATE_SQL, [
         CUSTOMER_ID,
         "2026-07-09",
@@ -302,9 +416,8 @@ describe.skipIf(!RUN_INTEGRATION)("invoice-edit vs payment-record concurrency (r
         "edited-down",
         INVOICE_ID,
         BUSINESS_ID,
+        50000, // $10: the guard's own new-total placeholder
       ]);
-      await clientB.query(EDIT_DELETE_SQL, [INVOICE_ID, INVOICE_ID, BUSINESS_ID]);
-      await clientB.query(EDIT_INSERT_SQL, [INVOICE_ID, "Edited", 5, 10000, 50000, INVOICE_ID, BUSINESS_ID]);
       expect(upd.rowCount).toBe(1); // edit applied (uncommitted)
 
       // clientA (payment) begins and issues its FOR UPDATE — this BLOCKS.
@@ -341,6 +454,87 @@ describe.skipIf(!RUN_INTEGRATION)("invoice-edit vs payment-record concurrency (r
       expect(state.itemCount).toBe(1);
       // Consistency invariants: totals match items, no negative balance.
       expect(state.total).toBe(state.itemsTotal);
+      expect(state.paid).toBeLessThanOrEqual(state.total);
+    }
+  }, 60000);
+
+  it("EXACT-EQUALITY BOUNDARY (the deterministic data-corruption bug, no concurrency needed): editing an invoice's total down to EXACTLY the amount already paid ACTUALLY replaces the items and keeps the header total consistent", async () => {
+    // This is the boundary the pre-fix bug corrupted: the header UPDATE ran
+    // BEFORE the item DELETE/INSERT, so the item guards' own subquery read of
+    // `invoices.total` observed the ALREADY-MUTATED new total. When the new
+    // total exactly equals `paidAmount`, that made
+    // `(newTotal - paid) > 0` = `(0) > 0` = FALSE, silently no-op'ing the item
+    // DELETE/INSERT while the header still committed — a torn state (new
+    // header total, stale original items) with no error thrown. Deterministic
+    // — a single client, single transaction, no interleaving required.
+    const RUNS = 5;
+    for (let run = 0; run < RUNS; run += 1) {
+      await seedInvoice();
+
+      // Record a partial payment of 60000 against the 100000-total invoice
+      // (no lock contention needed — sequential, single client).
+      await setup.query(
+        `INSERT INTO payments (id, business_id, invoice_id, customer_id, payment_date, amount, method, notes)
+         VALUES (gen_random_uuid(), $1, $2, $3, '2026-07-05', 60000, 'cash', null)`,
+        [BUSINESS_ID, INVOICE_ID, CUSTOMER_ID],
+      );
+
+      // The edit's new total (60000) EXACTLY equals paidAmount (60000) — a
+      // legal edit that closes the invoice to precisely what's been
+      // collected. Execution order mirrors the shipped repository EXACTLY:
+      // lock, item DELETE, item INSERT, header UPDATE LAST.
+      await clientB.query("BEGIN");
+      await clientB.query(EDIT_LOCK_SQL, [INVOICE_ID, BUSINESS_ID]);
+      const del = await clientB.query(EDIT_DELETE_SQL, [INVOICE_ID, INVOICE_ID, BUSINESS_ID, 60000]);
+      const ins = await clientB.query(EDIT_INSERT_SQL, [
+        INVOICE_ID,
+        "Edited to exact balance",
+        1,
+        60000,
+        60000,
+        INVOICE_ID,
+        BUSINESS_ID,
+        60000,
+      ]);
+      const upd = await clientB.query(EDIT_UPDATE_SQL, [
+        CUSTOMER_ID,
+        "2026-07-09",
+        "2026-08-09",
+        60000,
+        60000,
+        "paid",
+        "edited-to-exact-balance",
+        INVOICE_ID,
+        BUSINESS_ID,
+        60000, // $10: the guard's own new-total placeholder
+      ]);
+      await clientB.query("COMMIT");
+
+      // The edit SUCCEEDS: all three guarded statements affect exactly one row.
+      expect(del.rowCount).toBe(1);
+      expect(ins.rowCount).toBe(1);
+      expect(upd.rowCount).toBe(1);
+
+      // The items are ACTUALLY replaced: fetch them back and assert the NEW
+      // item is present and the OLD one is gone.
+      const items = await setup.query(
+        "SELECT description, line_total FROM invoice_items WHERE invoice_id = $1",
+        [INVOICE_ID],
+      );
+      expect(items.rows).toHaveLength(1);
+      expect(items.rows[0].description).toBe("Edited to exact balance");
+      expect(items.rows.some((row: { description: string }) => row.description === "Original")).toBe(false);
+
+      const state = await invoiceState();
+      // Header total equals the new total...
+      expect(state.total).toBe(60000);
+      // ...and is consistent with the sum of the (new) item lineTotals — this
+      // is the assertion that FAILS under the pre-fix bug (header would show
+      // 60000 while the stale "Original" item's lineTotal, 100000, remained).
+      expect(state.total).toBe(state.itemsTotal);
+      expect(state.itemsTotal).toBe(60000);
+      expect(state.itemCount).toBe(1);
+      expect(state.paid).toBe(60000);
       expect(state.paid).toBeLessThanOrEqual(state.total);
     }
   }, 60000);

@@ -105,12 +105,109 @@ describe("invoiceRepo.update — edit-lock (safety-critical)", () => {
     expect(updated!.status).toBe("pending");
   });
 
-  it("rejects with CONFLICT and mutates NOTHING once any payment has been recorded against the invoice", async () => {
+  it("edits successfully when the invoice is only PARTIALLY paid (payment < total), recomputing totals/status from the REAL paidAmount (not hardcoded 0)", async () => {
+    resetStore();
+    const created = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist());
+    const PAID_AMOUNT = 30000;
+    await paymentRepo.createForInvoice(BUSINESS_ID, created.id, {
+      paymentDate: "2026-07-08",
+      amount: PAID_AMOUNT,
+      method: "cash",
+      notes: null,
+    });
+
+    // New total (60000) is >= the amount already paid (30000), so the edit
+    // is allowed even though the invoice is not zero-payment anymore.
+    // Fixture built with the invoice's REAL paidAmount (30000), not a
+    // hardcoded 0 — a realistic status computation for a partially-paid
+    // invoice being edited.
+    const expectedStatus = computeStatus(60000, PAID_AMOUNT, "2026-08-09", new Date("2026-07-09"));
+    const updated = await invoiceRepo.update(
+      BUSINESS_ID,
+      created.id,
+      buildInvoiceUpdatePersist({ status: expectedStatus }),
+    );
+
+    expect(updated).not.toBeNull();
+    expect(updated!.total).toBe(60000);
+    expect(updated!.items).toHaveLength(1);
+    expect(updated!.items[0]!.description).toBe("Servicio editado");
+    // The persisted status round-trips: it is the REAL-paidAmount-derived
+    // status ("partially_paid"), not "pending" (which is what a hardcoded
+    // paid=0 computation would have produced).
+    expect(expectedStatus).toBe("partially_paid");
+    expect(updated!.status).toBe("partially_paid");
+  });
+
+  it("edits successfully at the EXACT boundary where the new total equals paidAmount (invoice closes to fully-collected), actually replacing items — this is the boundary a header-updated-before-items bug would silently corrupt", async () => {
+    resetStore();
+    const created = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist());
+    const PAID_AMOUNT = 60000;
+    await paymentRepo.createForInvoice(BUSINESS_ID, created.id, {
+      paymentDate: "2026-07-08",
+      amount: PAID_AMOUNT,
+      method: "cash",
+      notes: null,
+    });
+
+    // The edit's new total (60000) EXACTLY equals paidAmount (60000) — a
+    // legal edit that closes the invoice to exactly what's been paid.
+    const expectedStatus = computeStatus(60000, PAID_AMOUNT, "2026-08-09", new Date("2026-07-09"));
+    const updated = await invoiceRepo.update(
+      BUSINESS_ID,
+      created.id,
+      buildInvoiceUpdatePersist({ status: expectedStatus }),
+    );
+
+    expect(updated).not.toBeNull();
+    // Items are ACTUALLY replaced: the new item is present, the old one gone.
+    expect(updated!.items).toHaveLength(1);
+    expect(updated!.items[0]!.description).toBe("Servicio editado");
+    expect(updated!.items.some((item) => item.description === "Servicio")).toBe(false);
+    // Header total equals the new total...
+    expect(updated!.total).toBe(60000);
+    // ...and is consistent with the sum of the (new) item lineTotals — this
+    // is the assertion that would fail if the header committed while the
+    // items silently failed to replace under the pre-fix bug.
+    const itemsTotal = updated!.items.reduce((sum, item) => sum + item.lineTotal, 0);
+    expect(updated!.total).toBe(itemsTotal);
+    expect(updated!.status).toBe(expectedStatus);
+  });
+
+  it("edits successfully as a NO-OP total change while partially paid (new total == current total)", async () => {
+    resetStore();
+    const created = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist());
+    const PAID_AMOUNT = 40000;
+    await paymentRepo.createForInvoice(BUSINESS_ID, created.id, {
+      paymentDate: "2026-07-08",
+      amount: PAID_AMOUNT,
+      method: "cash",
+      notes: null,
+    });
+
+    // buildInvoicePersist's total is 100000; edit with the SAME total (a
+    // no-op total change), just replacing the item description.
+    const noOpTotalUpdate = buildInvoiceUpdatePersist({
+      items: [{ description: "Servicio editado", quantity: 1, unitPrice: 100000, lineTotal: 100000 }],
+      subtotal: 100000,
+      total: 100000,
+      status: computeStatus(100000, PAID_AMOUNT, "2026-08-09", new Date("2026-07-09")),
+    });
+    const updated = await invoiceRepo.update(BUSINESS_ID, created.id, noOpTotalUpdate);
+
+    expect(updated).not.toBeNull();
+    expect(updated!.total).toBe(100000);
+    expect(updated!.items).toHaveLength(1);
+    expect(updated!.items[0]!.description).toBe("Servicio editado");
+    expect(updated!.status).toBe("partially_paid");
+  });
+
+  it("rejects with CONFLICT and mutates NOTHING once the invoice is FULLY paid (payments sum == total)", async () => {
     resetStore();
     const created = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist());
     await paymentRepo.createForInvoice(BUSINESS_ID, created.id, {
       paymentDate: "2026-07-08",
-      amount: 1,
+      amount: 100000,
       method: "cash",
       notes: null,
     });
@@ -126,12 +223,35 @@ describe("invoiceRepo.update — edit-lock (safety-critical)", () => {
     expect(unchanged!.notes).toBeNull();
   });
 
-  it("rejects with CONFLICT (not a generic Error) as an ApiError instance", async () => {
+  it("rejects with CONFLICT and mutates NOTHING when the submitted new total is below the amount already paid", async () => {
     resetStore();
     const created = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist());
     await paymentRepo.createForInvoice(BUSINESS_ID, created.id, {
       paymentDate: "2026-07-08",
-      amount: 1,
+      amount: 80000,
+      method: "cash",
+      notes: null,
+    });
+
+    // Invoice is not fully paid (balance 20000 > 0), but the edit's new total
+    // (60000) is BELOW the amount already paid (80000) -> rejected.
+    await expect(invoiceRepo.update(BUSINESS_ID, created.id, buildInvoiceUpdatePersist())).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+
+    const unchanged = await invoiceRepo.getById(BUSINESS_ID, created.id);
+    expect(unchanged!.total).toBe(100000);
+    expect(unchanged!.items).toHaveLength(1);
+    expect(unchanged!.items[0]!.description).toBe("Servicio");
+    expect(unchanged!.notes).toBeNull();
+  });
+
+  it("rejects with CONFLICT (not a generic Error) as an ApiError instance for a fully-paid invoice", async () => {
+    resetStore();
+    const created = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist());
+    await paymentRepo.createForInvoice(BUSINESS_ID, created.id, {
+      paymentDate: "2026-07-08",
+      amount: 100000,
       method: "cash",
       notes: null,
     });

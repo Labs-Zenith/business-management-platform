@@ -23,6 +23,7 @@
  * `notes` fields from `lib/schemas/payment.ts`'s `.strict()` schema.
  */
 
+import { formatCOP } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
 import { recordAuditLog } from "@/lib/services/audit-log-service";
 import { repositories } from "@/lib/services/repositories";
@@ -78,7 +79,7 @@ export async function createPayment(
   // below. `entityType` stays `"invoice"` (not `"payment"`) per
   // `openspec/changes/audit-log/design.md` — the MovementsPanel queries by
   // invoice, not by payment.
-  await recordAuditLog(session, "invoice", invoiceId, "payment_recorded", `Amount: ${persist.amount}`);
+  await recordAuditLog(session, "invoice", invoiceId, "payment_recorded", `Monto: ${formatCOP(persist.amount)}`);
 
   return detail;
 }

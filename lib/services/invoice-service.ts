@@ -26,7 +26,7 @@
  * persisted.
  */
 
-import { lineTotal } from "@/lib/money";
+import { formatCOP, lineTotal } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
 import { recordAuditLog } from "@/lib/services/audit-log-service";
 import { repositories } from "@/lib/services/repositories";
@@ -144,13 +144,20 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
 /**
  * Edit-lock gate: `updateInvoice` resolves the invoice via `getInvoice`
  * (`getById` -> `withFinance`/`buildDetail` -> `computeStatus`), reusing the
- * EXACT SAME read-path derivation of `paidAmount` the rest of the app
- * already trusts — no independent re-summing of payments here. Any invoice
- * with `paidAmount !== 0` (including fully paid, `balance === 0`) is
- * rejected with `ApiError("CONFLICT", ...)` BEFORE any repository call, per
- * `openspec/changes/audit-log/specs/invoices/spec.md`'s "Invoice Editing
- * Locked to Zero-Payment Invoices". The repository layer
- * (`InvoiceRepository.update`) re-verifies the SAME invariant atomically as
+ * EXACT SAME read-path derivation of `paidAmount`/`balance` the rest of the
+ * app already trusts — no independent re-summing of payments here.
+ *
+ * An invoice is editable while it is NOT fully paid (`balance > 0`); once
+ * fully paid (`balance <= 0`), it is rejected with `ApiError("CONFLICT",
+ * ...)` BEFORE any repository call, per
+ * `openspec/changes/invoice-edit-partial/specs/invoices/spec.md`'s "Invoice
+ * Editing Locked to Fully-Paid Invoices". Additionally, once the new `total`
+ * is computed from the submitted items, an edit whose new total would drop
+ * BELOW the amount already paid (`total < invoice.paidAmount`) is rejected
+ * with `ApiError("VALIDATION_ERROR", ...)` — this preserves the
+ * overpay-safety invariant that an invoice's total never shrinks below money
+ * already collected against it. The repository layer
+ * (`InvoiceRepository.update`) re-verifies BOTH conditions atomically as
  * defense in depth — see `openspec/changes/audit-log/design.md`'s "Edit-Lock
  * Race Mechanism" for why both layers are required independently.
  *
@@ -161,8 +168,9 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
 export async function updateInvoice(session: Session, id: string, data: InvoiceUpdate): Promise<InvoiceDetail> {
   const invoice = await getInvoice(session, id);
 
-  if (invoice.paidAmount !== 0) {
-    throw new ApiError("CONFLICT", "Invoice cannot be edited once a payment has been recorded.");
+  // Fully-paid invoices are permanently locked.
+  if (invoice.balance <= 0) {
+    throw new ApiError("CONFLICT", "Invoice cannot be edited once it is fully paid.");
   }
 
   const customer = await repositories.customers.getById(session.businessId, data.customerId);
@@ -182,7 +190,24 @@ export async function updateInvoice(session: Session, id: string, data: InvoiceU
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
   const total = subtotal; // No taxes/discounts in the MVP.
   const dueDate = data.dueDate ?? null;
-  const status = computeStatus(total, 0, dueDate);
+
+  // The edit must never reduce the total below what has already been
+  // collected — this preserves the same overpay-safety invariant the payment
+  // side enforces from the other direction.
+  if (invoice.paidAmount > 0 && total < invoice.paidAmount) {
+    throw new ApiError("VALIDATION_ERROR", "The invoice total cannot be reduced below the amount already paid.");
+  }
+
+  // Note: `invoice.paidAmount` was read at the top of this function (via
+  // `getInvoice`); if a payment commits concurrently between that read and
+  // this point, the `status` persisted below can be momentarily stale. This
+  // is harmless and accepted, pre-existing behavior: the persisted `status`
+  // column is NEVER trusted for logic anywhere in this codebase — every read
+  // path (`getById`/`list`, both via `withFinance`) recomputes `status` from
+  // live payments at read time, exactly like recording a payment
+  // (`payment-service.ts#createPayment`) never updates the invoice's `status`
+  // column either. The column is a denormalized cache for convenience only.
+  const status = computeStatus(total, invoice.paidAmount, dueDate);
 
   const persist: InvoicePersist = {
     customerId: data.customerId,
@@ -203,7 +228,8 @@ export async function updateInvoice(session: Session, id: string, data: InvoiceU
   // Best-effort, sequential, AFTER the mutation already committed — see
   // `recordAuditLog`'s SAFETY-CRITICAL doc comment: a failure here never
   // affects the updated invoice already persisted and returned below.
-  await recordAuditLog(session, "invoice", updated.id, "invoice_updated", updated.number);
+  const detail = `Total: ${formatCOP(invoice.total)} → ${formatCOP(updated.total)}`;
+  await recordAuditLog(session, "invoice", updated.id, "invoice_updated", detail);
 
   return updated;
 }
