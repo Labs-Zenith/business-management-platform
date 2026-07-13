@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { buildExportHref } from "@/lib/export/url";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { KpiCards, KpiCardsSkeleton } from "@/components/domain/dashboard/kpi-cards";
@@ -47,6 +48,14 @@ import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog
  * the page header as global/Ingresos-oriented actions; "Crear gasto" (Egresos
  * quick action) is tab-local — it lives inside the Egresos `TabsPanel` (see
  * design.md section 6), not the shared page header.
+ *
+ * "Excel"/"PDF" export the FULL dashboard (both tabs, all sections, no
+ * filters), per `openspec/changes/dashboard-excel-export/design.md`. They are
+ * static `<Link>`s built via `buildExportHref("/api/dashboard/export", {},
+ * format)` with an empty params object — unlike `invoices`/`payments`, the
+ * dashboard export has no query-string filters to forward, so this page can
+ * stay a non-async Server Component (no session/searchParams needed to build
+ * the export hrefs).
  */
 export default function DashboardPage() {
   return (
@@ -57,6 +66,22 @@ export default function DashboardPage() {
           <p className="text-sm text-muted-foreground">Claridad inmediata sobre tu cartera.</p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:flex">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href={buildExportHref("/api/dashboard/export", {}, "xlsx")} />}
+          >
+            Excel
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href={buildExportHref("/api/dashboard/export", {}, "pdf")} />}
+          >
+            PDF
+          </Button>
           <CustomerFormDialog
             mode="create"
             trigger={

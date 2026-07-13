@@ -93,4 +93,17 @@ describe("DashboardPage (Ingresos/Egresos tabs)", () => {
     expect(screen.getByRole("button", { name: "Crear cliente" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Crear factura" })).toBeInTheDocument();
   });
+
+  it("offers Excel and PDF export links for the full dashboard, with no filter params", () => {
+    render(<DashboardPage />);
+
+    expect(screen.getByRole("button", { name: "Excel" })).toHaveAttribute(
+      "href",
+      "/api/dashboard/export?format=xlsx",
+    );
+    expect(screen.getByRole("button", { name: "PDF" })).toHaveAttribute(
+      "href",
+      "/api/dashboard/export?format=pdf",
+    );
+  });
 });

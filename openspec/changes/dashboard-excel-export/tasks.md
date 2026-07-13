@@ -44,5 +44,5 @@ Chain strategy: pending
 
 ## Phase 4: UI Export Buttons (PR 4)
 
-- [ ] 4.1 In `app/(dashboard)/dashboard/page.tsx`, add Excel/PDF `Button` pair to the header action group via `buildExportHref("/api/dashboard/export", {}, "xlsx"|"pdf")`, matching the invoices-page `nativeButton={false}` + `render={<Link/>}` pattern. Page stays a non-async Server Component (no session in page — confirmed against design).
-- [ ] 4.2 Verify (test or type-check) both hrefs resolve to `/api/dashboard/export?format=…`; keep the existing "Crear cliente"/"Crear factura" actions intact.
+- [x] 4.1 In `app/(dashboard)/dashboard/page.tsx`, add Excel/PDF `Button` pair to the header action group via `buildExportHref("/api/dashboard/export", {}, "xlsx"|"pdf")`, matching the invoices-page `nativeButton={false}` + `render={<Link/>}` pattern. Page stays a non-async Server Component (no session in page — confirmed against design).
+- [x] 4.2 Verify (test or type-check) both hrefs resolve to `/api/dashboard/export?format=…`; keep the existing "Crear cliente"/"Crear factura" actions intact.
