@@ -78,8 +78,8 @@ Revert the change branch; run the migration's `-- Down Migration` (`DROP TABLE a
 
 ## Success Criteria
 
-- [ ] An invoice with zero payments can be edited; one with any payment rejects edit (service + repo).
-- [ ] `invoice_created`, `invoice_updated`, `payment_recorded` rows are written best-effort with `entity_type="invoice"`.
-- [ ] Admin sees `<MovementsPanel>` on the invoice detail page; worker sees the page but not the panel.
-- [ ] Both mock and Postgres backends implement the new repo methods; mock store hydrates old cookies via `?? []`.
-- [ ] Nomina/Inventario remain uninstrumented (explicit non-goal).
+- [x] An invoice with zero payments can be edited; one with any payment rejects edit (service + repo).
+- [x] `invoice_created`, `invoice_updated`, `payment_recorded` rows are written best-effort with `entity_type="invoice"`.
+- [x] Admin sees `<MovementsPanel>` on the invoice detail page; worker sees the page but not the panel.
+- [x] Both mock and Postgres backends implement the new repo methods; mock store hydrates old cookies via `?? []`.
+- [x] Nomina/Inventario remain uninstrumented (explicit non-goal).
