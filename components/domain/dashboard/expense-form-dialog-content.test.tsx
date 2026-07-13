@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import { clearDay, displayDate, pickDay } from "@/components/ui/date-picker-test-helpers";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -179,7 +182,7 @@ describe("ExpenseFormDialog", () => {
     },
   );
 
-  it("defaults the date field to LOCAL today's date, not UTC's, even when local time has rolled into the next UTC day", async () => {
+  it("defaults the date trigger to LOCAL today's date, not UTC's, even when local time has rolled into the next UTC day", async () => {
     // Pin a single fixed instant: 2026-07-06T23:30:00-05:00, i.e. 2026-07-07T04:30:00Z.
     // For a UTC-5 zone (Colombia, no DST) this is evening-local but already the NEXT
     // day in UTC — exactly the case where `.toISOString().slice(0, 10)` (UTC-based)
@@ -201,12 +204,80 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    const dateInput = await screen.findByLabelText(/fecha/i);
+    // The native `type="date"` input is gone — the trigger is now a `<button>`
+    // labeled via `<Label htmlFor>`, displaying the `DatePicker`'s "d MMM yyyy"
+    // formatted text instead of an ISO `value`.
+    const trigger = await screen.findByLabelText(/fecha/i);
 
-    expect(dateInput).toHaveValue(expectedLocalDate);
+    expect(trigger).toHaveTextContent(displayDate(expectedLocalDate));
     if (expectedLocalDate !== expectedUtcDate) {
-      expect(dateInput).not.toHaveValue(expectedUtcDate);
+      expect(trigger).not.toHaveTextContent(displayDate(expectedUtcDate));
     }
+  });
+
+  it("allows picking a new expenseDate via the Calendar and submits it as the ISO payload value", async () => {
+    const user = userEvent.setup();
+    // Pin "today" so the Calendar opens on a known month without navigation.
+    vi.setSystemTime(new Date(2026, 6, 7));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: "expense-1" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+
+    await user.click(screen.getByRole("button", { name: /crear gasto/i }));
+    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.clear(screen.getByLabelText(/monto/i));
+    await user.type(screen.getByLabelText(/monto/i), "500");
+
+    const targetDate = new Date(2026, 6, 20);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha/i, dayLabel);
+
+    expect(screen.getByLabelText(/fecha/i)).toHaveTextContent("20 jul 2026");
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(options.body);
+    expect(body.expenseDate).toBe("2026-07-20");
+  });
+
+  it("blocks submission client-side when expenseDate is cleared via the DatePicker's toggle-to-clear gesture (no request sent)", async () => {
+    // `expenseDate` is required (`expenseFormSchema`'s `z.string().trim().min(1, ...)`)
+    // and defaults to today's date, so a fresh dialog never starts empty —
+    // the only way to reach the empty/invalid state is via `DatePicker`'s
+    // real clear gesture (re-clicking the already-selected day), which this
+    // test exercises end-to-end through the `Controller` wiring.
+    const user = userEvent.setup();
+    vi.setSystemTime(new Date(2026, 6, 7));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+
+    await user.click(screen.getByRole("button", { name: /crear gasto/i }));
+    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.clear(screen.getByLabelText(/monto/i));
+    await user.type(screen.getByLabelText(/monto/i), "500");
+
+    // Pick a non-today day first so the clear-gesture lookup (`clearDay`)
+    // never collides with react-day-picker's "Hoy, " accessible-name prefix
+    // (the default `expenseDate` value is today, which would otherwise be
+    // selected AND today simultaneously).
+    const targetDate = new Date(2026, 6, 20);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha/i, dayLabel);
+    await clearDay(user, /fecha/i, dayLabel);
+
+    expect(screen.getByLabelText(/fecha/i)).toHaveTextContent(/seleccionar fecha/i);
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    expect(await screen.findByText(/fecha requerida/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("omits the notes field from the payload when it is left whitespace-only", async () => {

@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { formatCOP, lineTotal, pesosToCents } from "@/lib/money";
+import { clearDay, displayDate, pickDay } from "@/components/ui/date-picker-test-helpers";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -88,7 +91,7 @@ describe("InvoiceFormContent", () => {
     },
   );
 
-  it("defaults the issue date field to LOCAL today's date, not UTC's, even when local time has rolled into the next UTC day", async () => {
+  it("defaults the issue date trigger to LOCAL today's date, not UTC's, even when local time has rolled into the next UTC day", async () => {
     // Pin a single fixed instant: 2026-07-06T23:30:00-05:00, i.e. 2026-07-07T04:30:00Z.
     // For a UTC-5 zone (Colombia, no DST) this is evening-local but already the NEXT
     // day in UTC — exactly the case where `.toISOString().slice(0, 10)` (UTC-based)
@@ -105,12 +108,157 @@ describe("InvoiceFormContent", () => {
 
     render(<InvoiceFormContent customers={[CUSTOMER]} />);
 
-    const dateInput = screen.getByLabelText(/fecha de emision/i);
+    // The native `type="date"` input is gone — the trigger is now a `<button>`
+    // labeled via `<Label htmlFor>`, displaying the `DatePicker`'s "d MMM yyyy"
+    // formatted text instead of an ISO `value`.
+    const trigger = screen.getByLabelText(/fecha de emision/i);
 
-    expect(dateInput).toHaveValue(expectedLocalDate);
+    expect(trigger).toHaveTextContent(displayDate(expectedLocalDate));
     if (expectedLocalDate !== expectedUtcDate) {
-      expect(dateInput).not.toHaveValue(expectedUtcDate);
+      expect(trigger).not.toHaveTextContent(displayDate(expectedUtcDate));
     }
+  });
+
+  it("allows picking a new issueDate via the Calendar and submits it as the ISO payload value", async () => {
+    const user = userEvent.setup();
+    // Pin "today" so the Calendar opens on a known month without navigation.
+    vi.setSystemTime(new Date(2026, 6, 7));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: "invoice-1" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+
+    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await fillFirstItem(user, "Consultoria", "500");
+
+    const targetDate = new Date(2026, 6, 20);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha de emision/i, dayLabel);
+
+    expect(screen.getByLabelText(/fecha de emision/i)).toHaveTextContent("20 jul 2026");
+
+    await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(options.body);
+    expect(body.issueDate).toBe("2026-07-20");
+  });
+
+  it("blocks submission client-side when issueDate is cleared via the DatePicker's toggle-to-clear gesture (no request sent)", async () => {
+    // `issueDate` is required (`invoiceFormSchema`'s `z.string().trim().min(1, ...)`).
+    // `DatePicker` exposes a real clear gesture — re-clicking the
+    // already-selected day — that RHF's `Controller` must wire back to `""`
+    // so the resolver actually rejects submission, not just "field never
+    // touched" (see the separate "omits dueDate ... never touched" test,
+    // which does NOT exercise this gesture at all).
+    const user = userEvent.setup();
+    vi.setSystemTime(new Date(2026, 6, 7));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+
+    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await fillFirstItem(user, "Consultoria", "500");
+
+    // Pick a non-today day first so the clear-gesture lookup (`clearDay`)
+    // never collides with react-day-picker's "Hoy, " accessible-name prefix.
+    const targetDate = new Date(2026, 6, 20);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha de emision/i, dayLabel);
+    await clearDay(user, /fecha de emision/i, dayLabel);
+
+    expect(screen.getByLabelText(/fecha de emision/i)).toHaveTextContent(/seleccionar fecha/i);
+
+    await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+    expect(await screen.findByText(/fecha de emision requerida/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows picking an optional dueDate via the Calendar and includes it as ISO in the payload", async () => {
+    const user = userEvent.setup();
+    vi.setSystemTime(new Date(2026, 6, 7));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: "invoice-1" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+
+    // dueDate is optional/clearable — no forced default, placeholder shown until picked.
+    expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveTextContent(/seleccionar fecha/i);
+
+    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await fillFirstItem(user, "Consultoria", "500");
+
+    const targetDate = new Date(2026, 6, 25);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha de vencimiento/i, dayLabel);
+
+    await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(options.body);
+    expect(body.dueDate).toBe("2026-07-25");
+  });
+
+  it("omits dueDate from the payload when left unset", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: "invoice-1" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+
+    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await fillFirstItem(user, "Consultoria", "500");
+    await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(options.body);
+    expect(body).not.toHaveProperty("dueDate");
+  });
+
+  it("omits dueDate from the payload when a picked date is cleared via the DatePicker's toggle-to-clear gesture", async () => {
+    // Unlike the "never touched" test above, this one actually PICKS a
+    // dueDate first (so the field holds a real value) and then re-clicks
+    // that same day to clear it, proving the clear gesture itself round-trips
+    // correctly through the `Controller` wiring down to `""`, which
+    // `onSubmit` (`invoice-form-content.tsx`) then omits via
+    // `...(values.dueDate ? { dueDate: values.dueDate } : {})`.
+    const user = userEvent.setup();
+    vi.setSystemTime(new Date(2026, 6, 7));
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: "invoice-1" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+
+    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await fillFirstItem(user, "Consultoria", "500");
+
+    const targetDate = new Date(2026, 6, 25);
+    const dayLabel = format(targetDate, "PPPP", { locale: es });
+    await pickDay(user, /fecha de vencimiento/i, dayLabel);
+    expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveTextContent("25 jul 2026");
+
+    await clearDay(user, /fecha de vencimiento/i, dayLabel);
+    expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveTextContent(/seleccionar fecha/i);
+
+    await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(options.body);
+    expect(body).not.toHaveProperty("dueDate");
   });
 
   it("renders a running total that matches lineTotal(quantity, pesosToCents(unitPrice)) for a non-1 quantity", async () => {
@@ -190,8 +338,8 @@ describe("InvoiceFormContent", () => {
       render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
 
       expect(screen.getByLabelText(/cliente/i)).toHaveValue(CUSTOMER.id);
-      expect(screen.getByLabelText(/fecha de emision/i)).toHaveValue(INVOICE.issueDate);
-      expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveValue(INVOICE.dueDate);
+      expect(screen.getByLabelText(/fecha de emision/i)).toHaveTextContent(displayDate(INVOICE.issueDate));
+      expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveTextContent(displayDate(INVOICE.dueDate));
       expect(screen.getByLabelText(/nota/i)).toHaveValue(INVOICE.notes);
       expect(screen.getByLabelText(/descripcion/i)).toHaveValue(INVOICE.items[0].description);
       expect(screen.getByLabelText(/cantidad/i)).toHaveValue(INVOICE.items[0].quantity);
@@ -227,8 +375,34 @@ describe("InvoiceFormContent", () => {
       const body = JSON.parse(options.body);
       expect(body.customerId).toBe(CUSTOMER.id);
       expect(body.items).toEqual([{ description: INVOICE.items[0].description, quantity: 2, unitPrice: 200000 }]);
+      expect(body.issueDate).toBe(INVOICE.issueDate);
+      expect(body.dueDate).toBe(INVOICE.dueDate);
       expect(pushMock).toHaveBeenCalledWith(`/invoices/${INVOICE.id}`);
       expect(refreshMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("allows changing dueDate via the Calendar in edit mode and submits the newly picked ISO date", async () => {
+      const user = userEvent.setup();
+      // Pin "today" close to the invoice's existing dates so the Calendar opens
+      // on that month without navigation.
+      vi.setSystemTime(new Date(2026, 5, 1));
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { id: INVOICE.id } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+
+      const targetDate = new Date(2026, 5, 15);
+      const dayLabel = format(targetDate, "PPPP", { locale: es });
+      await pickDay(user, /fecha de vencimiento/i, dayLabel);
+
+      await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
+
+      const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body);
+      expect(body.dueDate).toBe("2026-06-15");
     });
 
     it("shows the edit-specific server error message and does not navigate when the PATCH fails", async () => {

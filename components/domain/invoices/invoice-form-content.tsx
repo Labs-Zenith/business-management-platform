@@ -29,9 +29,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MoneyAmount } from "@/components/domain/money-amount";
@@ -189,12 +189,23 @@ export default function InvoiceFormContent({ customers, defaultCustomerId, invoi
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="invoice-issue-date">Fecha de emision</Label>
-          <Input id="invoice-issue-date" type="date" {...register("issueDate")} />
+          <Controller
+            control={control}
+            name="issueDate"
+            render={({ field }) => <DatePicker id="invoice-issue-date" value={field.value} onChange={field.onChange} />}
+          />
           {errors.issueDate ? <p className="text-xs text-destructive">{errors.issueDate.message}</p> : null}
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="invoice-due-date">Fecha de vencimiento</Label>
-          <Input id="invoice-due-date" type="date" {...register("dueDate")} />
+          <Controller
+            control={control}
+            name="dueDate"
+            // `dueDate` is optional/clearable (design.md's resolved decision): no
+            // forced default, `DatePicker` already renders its placeholder and
+            // supports clearing back to `""` when `field.value` is empty.
+            render={({ field }) => <DatePicker id="invoice-due-date" value={field.value} onChange={field.onChange} />}
+          />
         </div>
       </div>
 

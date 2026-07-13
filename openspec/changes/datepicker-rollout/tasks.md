@@ -34,12 +34,18 @@ Chain strategy: feature-branch-chain
 
 ## Phase 2: Invoice + Expense RHF Migration (PR2)
 
-- [ ] 2.1 In `components/domain/invoices/invoice-form-content.tsx`, replace `<Input type="date" {...register("issueDate")}>` and `dueDate` with `Controller`-wrapped `DatePicker` (`field.value`/`field.onChange`), preserving `<Label htmlFor>` id association.
-- [ ] 2.2 Keep `dueDate` clearable (empty/"—" placeholder, no forced default) per design.md optional-date decision.
-- [ ] 2.3 In `components/domain/dashboard/expense-form-dialog-content.tsx`, replace `expenseDate`'s native input with `Controller`-wrapped `DatePicker`.
-- [ ] 2.4 Update `components/domain/invoices/invoice-form-content.test.tsx`: replace `fireEvent.change` on the date inputs with the `pickDay` helper (`getByLabelText` trigger click → `getByRole("button", {name: PPPP-es-label})` day click); pin system time via `vi.setSystemTime`.
-- [ ] 2.5 Update `components/domain/dashboard/expense-form-dialog-content.test.tsx` with the same `pickDay` interaction pattern for `expenseDate`.
-- [ ] 2.6 Verify: `npm run test -- invoice-form-content expense-form-dialog-content`, `npx tsc --noEmit`, `npm run build`.
+- [x] 2.1 In `components/domain/invoices/invoice-form-content.tsx`, replace `<Input type="date" {...register("issueDate")}>` and `dueDate` with `Controller`-wrapped `DatePicker` (`field.value`/`field.onChange`), preserving `<Label htmlFor>` id association.
+- [x] 2.2 Keep `dueDate` clearable (empty/"—" placeholder, no forced default) per design.md optional-date decision.
+- [x] 2.3 In `components/domain/dashboard/expense-form-dialog-content.tsx`, replace `expenseDate`'s native input with `Controller`-wrapped `DatePicker`.
+- [x] 2.4 Update `components/domain/invoices/invoice-form-content.test.tsx`: replace `fireEvent.change` on the date inputs with the `pickDay` helper (`getByLabelText` trigger click → `getByRole("button", {name: PPPP-es-label})` day click); pin system time via `vi.setSystemTime`.
+- [x] 2.5 Update `components/domain/dashboard/expense-form-dialog-content.test.tsx` with the same `pickDay` interaction pattern for `expenseDate`.
+- [x] 2.6 Verify: `npm run test -- invoice-form-content expense-form-dialog-content`, `npx tsc --noEmit`, `npm run build`.
+
+### PR2 post-review fix pass (test coverage gaps found by 2-lens review)
+
+- [x] 2.7 Added a test in each of `invoice-form-content.test.tsx` (`issueDate`) and `expense-form-dialog-content.test.tsx` (`expenseDate`) proving that clearing a REQUIRED date field via `DatePicker`'s re-click-to-clear gesture blocks client-side submission (validation error shown, no request sent) — previously untested.
+- [x] 2.8 Added a NEW `invoice-form-content.test.tsx` test that picks a `dueDate` then clears it via the same gesture and asserts it's omitted from the payload, proving the clear gesture itself round-trips through the `Controller` wiring (the pre-existing "omits dueDate ... unset" test only ever left the field untouched, which happened to look the same but didn't exercise the clear interaction).
+- [x] 2.9 Extracted the duplicated `pickDay`/`displayDate` test helpers (plus a new `clearDay` helper) from both test files into `components/ui/date-picker-test-helpers.ts`, ahead of PR3/PR4 needing the same helpers a 3rd/4th time.
 
 ## Phase 3: Payroll RHF Migration — Isolated, Highest Risk (PR3)
 

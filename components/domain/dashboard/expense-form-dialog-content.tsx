@@ -29,7 +29,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useState, type ReactElement } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +40,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,6 +66,7 @@ export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
 
   const {
     register,
+    control,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
@@ -150,7 +152,11 @@ export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="expense-date">Fecha</Label>
-            <Input id="expense-date" type="date" {...register("expenseDate")} />
+            <Controller
+              control={control}
+              name="expenseDate"
+              render={({ field }) => <DatePicker id="expense-date" value={field.value} onChange={field.onChange} />}
+            />
             {errors.expenseDate ? <p className="text-xs text-destructive">{errors.expenseDate.message}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
