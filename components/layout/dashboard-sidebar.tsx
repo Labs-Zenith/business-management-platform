@@ -16,21 +16,29 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NAV_ITEMS, type NavItem } from "./nav-items";
+import { navItemsForRole } from "./nav-items";
+import type { Role } from "@/lib/services/ports";
 
 function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 /**
- * `items` (optional, defaults to `NAV_ITEMS`) lets a caller pass an
- * already role-filtered list — see `nav-items.ts`'s `navItemsForRole` and
- * `app/(dashboard)/layout.tsx`, which passes
- * `navItemsForRole(session.role)`. Additive/backward-compatible: existing
- * callers that don't pass `items` keep rendering the full unfiltered list.
+ * Takes the plain `role` string (not a pre-filtered `NavItem[]`) and
+ * filters `NAV_ITEMS` internally via `navItemsForRole`. A `NavItem[]`
+ * carries a `lucide-react` icon component reference per entry, and this is
+ * a Client Component — a Server Component (`app/(dashboard)/layout.tsx`)
+ * passing that array as a prop trips this Next.js build's stricter RSC
+ * serialization ("Only plain objects can be passed to Client Components…"
+ * / "Functions cannot be passed directly to Client Components…") because
+ * function/class-bearing values aren't valid serialized props. `role` is a
+ * plain string, so it crosses the server/client boundary safely; the icon
+ * components are resolved here, client-side, straight from the `NAV_ITEMS`
+ * module import in `nav-items.ts` (which never crosses that boundary).
  */
-export default function DashboardSidebar({ items = NAV_ITEMS }: { items?: NavItem[] }) {
+export default function DashboardSidebar({ role }: { role: Role }) {
   const pathname = usePathname();
+  const items = navItemsForRole(role);
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-4 text-sidebar-foreground md:flex">

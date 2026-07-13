@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { LayoutDashboard } from "lucide-react";
-import type { NavItem } from "./nav-items";
 import { NAV_ITEMS } from "./nav-items";
 
 vi.mock("next/navigation", () => ({
@@ -33,8 +31,8 @@ describe("gridColsClass", () => {
 });
 
 describe("DashboardBottomNav", () => {
-  it("renders every default NAV_ITEMS link when no items prop is passed (backward-compatible), 7 items total (admin's list, including Nómina and Inventario)", () => {
-    render(<DashboardBottomNav />);
+  it("renders every NAV_ITEMS link for an admin role, 7 items total (including Nómina and Inventario)", () => {
+    render(<DashboardBottomNav role="admin" />);
 
     expect(NAV_ITEMS.length).toBe(7);
     for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Nómina", "Inventario", "Negocio"]) {
@@ -42,22 +40,11 @@ describe("DashboardBottomNav", () => {
     }
   });
 
-  it("renders only the items in a worker-filtered 6-item list (excludes Nómina, keeps Inventario)", () => {
-    const workerItems: NavItem[] = NAV_ITEMS.filter((item) => item.href !== "/nomina");
-    expect(workerItems.length).toBe(6);
-
-    render(<DashboardBottomNav items={workerItems} />);
+  it("renders the worker-filtered 6-item list (excludes Nómina, keeps Inventario)", () => {
+    render(<DashboardBottomNav role="worker" />);
 
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Inventario" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Nómina" })).not.toBeInTheDocument();
-  });
-
-  it("renders exactly the number of links passed via items, regardless of count (1-item list)", () => {
-    const singleItem: NavItem[] = [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }];
-
-    render(<DashboardBottomNav items={singleItem} />);
-
-    expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 });
