@@ -34,9 +34,9 @@ vi.mock("@/components/domain/dashboard/expense-kpi-cards", () => ({
   ExpenseKpiCards: () => <div data-testid="egresos-kpi">Egresos KPI</div>,
   ExpenseKpiCardsSkeleton: () => null,
 }));
-vi.mock("@/components/domain/dashboard/expenses-by-category", () => ({
-  ExpensesByCategory: () => <div data-testid="egresos-by-category">Egresos By Category</div>,
-  ExpensesByCategorySkeleton: () => null,
+vi.mock("@/components/domain/dashboard/expense-charts", () => ({
+  ExpenseCharts: () => <div data-testid="egresos-charts">Egresos Charts</div>,
+  ExpenseChartsSkeleton: () => null,
 }));
 vi.mock("@/components/domain/dashboard/recent-expenses", () => ({
   RecentExpenses: () => <div data-testid="egresos-recent">Egresos Recent</div>,
@@ -63,7 +63,7 @@ describe("DashboardPage (Ingresos/Egresos tabs)", () => {
     expect(screen.getByTestId("ingresos-recent-payments")).toBeInTheDocument();
 
     expect(screen.getByTestId("egresos-kpi")).toBeInTheDocument();
-    expect(screen.getByTestId("egresos-by-category")).toBeInTheDocument();
+    expect(screen.getByTestId("egresos-charts")).toBeInTheDocument();
     expect(screen.getByTestId("egresos-recent")).toBeInTheDocument();
   });
 

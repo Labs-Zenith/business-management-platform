@@ -9,7 +9,7 @@ import { TopDebtors, TopDebtorsSkeleton } from "@/components/domain/dashboard/to
 import { OverdueList, OverdueListSkeleton } from "@/components/domain/dashboard/overdue-list";
 import { DashboardCharts, DashboardChartsSkeleton } from "@/components/domain/dashboard/dashboard-charts";
 import { ExpenseKpiCards, ExpenseKpiCardsSkeleton } from "@/components/domain/dashboard/expense-kpi-cards";
-import { ExpensesByCategory, ExpensesByCategorySkeleton } from "@/components/domain/dashboard/expenses-by-category";
+import { ExpenseCharts, ExpenseChartsSkeleton } from "@/components/domain/dashboard/expense-charts";
 import { RecentExpenses, RecentExpensesSkeleton } from "@/components/domain/dashboard/recent-expenses";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog";
@@ -140,8 +140,8 @@ export default function DashboardPage() {
             <ExpenseKpiCards />
           </Suspense>
 
-          <Suspense fallback={<ExpensesByCategorySkeleton />}>
-            <ExpensesByCategory />
+          <Suspense fallback={<ExpenseChartsSkeleton />}>
+            <ExpenseCharts />
           </Suspense>
 
           <Suspense fallback={<RecentExpensesSkeleton />}>

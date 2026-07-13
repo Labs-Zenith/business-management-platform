@@ -15,6 +15,7 @@ import type { Expense, ExpenseCategory, Session } from "@/lib/services/ports";
 
 const ALL_ROWS = Number.MAX_SAFE_INTEGER;
 const DEFAULT_RECENT_EXPENSES_LIMIT = 5;
+const DEFAULT_MONTHLY_EXPENSE_BUCKETS = 6;
 
 const CATEGORY_META: Record<ExpenseCategory, { label: string }> = {
   nomina: { label: "Nómina" },
@@ -33,6 +34,7 @@ export function getCategoryLabel(category: ExpenseCategory): string {
 }
 
 export type ExpensesByCategoryDatum = { category: ExpenseCategory; label: string; total: number };
+export type ExpensesByMonthDatum = { month: string; label: string; amount: number };
 export type ExpensesSummary = {
   totalThisMonth: number;
   byCategory: ExpensesByCategoryDatum[];
@@ -46,6 +48,28 @@ async function listAllExpenses(session: Session): Promise<Expense[]> {
 
 function currentMonthPrefix(now: Date): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Duplicated from `dashboard-service.ts`'s private `monthKey`/`monthLabel`/
+ * `recentMonthKeys` trio rather than importing them — this file is a
+ * deliberate independent parallel service (see file-level doc comment), and
+ * those helpers are private (unexported) in `dashboard-service.ts`.
+ */
+function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  return new Intl.DateTimeFormat("es-CO", { month: "short" }).format(new Date(year, month - 1, 1));
+}
+
+function recentMonthKeys(now: Date, count: number): string[] {
+  return Array.from({ length: count }, (_, index) => {
+    const offset = count - index - 1;
+    return monthKey(new Date(now.getFullYear(), now.getMonth() - offset, 1));
+  });
 }
 
 /** "Gastos del mes": sum of amounts whose `expenseDate` is in the current calendar month. */
@@ -77,6 +101,34 @@ export async function getRecentExpenses(
       return a.createdAt < b.createdAt ? 1 : -1;
     })
     .slice(0, limit);
+}
+
+/**
+ * "Gastos por mes": total expense amount per calendar month over the last
+ * `monthBuckets` months, every bucket emitted (zeros included), newest-last —
+ * mirrors `dashboard-service.ts`'s `getDashboardCharts`' `monthlyPayments`.
+ */
+export async function getExpensesByMonth(
+  session: Session,
+  now: Date = new Date(),
+  monthBuckets: number = DEFAULT_MONTHLY_EXPENSE_BUCKETS,
+): Promise<ExpensesByMonthDatum[]> {
+  const expenses = await listAllExpenses(session);
+
+  const months = recentMonthKeys(now, monthBuckets);
+  const amountsByMonth = new Map(months.map((month) => [month, 0]));
+  for (const expense of expenses) {
+    const expenseMonth = expense.expenseDate.slice(0, 7);
+    if (amountsByMonth.has(expenseMonth)) {
+      amountsByMonth.set(expenseMonth, amountsByMonth.get(expenseMonth)! + expense.amount);
+    }
+  }
+
+  return months.map((month) => ({
+    month,
+    label: monthLabel(month),
+    amount: amountsByMonth.get(month) ?? 0,
+  }));
 }
 
 /** Composite for a future `/api/expenses/summary` (not built this phase) — mirrors getDashboardSummary. */

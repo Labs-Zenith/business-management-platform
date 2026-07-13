@@ -3,6 +3,7 @@ import type { Session } from "@/lib/services/ports";
 import { createExpense } from "./expense-service";
 import {
   getExpensesByCategory,
+  getExpensesByMonth,
   getExpensesSummary,
   getExpensesTotalThisMonth,
   getRecentExpenses,
@@ -32,7 +33,9 @@ const NOW = new Date();
 // this constant disagree with production's own month math and flake. Day 15
 // keeps it safely mid-month regardless.
 const THIS_MONTH_DATE = `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, "0")}-15`;
+const THIS_MONTH_KEY = THIS_MONTH_DATE.slice(0, 7);
 const PREVIOUS_MONTH_DATE = new Date(NOW.getFullYear(), NOW.getMonth() - 2, 15).toISOString().slice(0, 10);
+const PREVIOUS_MONTH_KEY = PREVIOUS_MONTH_DATE.slice(0, 7);
 
 describe("getExpensesTotalThisMonth", () => {
   it("sums only expenses whose expenseDate falls in the current calendar month, scoped to businessId", async () => {
@@ -112,6 +115,65 @@ describe("getRecentExpenses", () => {
     const recent = await getRecentExpenses(sessionA);
 
     expect(recent.some((e) => e.description === "Ajeno")).toBe(false);
+  });
+});
+
+describe("getExpensesByMonth", () => {
+  it("buckets by month over the default window, zero-filled, newest-last, scoped to businessId", async () => {
+    const businessA = newBusinessId();
+    const businessB = newBusinessId();
+    const sessionA = sessionFor(businessA);
+    const sessionB = sessionFor(businessB);
+
+    await createExpense(sessionA, {
+      category: "otro",
+      expenseDate: THIS_MONTH_DATE,
+      description: "Este mes",
+      amount: 80_000,
+    });
+    await createExpense(sessionA, {
+      category: "nomina",
+      expenseDate: PREVIOUS_MONTH_DATE,
+      description: "Mes anterior",
+      amount: 20_000,
+    });
+    await createExpense(sessionB, {
+      category: "otro",
+      expenseDate: THIS_MONTH_DATE,
+      description: "De otro negocio",
+      amount: 9_000_000,
+    });
+
+    const months = await getExpensesByMonth(sessionA, NOW);
+
+    expect(months).toHaveLength(6);
+    expect(months[months.length - 1]!.month).toBe(THIS_MONTH_KEY);
+    expect(months.find((month) => month.month === THIS_MONTH_KEY)).toMatchObject({
+      month: THIS_MONTH_KEY,
+      amount: 80_000,
+    });
+    expect(months.find((month) => month.month === PREVIOUS_MONTH_KEY)).toMatchObject({
+      month: PREVIOUS_MONTH_KEY,
+      amount: 20_000,
+    });
+    expect(months.every((month) => month.amount < 9_000_000)).toBe(true);
+  });
+
+  it("returns every bucket (zeros included) for a business with no expenses", async () => {
+    const session = sessionFor(newBusinessId());
+
+    const months = await getExpensesByMonth(session, NOW);
+
+    expect(months).toHaveLength(6);
+    expect(months.every((month) => month.amount === 0)).toBe(true);
+  });
+
+  it("respects a custom monthBuckets count", async () => {
+    const session = sessionFor(newBusinessId());
+
+    const months = await getExpensesByMonth(session, NOW, 3);
+
+    expect(months).toHaveLength(3);
   });
 });
 

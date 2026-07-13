@@ -22,7 +22,7 @@
  * POSTs directly to `/api/expenses` (the dialog is the client-side mutation
  * boundary, matching `customer-form-dialog-content.tsx`'s established
  * pattern); on success, closes the dialog and calls `router.refresh()` so
- * the Egresos Server Components (`ExpenseKpiCards`/`ExpensesByCategory`/
+ * the Egresos Server Components (`ExpenseKpiCards`/`ExpenseCharts`/
  * `RecentExpenses`) re-stream with the new row.
  */
 
