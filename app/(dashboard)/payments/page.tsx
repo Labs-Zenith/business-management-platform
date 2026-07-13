@@ -3,10 +3,10 @@ import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listPayments } from "@/lib/services/payment-service";
-import { buildExportHref } from "@/lib/export/url";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateFilterField } from "@/components/domain/filters/date-filter-field";
+import { ExportMenu } from "@/components/domain/export-menu";
 
 /**
  * Pagos screen, per `docs/ui-ux-flow.md`'s "Navegacion principal" ("Pagos"
@@ -70,22 +70,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
           <p className="text-sm text-muted-foreground">Consulta los pagos registrados en tu negocio.</p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:flex">
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            nativeButton={false}
-            render={<Link href={buildExportHref("/api/payments/export", exportParams, "xlsx")} />}
-          >
-            Excel
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            nativeButton={false}
-            render={<Link href={buildExportHref("/api/payments/export", exportParams, "pdf")} />}
-          >
-            PDF
-          </Button>
+          <ExportMenu path="/api/payments/export" params={exportParams} />
         </div>
       </div>
 

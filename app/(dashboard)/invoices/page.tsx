@@ -5,11 +5,11 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { listInvoices } from "@/lib/services/invoice-service";
 import type { InvoiceStatus } from "@/lib/services/status";
-import { buildExportHref } from "@/lib/export/url";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateFilterField } from "@/components/domain/filters/date-filter-field";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
+import { ExportMenu } from "@/components/domain/export-menu";
 
 /**
  * Facturas screen, per `docs/ui-ux-flow.md`'s "Facturas" section and
@@ -86,22 +86,7 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
           <p className="text-sm text-muted-foreground">Consulta tus facturas internas y su estado.</p>
         </div>
         <div className="grid grid-cols-1 gap-2 sm:flex">
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            nativeButton={false}
-            render={<Link href={buildExportHref("/api/invoices/export", exportParams, "xlsx")} />}
-          >
-            Excel
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            nativeButton={false}
-            render={<Link href={buildExportHref("/api/invoices/export", exportParams, "pdf")} />}
-          >
-            PDF
-          </Button>
+          <ExportMenu path="/api/invoices/export" params={exportParams} />
           <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
             Crear factura
           </Button>
