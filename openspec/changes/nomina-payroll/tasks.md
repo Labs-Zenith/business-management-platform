@@ -83,21 +83,21 @@ Chain strategy: feature-branch-chain
 
 ## Phase 9: Nomina Page + Dialogs (PR3)
 
-- [ ] 9.1 Create `app/(dashboard)/nomina/page.tsx`: `const session = await requireCapabilityOrNotFound("viewPayroll");` (single call — per Phase 5's implemented signature, this already resolves the session via `requireSessionOrRedirect()` internally and 404s a denied role; do NOT also call `requireSessionOrRedirect()` separately); `<Tabs>` with `Empleados`/`Pagos` `TabsPanel`s (both `keepMounted`, mirroring `dashboard/page.tsx`).
-- [ ] 9.2 Create `components/domain/nomina/employee-form-dialog-content.tsx` + `employee-form-dialog.tsx` (lazy `dynamic(..., {ssr:false})` wrapper): plain `useState` (Customer precedent); fields name, baseSalary (pesos→cents), active toggle (edit-only, excluded on create); POST/PATCH then `router.refresh()`.
-- [ ] 9.3 Create `components/domain/nomina/payroll-payment-form-dialog-content.tsx` + wrapper: RHF + `zodResolver` (Expense precedent); fields employeeId (select, active employees only), amount (pesos→cents), periodType (select), referenceDate/paymentDate (date inputs, default today), notes; client-side live preview via `computePeriod`/`periodDays`; POST then `router.refresh()`.
-- [ ] 9.4 Wire both dialogs into the page's Empleados/Pagos tabs from 9.1.
+- [x] 9.1 Create `app/(dashboard)/nomina/page.tsx`: `const session = await requireCapabilityOrNotFound("viewPayroll");` (single call — per Phase 5's implemented signature, this already resolves the session via `requireSessionOrRedirect()` internally and 404s a denied role; do NOT also call `requireSessionOrRedirect()` separately); `<Tabs>` with `Empleados`/`Pagos` `TabsPanel`s (both `keepMounted`, mirroring `dashboard/page.tsx`).
+- [x] 9.2 Create `components/domain/nomina/employee-form-dialog-content.tsx` + `employee-form-dialog.tsx` (lazy `dynamic(..., {ssr:false})` wrapper): plain `useState` (Customer precedent); fields name, baseSalary (pesos→cents), active toggle (edit-only, excluded on create); POST/PATCH then `router.refresh()`.
+- [x] 9.3 Create `components/domain/nomina/payroll-payment-form-dialog-content.tsx` + wrapper: RHF + `zodResolver` (Expense precedent); fields employeeId (select, active employees only), amount (pesos→cents), periodType (select), referenceDate/paymentDate (date inputs, default today), notes; client-side live preview via `computePeriod`/`periodDays`; POST then `router.refresh()`.
+- [x] 9.4 Wire both dialogs into the page's Empleados/Pagos tabs from 9.1.
 
 ## Phase 10: PR3 Tests
 
-- [ ] 10.1 `app/(dashboard)/nomina/page.test.tsx`: `worker` session → not-found (404); `admin` session → both tabs render with `keepMounted` content present.
-- [ ] 10.2 `employee-form-dialog-content.test.tsx`: valid submit POSTs/PATCHes cents-converted payload, calls `router.refresh()`; active toggle hidden on create, shown on edit.
-- [ ] 10.3 `payroll-payment-form-dialog-content.test.tsx`: valid submit POSTs correct payload; period preview updates live on `periodType`/`referenceDate` change; invalid amount blocks submission client-side.
+- [x] 10.1 `app/(dashboard)/nomina/page.test.tsx`: `worker` session → not-found (404); `admin` session → both tabs render with `keepMounted` content present.
+- [x] 10.2 `employee-form-dialog-content.test.tsx`: valid submit POSTs/PATCHes cents-converted payload, calls `router.refresh()`; active toggle hidden on create, shown on edit.
+- [x] 10.3 `payroll-payment-form-dialog-content.test.tsx`: valid submit POSTs correct payload; period preview updates live on `periodType`/`referenceDate` change; invalid amount blocks submission client-side.
 
 ## Phase 11: Verification Gate
 
-- [ ] 11.1 `npm run typecheck`
-- [ ] 11.2 `npm run lint`
-- [ ] 11.3 `npm run test`
-- [ ] 11.4 `npm run build`
+- [x] 11.1 `npm run typecheck`
+- [x] 11.2 `npm run lint`
+- [x] 11.3 `npm run test`
+- [x] 11.4 `npm run build`
 </content>

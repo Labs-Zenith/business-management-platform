@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/server/api-error";
 import { resetStore, store } from "@/lib/mock/store";
 import { repositories } from "@/lib/services/repositories";
 import type { Session } from "@/lib/services/ports";
-import { createEmployee } from "./employee-service";
+import { createEmployee, updateEmployee } from "./employee-service";
 import { createPayrollPayment, listPayrollPayments } from "./payroll-service";
 
 /**
@@ -78,6 +78,27 @@ describe("createPayrollPayment (payroll-service)", () => {
         paymentDate: "2026-07-16",
       }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+    expect(store.payrollPayments.size).toBe(paymentsBefore);
+    expect(store.expenses.size).toBe(expensesBefore);
+  });
+
+  it("rejects a payment for an inactive employee with VALIDATION_ERROR, creating nothing — this is server-side enforcement, independent of the UI's active-employees-only dropdown filter", async () => {
+    resetStore();
+    const employee = await createEmployee(SESSION, { name: "Laura Martinez", baseSalary: 2000000 });
+    await updateEmployee(SESSION, employee.id, { active: false });
+    const paymentsBefore = store.payrollPayments.size;
+    const expensesBefore = store.expenses.size;
+
+    await expect(
+      createPayrollPayment(SESSION, {
+        employeeId: employee.id,
+        amount: 1000000,
+        periodType: "quincenal",
+        referenceDate: "2026-07-05",
+        paymentDate: "2026-07-16",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
 
     expect(store.payrollPayments.size).toBe(paymentsBefore);
     expect(store.expenses.size).toBe(expensesBefore);

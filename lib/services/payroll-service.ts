@@ -10,6 +10,11 @@
  * round-trip that cannot be composed into `repositories.payroll.create`'s
  * `sql.transaction`), then hands both payloads to the repository, which owns
  * the atomic two-insert.
+ *
+ * "Payroll payments can only be recorded for active employees" is enforced
+ * HERE (server-side, via `employee.active`), not just by the Nomina page's
+ * client-side dropdown pre-filter — a same-business authenticated user could
+ * otherwise bypass the UI and POST an inactive employee's id directly.
  */
 
 import { expenseCreateSchema } from "@/lib/schemas/expense";
@@ -43,6 +48,9 @@ export async function createPayrollPayment(session: Session, input: PayrollPayme
   const employee = await repositories.employees.getById(session.businessId, input.employeeId);
   if (!employee) {
     throw new ApiError("NOT_FOUND", "Employee not found.");
+  }
+  if (!employee.active) {
+    throw new ApiError("VALIDATION_ERROR", "Cannot record a payroll payment for an inactive employee.");
   }
 
   const { periodStart, periodEnd } = computePeriod(input.periodType, input.referenceDate);
