@@ -3,11 +3,13 @@ import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getInvoice } from "@/lib/services/invoice-service";
+import { canViewAuditLog } from "@/lib/services/permissions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 import PaymentFormDialog from "@/components/domain/payments/payment-form-dialog";
+import { MovementsPanel } from "@/components/domain/audit-log/movements-panel";
 
 /**
  * Detalle de factura screen, per `docs/ui-ux-flow.md`'s "Detalle de
@@ -23,6 +25,19 @@ import PaymentFormDialog from "@/components/domain/payments/payment-form-dialog"
  * Hidden once the invoice's `balance` is already `0` (matching the payments
  * spec's "payment on an already-paid invoice is always rejected" rule —
  * no point offering an action that can only fail).
+ *
+ * "Editar factura" (PR3, `openspec/changes/audit-log/specs/invoices/spec.md`)
+ * links to `/invoices/{id}/edit`, shown ONLY when `invoice.paidAmount === 0`
+ * (reusing the already-fetched invoice's derived field, no extra call) — a
+ * UI-level reflection of the server's zero-payment edit-lock rule, not a
+ * replacement for it.
+ *
+ * `<MovementsPanel>` (PR3, `openspec/changes/audit-log/specs/audit-logging/spec.md`'s
+ * "MovementsPanel Is a Widget-Level Gate, Not a Page-Level Gate") is gated by
+ * a PLAIN `canViewAuditLog(session.role)` check at THIS call site —
+ * deliberately NOT `requireCapabilityOrNotFound`, which would 404 the whole
+ * page for `worker` sessions. The rest of this page stays reachable and
+ * functional for every session regardless of that check's result.
  */
 
 type InvoiceDetailPageProps = {
@@ -45,14 +60,26 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           <h1 className="text-lg font-semibold">{invoice.number}</h1>
           <InvoiceStatusBadge status={invoice.status} />
         </div>
-        <Button
-          variant="outline"
-          className="w-full sm:w-auto"
-          nativeButton={false}
-          render={<Link href={`/api/invoices/${invoice.id}/pdf`} />}
-        >
-          Descargar PDF
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {invoice.paidAmount === 0 ? (
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto"
+              nativeButton={false}
+              render={<Link href={`/invoices/${invoice.id}/edit`} />}
+            >
+              Editar factura
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href={`/api/invoices/${invoice.id}/pdf`} />}
+          >
+            Descargar PDF
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -154,6 +181,10 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           )}
         </CardContent>
       </Card>
+
+      {canViewAuditLog(session.role) ? (
+        <MovementsPanel session={session} entityType="invoice" entityId={invoice.id} />
+      ) : null}
     </div>
   );
 }

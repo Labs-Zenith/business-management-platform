@@ -173,4 +173,103 @@ describe("InvoiceFormContent", () => {
     expect(pushMock).not.toHaveBeenCalled();
     expect(refreshMock).not.toHaveBeenCalled();
   });
+
+  describe("edit mode", () => {
+    const INVOICE = {
+      id: "invoice-1",
+      customerId: CUSTOMER.id,
+      issueDate: "2026-06-01",
+      dueDate: "2026-06-30",
+      notes: "Nota existente",
+      items: [
+        { description: "Consultoria previa", quantity: 2, unitPrice: 150000 }, // 1500.00 pesos in cents
+      ],
+    };
+
+    it("pre-fills every field from the invoice prop, converting cents back to whole pesos", async () => {
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+
+      expect(screen.getByLabelText(/cliente/i)).toHaveValue(CUSTOMER.id);
+      expect(screen.getByLabelText(/fecha de emision/i)).toHaveValue(INVOICE.issueDate);
+      expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveValue(INVOICE.dueDate);
+      expect(screen.getByLabelText(/nota/i)).toHaveValue(INVOICE.notes);
+      expect(screen.getByLabelText(/descripcion/i)).toHaveValue(INVOICE.items[0].description);
+      expect(screen.getByLabelText(/cantidad/i)).toHaveValue(INVOICE.items[0].quantity);
+      expect(screen.getByLabelText(/valor unitario/i)).toHaveValue(INVOICE.items[0].unitPrice / 100);
+    });
+
+    it("renders the 'Guardar cambios' submit label instead of 'Crear factura'", () => {
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+
+      expect(screen.getByRole("button", { name: /guardar cambios/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^crear factura$/i })).not.toBeInTheDocument();
+    });
+
+    it("PATCHes /api/invoices/{id} with the edited payload (cents-converted unitPrice) instead of POSTing, then pushes and refreshes on success", async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { id: INVOICE.id } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+
+      await user.clear(screen.getByLabelText(/valor unitario/i));
+      await user.type(screen.getByLabelText(/valor unitario/i), "2000");
+      await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/invoices/${INVOICE.id}`,
+        expect.objectContaining({ method: "PATCH" }),
+      );
+      const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body);
+      expect(body.customerId).toBe(CUSTOMER.id);
+      expect(body.items).toEqual([{ description: INVOICE.items[0].description, quantity: 2, unitPrice: 200000 }]);
+      expect(pushMock).toHaveBeenCalledWith(`/invoices/${INVOICE.id}`);
+      expect(refreshMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the edit-specific server error message and does not navigate when the PATCH fails", async () => {
+      const user = userEvent.setup();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: false,
+          json: async () => ({ error: { code: "CONFLICT", message: "La factura ya tiene pagos registrados." } }),
+        }),
+      );
+
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+
+      await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("La factura ya tiene pagos registrados.");
+      expect(pushMock).not.toHaveBeenCalled();
+      expect(refreshMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("create mode regression", () => {
+    it("still POSTs to /api/invoices (not PATCH) and shows 'Crear factura' when no invoice prop is passed", async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { id: "invoice-2" } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<InvoiceFormContent customers={[CUSTOMER]} />);
+
+      expect(screen.getByRole("button", { name: /crear factura/i })).toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+      await fillFirstItem(user, "Consultoria", "500");
+      await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+      expect(fetchMock).toHaveBeenCalledWith("/api/invoices", expect.objectContaining({ method: "POST" }));
+      expect(pushMock).toHaveBeenCalledWith("/invoices/invoice-2");
+    });
+  });
 });

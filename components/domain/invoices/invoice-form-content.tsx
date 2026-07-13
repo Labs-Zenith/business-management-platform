@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Actual invoice create form implementation. Always imported indirectly
+ * Actual invoice create/edit form implementation. Always imported indirectly
  * through `./invoice-form.tsx` (`dynamic(..., {ssr:false})`) — never import
  * this file directly from a page, per the user's explicit lazy-loading
  * requirement for the heaviest interactive form piece.
@@ -12,6 +12,18 @@
  * total is computed client-side purely for UX feedback
  * (`docs/ui-ux-flow.md`'s "Calcular total en pantalla") — the server always
  * recomputes and is the authoritative source (`lib/services/invoice-service.ts`).
+ *
+ * Edit mode (`openspec/changes/audit-log/specs/invoices/spec.md`'s "Invoice
+ * Editing Locked to Zero-Payment Invoices"): passing the optional `invoice`
+ * prop pre-fills every field from the existing invoice (cents converted back
+ * to whole pesos for `unitPrice`, matching the create form's input
+ * convention) and switches submission from `POST /api/invoices` to
+ * `PATCH /api/invoices/{invoice.id}`. The caller (the edit page/route) is
+ * solely responsible for only reaching this component with the `invoice`
+ * prop when `invoice.paidAmount === 0` — this form itself does not
+ * re-check that (the server's edit-lock in `updateInvoice`/`InvoiceRepository.update`
+ * is the actual enforcement; the UI-level gating is a defense-in-depth nicety
+ * on top of it, not a replacement for it).
  */
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -28,18 +40,62 @@ import { lineTotal, pesosToCents } from "@/lib/money";
 import { InvoiceItemFields } from "./invoice-item-fields";
 import { invoiceFormSchema, type InvoiceFormValues } from "./invoice-form-schema";
 
-const GENERIC_ERROR_MESSAGE = "No se pudo crear la factura. Verifica los datos e intenta de nuevo.";
+const CREATE_ERROR_MESSAGE = "No se pudo crear la factura. Verifica los datos e intenta de nuevo.";
+const EDIT_ERROR_MESSAGE = "No se pudo guardar los cambios. Verifica los datos e intenta de nuevo.";
 
 export type InvoiceFormCustomer = { id: string; name: string };
 
-export type InvoiceFormContentProps = {
-  customers: InvoiceFormCustomer[];
-  /** Preselects the customer, e.g. when arriving from "Crear factura para este cliente". */
-  defaultCustomerId?: string;
+/** Minimal shape this form needs to pre-fill edit mode — a subset of `InvoiceDetail`. */
+export type InvoiceFormContentInvoice = {
+  id: string;
+  customerId: string;
+  issueDate: string;
+  dueDate: string | null;
+  notes: string | null;
+  items: {
+    description: string;
+    quantity: number;
+    /** Integer minor units (COP cents), per `lib/money.ts`'s convention. */
+    unitPrice: number;
+  }[];
 };
 
-export default function InvoiceFormContent({ customers, defaultCustomerId }: InvoiceFormContentProps) {
+export type InvoiceFormContentProps = {
+  customers: InvoiceFormCustomer[];
+  /** Preselects the customer, e.g. when arriving from "Crear factura para este cliente". Ignored in edit mode. */
+  defaultCustomerId?: string;
+  /** When present, the form operates in edit mode: pre-fills from this invoice and PATCHes instead of POSTing. */
+  invoice?: InvoiceFormContentInvoice;
+};
+
+function toDefaultValues(defaultCustomerId?: string, invoice?: InvoiceFormContentInvoice): InvoiceFormValues {
+  if (invoice) {
+    return {
+      customerId: invoice.customerId,
+      issueDate: invoice.issueDate,
+      dueDate: invoice.dueDate ?? "",
+      notes: invoice.notes ?? "",
+      items: invoice.items.map((item) => ({
+        description: item.description,
+        quantity: item.quantity,
+        // Cents -> whole pesos, the inverse of `pesosToCents` applied at
+        // submit time — matches this form's "entered in pesos" convention.
+        unitPrice: item.unitPrice / 100,
+      })),
+    };
+  }
+  return {
+    customerId: defaultCustomerId ?? "",
+    issueDate: todayIsoDate(),
+    dueDate: "",
+    notes: "",
+    items: [{ description: "", quantity: 1, unitPrice: 0 }],
+  };
+}
+
+export default function InvoiceFormContent({ customers, defaultCustomerId, invoice }: InvoiceFormContentProps) {
   const router = useRouter();
+  const isEditing = Boolean(invoice);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
@@ -49,13 +105,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
     formState: { errors, isSubmitting },
   } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceFormSchema),
-    defaultValues: {
-      customerId: defaultCustomerId ?? "",
-      issueDate: todayIsoDate(),
-      dueDate: "",
-      notes: "",
-      items: [{ description: "", quantity: 1, unitPrice: 0 }],
-    },
+    defaultValues: toDefaultValues(defaultCustomerId, invoice),
   });
 
   // `useWatch` (not `useForm()`'s returned `watch()`) — the dedicated hook is
@@ -94,15 +144,18 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
         })),
       };
 
-      const response = await fetch("/api/invoices", {
-        method: "POST",
+      const url = isEditing ? `/api/invoices/${invoice!.id}` : "/api/invoices";
+      const method = isEditing ? "PATCH" : "POST";
+
+      const response = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         const body: { error?: { message?: string } } | null = await response.json().catch(() => null);
-        setSubmitError(body?.error?.message ?? GENERIC_ERROR_MESSAGE);
+        setSubmitError(body?.error?.message ?? (isEditing ? EDIT_ERROR_MESSAGE : CREATE_ERROR_MESSAGE));
         return;
       }
 
@@ -110,7 +163,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
       router.push(`/invoices/${body.data.id}`);
       router.refresh();
     } catch {
-      setSubmitError(GENERIC_ERROR_MESSAGE);
+      setSubmitError(isEditing ? EDIT_ERROR_MESSAGE : CREATE_ERROR_MESSAGE);
     }
   }
 
@@ -163,7 +216,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId }: Inv
       ) : null}
 
       <Button type="submit" disabled={isSubmitting} className="w-full sm:w-fit">
-        {isSubmitting ? "Guardando..." : "Crear factura"}
+        {isSubmitting ? "Guardando..." : isEditing ? "Guardar cambios" : "Crear factura"}
       </Button>
     </form>
   );
