@@ -71,3 +71,7 @@ Chain strategy: feature-branch-chain
 - [x] 5.2 At least one full `npm run test -- --sequence.shuffle` run (order-independence check) before merging PR4 / the tracker branch.
 - [x] 5.3 Final aggregate gate after all 4 PRs land: `npm run test`, `npm run build`, confirm no `type="date"` remains outside `components/domain/inventario/movement-form-dialog-content.tsx` (out of scope) and no DIAN-notice files touched.
 - [x] 5.4 Confirm proposal Success Criteria: all 10 sites use `DatePicker`; submitted `YYYY-MM-DD` values identical pre/post-change; payroll preview updates live; filter bars submit via GET with JS disabled.
+
+---
+
+**Note (added at archive time, not part of the original apply-phase task list)**: a subsequent PR4 post-review fix pass (documented in `apply-progress`, Engram obs #97, and summarized in `archive-report.md`) closed 5 review-flagged gaps after task 4.7 was checked off: (a) missing page-level wiring tests for `DateFilterField` in both `invoices/page.tsx` and `payments/page.tsx` (a new `invoices/page.test.tsx` was created from scratch; `payments/page.test.tsx` got a new wiring test), (b) a stray `value=""` SSR attribute in the native-input fallback, (c) a missing clear-gesture test for the JS-enhanced filter path, (d) this task file's on-disk 4.3 description was stale (already fixed in the version above), and (e) an imprecise code comment in `payment-form-dialog-content.tsx`. All 5 fixes are verified present in the shipped code (confirmed by direct file reads during archive). See `archive-report.md` for full detail.

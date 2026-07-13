@@ -76,11 +76,11 @@ revert re-exposes native inputs with unchanged value contract, no data migration
 
 ## Success Criteria
 
-- [ ] All 10 sites use `DatePicker`; no `type="date"` remains (except non-goals).
-- [ ] Submitted `YYYY-MM-DD` values identical to pre-change.
-- [ ] Payroll period preview updates live on date select.
-- [ ] Filter bars still submit via GET with JS disabled.
-- [ ] `npm run test` + `npm run build` green.
+- [x] All 10 sites use `DatePicker`; no `type="date"` remains (except non-goals).
+- [x] Submitted `YYYY-MM-DD` values identical to pre-change.
+- [x] Payroll period preview updates live on date select.
+- [x] Filter bars still submit via GET with JS disabled.
+- [x] `npm run test` + `npm run build` green.
 
 ## Proposal question round — resolved
 

@@ -82,7 +82,7 @@ is WRONG — `date-fns/locale`'s `es` lacks the `.labels` react-day-picker needs
 aria-labels silently fall back to English. Use TWO separate imports instead:
 ```tsx
 import { es } from "date-fns/locale";                  // for format() display text
-import { es as rdpEs } from "react-day-picker/locale";  // for Calendar's locale prop
+import { es as rdpEs } from "react-day-picker/locale"; // for Calendar's locale prop
 ```
 and pass `locale={rdpEs}` to `Calendar`, not `locale={es}`. Any PR touching
 `date-picker.tsx` again must use this two-import pattern.
@@ -221,3 +221,28 @@ re-exposes native inputs with the unchanged ISO value contract.
 - [ ] Confirm jsdom associates `<label htmlFor>` with the trigger `<button>` so
   `getByLabelText` returns it; if not, fall back to `within(container)` scoping.
 - [ ] Confirm the 4-slice PR split (payroll isolated) over the proposal's 3.
+
+---
+
+## Addendum (added at archive time — not part of the original design.md)
+
+Confirmed against the shipped code at archive time (all 4 PRs, commits
+`6ef051e`/`7db5026`/`837750c`/`1627828`):
+
+- Both jsdom `Open Questions` above resolved affirmatively during implementation
+  (label-to-button association worked; the 4-slice split shipped as planned) —
+  left the checkboxes above as `[ ]` to preserve the original artifact verbatim;
+  see `archive-report.md` for the resolved status.
+- The two-import locale fix (`date-fns/locale`'s `es` for `format()`,
+  `react-day-picker/locale`'s `es` for `Calendar`) is present in
+  `components/ui/date-picker.tsx` with inline documentation.
+- One additional real bug beyond what this design.md anticipated, found and
+  fixed during PR4 apply: the design's `DateFilterField` sample used
+  `useState(false)` + `useEffect(() => setMounted(true), [])` for mount
+  detection, which trips `eslint-plugin-react-hooks`'s `set-state-in-effect`
+  rule (hard ERROR in this repo's config). Shipped code uses
+  `React.useSyncExternalStore` instead — React's documented idiom for this case.
+- Full list of real bugs caught and fixed during development (locale-import
+  collision, UTC off-by-one guard, invalid-date-string crash guard, broken
+  TZ-restore in a test's `afterEach`, stray `value=""` SSR attribute, and
+  missing page-level wiring tests) is documented in `archive-report.md`.
