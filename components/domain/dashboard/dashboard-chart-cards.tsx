@@ -18,6 +18,8 @@ type DashboardChartCardsProps = {
   charts: DashboardChartsData;
 };
 
+type ReceivableRow = DashboardChartsData["receivablesByStatus"][number];
+
 const STATUS_COLORS = [
   "var(--chart-2)",
   "var(--chart-3)",
@@ -35,6 +37,9 @@ type ChartTooltipPayload = {
   name?: unknown;
   dataKey?: unknown;
   color?: string;
+  // The full underlying data row recharts attaches to each tooltip item —
+  // used to surface secondary fields (e.g. total/count) beyond the plotted value.
+  payload?: Record<string, unknown>;
 };
 
 function ChartTooltip({
@@ -42,11 +47,16 @@ function ChartTooltip({
   label,
   payload,
   valueLabel,
+  extraLines,
 }: {
   active?: boolean;
   label?: unknown;
   payload?: readonly ChartTooltipPayload[];
   valueLabel: string;
+  // Optional secondary label/value lines rendered below the plotted value —
+  // e.g. "Total facturado" and "Facturas" on the receivables-by-status chart,
+  // so a $0 "Saldo" on the Pagada bar is explained rather than looking empty.
+  extraLines?: readonly { label: string; value: string }[];
 }) {
   if (!active || !payload?.length) {
     return null;
@@ -60,6 +70,12 @@ function ChartTooltip({
           <span className="size-2 rounded-full" style={{ backgroundColor: item.color ?? "var(--primary)" }} />
           <span className="text-muted-foreground">{valueLabel}:</span>
           <span className="font-medium tabular-nums">{formatTooltipMoney(item.value)}</span>
+        </div>
+      ))}
+      {extraLines?.map((line) => (
+        <div key={line.label} className="mt-1 flex items-center gap-2 pl-4">
+          <span className="text-muted-foreground">{line.label}:</span>
+          <span className="font-medium tabular-nums">{line.value}</span>
         </div>
       ))}
     </div>
@@ -98,7 +114,27 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
                   <YAxis hide />
                   <Tooltip
                     cursor={{ fill: "var(--muted)" }}
-                    content={(props) => <ChartTooltip {...props} valueLabel="Saldo" />}
+                    content={(props) => {
+                      // "Pagada" always has balance 0 by definition (paid = balance 0),
+                      // so surface `total` and `count` too — otherwise that bar's
+                      // tooltip reads "Saldo: $0" with no context.
+                      const rows = props.payload as readonly ChartTooltipPayload[] | undefined;
+                      const datum = rows?.[0]?.payload as ReceivableRow | undefined;
+                      return (
+                        <ChartTooltip
+                          {...props}
+                          valueLabel="Saldo"
+                          extraLines={
+                            datum
+                              ? [
+                                  { label: "Total facturado", value: formatCOP(datum.total) },
+                                  { label: "Facturas", value: String(datum.count) },
+                                ]
+                              : undefined
+                          }
+                        />
+                      );
+                    }}
                   />
                   <Bar dataKey="balance" radius={[6, 6, 0, 0]}>
                     {receivableRows.map((_, index) => (
