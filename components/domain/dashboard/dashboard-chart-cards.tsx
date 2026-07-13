@@ -13,7 +13,7 @@ import {
 import { formatCOP } from "@/lib/money";
 import type { DashboardCharts as DashboardChartsData } from "@/lib/services/dashboard-service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartTooltip, type ChartTooltipPayload, EmptyChart } from "./chart-primitives";
+import { ChartFrame, ChartTooltip, type ChartTooltipPayload, EmptyChart } from "./chart-primitives";
 
 type DashboardChartCardsProps = {
   charts: DashboardChartsData;
@@ -44,7 +44,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
           {receivableRows.length === 0 ? (
             <EmptyChart label="Sin facturas para graficar." />
           ) : (
-            <div className="h-52 min-w-0">
+            <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={receivableRows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -81,7 +81,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
           )}
         </CardContent>
       </Card>
@@ -94,7 +94,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
           {debtorRows.length === 0 ? (
             <EmptyChart label="Sin saldos pendientes." />
           ) : (
-            <div className="h-52 min-w-0">
+            <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={debtorRows}
@@ -120,7 +120,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
                   <Bar dataKey="balance" fill="var(--chart-2)" radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
           )}
         </CardContent>
       </Card>
@@ -133,7 +133,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
           {!hasPayments ? (
             <EmptyChart label="Sin pagos en los ultimos meses." />
           ) : (
-            <div className="h-52 min-w-0">
+            <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={paymentRows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -146,7 +146,7 @@ export function DashboardChartCards({ charts }: DashboardChartCardsProps) {
                   <Bar dataKey="amount" fill="var(--chart-3)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
           )}
         </CardContent>
       </Card>

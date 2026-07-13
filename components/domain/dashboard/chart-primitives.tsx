@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { formatCOP } from "@/lib/money";
 
 /**
@@ -7,6 +8,57 @@ import { formatCOP } from "@/lib/money";
  * `expense-chart-cards.tsx` (Egresos), so both chart sets share one tooltip
  * and empty-state implementation instead of duplicating them.
  */
+
+/**
+ * Wraps a recharts `ResponsiveContainer` chart and only mounts it once its
+ * own box has a non-zero size. Both dashboard tabs use `keepMounted`, so the
+ * INACTIVE tab renders at `display:none` (0×0) — mounting a `ResponsiveContainer`
+ * there makes recharts log "width(0) and height(0) of chart should be greater
+ * than 0" on every render. Gating on measured size avoids that entirely and
+ * defers the chart work until the tab is actually shown; when the user
+ * switches tabs the ResizeObserver fires (0 → real size) and the chart mounts.
+ *
+ * jsdom has no layout engine and (by default) no `ResizeObserver`, so there it
+ * falls back to rendering immediately — preserving existing test behavior
+ * (which asserts the chart renders given data, and ignores recharts' dev warning).
+ */
+function useHasRenderableSize(ref: React.RefObject<HTMLDivElement | null>): boolean {
+  const subscribe = React.useCallback(
+    (onChange: () => void) => {
+      const el = ref.current;
+      if (!el || typeof ResizeObserver === "undefined") return () => {};
+      // ResizeObserver fires once immediately on observe(), so the snapshot is
+      // re-read right after mount without a synchronous setState in an effect.
+      const observer = new ResizeObserver(onChange);
+      observer.observe(el);
+      return () => observer.disconnect();
+    },
+    [ref],
+  );
+  const getSnapshot = () => {
+    // jsdom (tests) and very old browsers have no ResizeObserver / no layout —
+    // render immediately there so the chart still mounts under test.
+    if (typeof ResizeObserver === "undefined") return true;
+    const el = ref.current;
+    return !!el && el.offsetWidth > 0 && el.offsetHeight > 0;
+  };
+  // Server render (and the matching first client render before the ref is
+  // attached) reports "no size", so the chart is deferred rather than mounted
+  // at 0×0 — no hydration mismatch, no recharts 0-width warning.
+  const getServerSnapshot = () => false;
+  return React.useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+export function ChartFrame({ className, children }: { className?: string; children: React.ReactNode }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const ready = useHasRenderableSize(ref);
+
+  return (
+    <div ref={ref} className={className}>
+      {ready ? children : null}
+    </div>
+  );
+}
 
 export function formatTooltipMoney(value: unknown) {
   const amount = Array.isArray(value) ? value[0] : value;

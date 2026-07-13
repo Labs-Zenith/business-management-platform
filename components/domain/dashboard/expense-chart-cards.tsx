@@ -3,7 +3,7 @@
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ExpensesByCategoryDatum, ExpensesByMonthDatum } from "@/lib/services/expense-dashboard-service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartTooltip, EmptyChart } from "./chart-primitives";
+import { ChartFrame, ChartTooltip, EmptyChart } from "./chart-primitives";
 
 /**
  * Egresos chart parity with `dashboard-chart-cards.tsx`'s Ingresos charts:
@@ -38,7 +38,7 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
           {!hasCategoryTotals ? (
             <EmptyChart label="Sin gastos para graficar." />
           ) : (
-            <div className="h-52 min-w-0">
+            <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={categoryRows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -55,7 +55,7 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
           )}
         </CardContent>
       </Card>
@@ -68,7 +68,7 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
           {!hasMonthlyAmounts ? (
             <EmptyChart label="Sin gastos en los ultimos meses." />
           ) : (
-            <div className="h-52 min-w-0">
+            <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthRows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -81,7 +81,7 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
                   <Bar dataKey="amount" fill="var(--chart-5)" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </ChartFrame>
           )}
         </CardContent>
       </Card>
