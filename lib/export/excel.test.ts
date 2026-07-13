@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
 import { formatCOP } from "@/lib/money";
-import { renderDashboardWorkbook, type DashboardExportData } from "@/lib/export/excel";
+import { renderDashboardWorkbook, type DashboardChartImages, type DashboardExportData } from "@/lib/export/excel";
 
 const SHEET_NAMES = [
   "Resumen",
@@ -12,7 +12,24 @@ const SHEET_NAMES = [
   "Pagos recientes",
   "Gastos por categoria",
   "Gastos recientes",
+  "Graficos",
 ];
+
+/** 1x1 transparent PNG — smallest valid PNG buffer, good enough for `addImage`'s extension detection. */
+const FAKE_PNG_BUFFER = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+function buildChartImages(): DashboardChartImages {
+  return {
+    receivablesByStatus: FAKE_PNG_BUFFER,
+    topDebtors: FAKE_PNG_BUFFER,
+    monthlyPayments: FAKE_PNG_BUFFER,
+    expensesByCategory: FAKE_PNG_BUFFER,
+    expensesByMonth: FAKE_PNG_BUFFER,
+  };
+}
 
 function buildDashboardData(): DashboardExportData {
   return {
@@ -170,7 +187,7 @@ async function loadWorkbook(buffer: Buffer): Promise<ExcelJS.Workbook> {
 
 describe("renderDashboardWorkbook", () => {
   it("builds one sheet per dashboard section, in order, with styled header rows", async () => {
-    const buffer = await renderDashboardWorkbook(buildDashboardData());
+    const buffer = await renderDashboardWorkbook(buildDashboardData(), buildChartImages());
     const workbook = await loadWorkbook(buffer);
 
     expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(SHEET_NAMES);
@@ -315,7 +332,7 @@ describe("renderDashboardWorkbook", () => {
   });
 
   it("does not include a Cliente column on Facturas vencidas", async () => {
-    const buffer = await renderDashboardWorkbook(buildDashboardData());
+    const buffer = await renderDashboardWorkbook(buildDashboardData(), buildChartImages());
     const workbook = await loadWorkbook(buffer);
     const facturasVencidas = workbook.getWorksheet("Facturas vencidas")!;
 
@@ -323,8 +340,29 @@ describe("renderDashboardWorkbook", () => {
     expect(headerValues).not.toContain("Cliente");
   });
 
+  it("embeds all 5 chart PNGs into the Graficos sheet, without altering the 8 data sheets", async () => {
+    const buffer = await renderDashboardWorkbook(buildDashboardData(), buildChartImages());
+    const workbook = await loadWorkbook(buffer);
+
+    const graficos = workbook.getWorksheet("Graficos")!;
+    expect(graficos).toBeDefined();
+
+    // `workbook.model.media` holds every embedded image across the whole
+    // workbook — 5 chart PNGs, one per `DashboardChartImages` key.
+    expect(workbook.model.media.length).toBe(5);
+    for (const media of workbook.model.media) {
+      expect(media.type).toBe("image");
+      expect(media.extension).toBe("png");
+    }
+
+    // The 8 pre-existing data sheets are untouched.
+    const dataSheetNames = SHEET_NAMES.filter((name) => name !== "Graficos");
+    expect(dataSheetNames.every((name) => workbook.getWorksheet(name) !== undefined)).toBe(true);
+    expect(workbook.getWorksheet("Resumen")!.rowCount).toBe(5);
+  });
+
   it("renders header-only sheets for an empty-state business without throwing", async () => {
-    const buffer = await renderDashboardWorkbook(buildEmptyDashboardData());
+    const buffer = await renderDashboardWorkbook(buildEmptyDashboardData(), buildChartImages());
     const workbook = await loadWorkbook(buffer);
 
     expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(SHEET_NAMES);

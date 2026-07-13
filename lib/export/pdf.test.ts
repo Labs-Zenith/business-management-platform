@@ -2,8 +2,24 @@ import PDFDocument from "pdfkit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatCOP } from "@/lib/money";
 import { renderDashboardExportPdf } from "@/lib/export/pdf";
-import type { DashboardExportData } from "@/lib/export/excel";
+import type { DashboardChartImages, DashboardExportData } from "@/lib/export/excel";
 import type { InvoiceWithFinance } from "@/lib/services/ports";
+
+/** 1x1 transparent PNG — smallest valid PNG buffer, sufficient for `doc.image`. */
+const FAKE_PNG_BUFFER = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+function buildChartImages(): DashboardChartImages {
+  return {
+    receivablesByStatus: FAKE_PNG_BUFFER,
+    topDebtors: FAKE_PNG_BUFFER,
+    monthlyPayments: FAKE_PNG_BUFFER,
+    expensesByCategory: FAKE_PNG_BUFFER,
+    expensesByMonth: FAKE_PNG_BUFFER,
+  };
+}
 
 function buildDashboardData(): DashboardExportData {
   return {
@@ -212,19 +228,22 @@ describe("renderDashboardExportPdf", () => {
   });
 
   it("starts with the PDF magic bytes", async () => {
-    const buffer = await renderDashboardExportPdf(buildDashboardData());
+    const buffer = await renderDashboardExportPdf(buildDashboardData(), buildChartImages());
     expect(buffer.subarray(0, 4).toString("utf8")).toBe("%PDF");
   });
 
   it("renders one heading and one populated table per section, with real values, in order", async () => {
     const { calls } = captureRenderedText();
-    await renderDashboardExportPdf(buildDashboardData());
+    await renderDashboardExportPdf(buildDashboardData(), buildChartImages());
     const rendered = calls();
 
     // Document title, once.
     expect(rendered).toContain("Reporte de Dashboard");
 
-    // Section headings, in the exact 8-section order committed by PR1's Excel sheets.
+    // Section headings, in the exact order committed by PR1's Excel sheets,
+    // plus the new chart-only "Gastos por mes" heading inserted right after
+    // "Gastos por categoria" (there is no pre-existing "Gastos por mes" data
+    // sheet/table — only its chart image is new here).
     const sectionHeadings = [
       "Resumen",
       "Saldo por estado",
@@ -233,6 +252,7 @@ describe("renderDashboardExportPdf", () => {
       "Facturas vencidas",
       "Pagos recientes",
       "Gastos por categoria",
+      "Gastos por mes",
       "Gastos recientes",
     ];
     const headingIndexes = findHeadingIndexesInOrder(rendered, sectionHeadings);
@@ -254,6 +274,7 @@ describe("renderDashboardExportPdf", () => {
       "Facturas vencidas": 2,
       "Pagos recientes": 1,
       "Gastos por categoria": 1,
+      "Gastos por mes": 1,
       "Gastos recientes": 1,
     };
     for (const heading of sectionHeadings) {
@@ -268,7 +289,7 @@ describe("renderDashboardExportPdf", () => {
       const end = index + 1 < headingIndexes.length ? headingIndexes[index + 1] : rendered.length;
       return rendered.slice(start, end);
     });
-    const [, , , , facturasVencidasSlice, pagosRecientesSlice, , gastosRecientesSlice] = sectionSlices;
+    const [, , , , facturasVencidasSlice, pagosRecientesSlice, , , gastosRecientesSlice] = sectionSlices;
 
     // 1. Resumen — plain count row (not currency-formatted) alongside money rows.
     expect(rendered).toContain("Saldo pendiente por cobrar");
@@ -328,7 +349,7 @@ describe("renderDashboardExportPdf", () => {
 
   it("does not render a Cliente column for Facturas vencidas", async () => {
     const { calls } = captureRenderedText();
-    await renderDashboardExportPdf(buildDashboardData());
+    await renderDashboardExportPdf(buildDashboardData(), buildChartImages());
     const rendered = calls();
 
     const [, , , , facturasVencidasIndex, pagosRecientesIndex] = findHeadingIndexesInOrder(rendered, [
@@ -345,7 +366,7 @@ describe("renderDashboardExportPdf", () => {
 
   it("renders header-only tables with zero-amount formatting for an empty-state business, without throwing", async () => {
     const { calls } = captureRenderedText();
-    const buffer = await renderDashboardExportPdf(buildEmptyDashboardData());
+    const buffer = await renderDashboardExportPdf(buildEmptyDashboardData(), buildChartImages());
     const rendered = calls();
 
     expect(buffer.subarray(0, 4).toString("utf8")).toBe("%PDF");
@@ -355,6 +376,7 @@ describe("renderDashboardExportPdf", () => {
     expect(rendered).toContain("Pagos por mes");
     expect(rendered).toContain("Facturas vencidas");
     expect(rendered).toContain("Pagos recientes");
+    expect(rendered).toContain("Gastos por mes");
     expect(rendered).toContain("Gastos recientes");
 
     // Fixed-order sections still emit their fixed rows, all rendering `formatCOP(0)`.
@@ -366,13 +388,31 @@ describe("renderDashboardExportPdf", () => {
     expect(rendered).toContain("0");
   });
 
+  it("embeds one chart image per section, in the same order as the headings", async () => {
+    const imageSpy = vi.spyOn(PDFDocument.prototype, "image");
+    await renderDashboardExportPdf(buildDashboardData(), buildChartImages());
+
+    expect(imageSpy).toHaveBeenCalledTimes(5);
+    for (const call of imageSpy.mock.calls) {
+      expect(Buffer.isBuffer(call[0])).toBe(true);
+    }
+  });
+
+  it("still embeds all 5 chart images for an empty-state business (Sin datos placeholders), without throwing", async () => {
+    const imageSpy = vi.spyOn(PDFDocument.prototype, "image");
+    const buffer = await renderDashboardExportPdf(buildEmptyDashboardData(), buildChartImages());
+
+    expect(buffer.subarray(0, 4).toString("utf8")).toBe("%PDF");
+    expect(imageSpy).toHaveBeenCalledTimes(5);
+  });
+
   it("forces a page break mid-table and repeats the table header on the new page", async () => {
     const { calls } = captureRenderedText();
     const addPageSpy = vi.spyOn(PDFDocument.prototype, "addPage");
     const data = buildDashboardData();
     data.summary.overdueInvoiceList = buildLargeOverdueInvoiceList(45);
 
-    await renderDashboardExportPdf(data);
+    await renderDashboardExportPdf(data, buildChartImages());
     const rendered = calls();
 
     // 45 rows at pdfkit's 22pt row height (~990pt) is far taller than an A4
@@ -388,6 +428,7 @@ describe("renderDashboardExportPdf", () => {
       "Facturas vencidas",
       "Pagos recientes",
       "Gastos por categoria",
+      "Gastos por mes",
       "Gastos recientes",
     ];
     const headingIndexes = findHeadingIndexesInOrder(rendered, allHeadings);

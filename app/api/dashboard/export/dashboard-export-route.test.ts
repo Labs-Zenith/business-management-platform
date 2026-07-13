@@ -34,7 +34,23 @@ vi.mock("next/headers", () => ({
   cookies: async () => mockCookieJar,
 }));
 
+/**
+ * Partial mock of `chart-image.ts`: every export defaults to its REAL
+ * implementation (via `importOriginal`), so every existing test in this file
+ * keeps exercising real chart PNG rendering. Only the resilience test below
+ * overrides `renderTopDebtorsPng` with `mockRejectedValueOnce`, which reverts
+ * back to the real implementation after that one call.
+ */
+vi.mock("@/lib/export/chart-image", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/export/chart-image")>();
+  return {
+    ...actual,
+    renderTopDebtorsPng: vi.fn(actual.renderTopDebtorsPng),
+  };
+});
+
 const { GET } = await import("./route");
+const chartImage = await import("@/lib/export/chart-image");
 
 const DEMO_EMAIL = "demo@negociodemo.test";
 const DEMO_PASSWORD = "demo1234";
@@ -48,6 +64,7 @@ const SHEET_NAMES = [
   "Pagos recientes",
   "Gastos por categoria",
   "Gastos recientes",
+  "Graficos",
 ];
 
 async function signIn(): Promise<void> {
@@ -93,6 +110,9 @@ describe("GET /api/dashboard/export", () => {
     const resumen = workbook.getWorksheet("Resumen")!;
     expect(resumen.getRow(1).values).toEqual([undefined, "Concepto", "Valor"]);
     expect(resumen.rowCount).toBe(5);
+
+    // 5 real chart PNGs embedded into the "Graficos" sheet.
+    expect(workbook.model.media.length).toBe(5);
   });
 
   it("exports the full dashboard to a PDF attachment", async () => {
@@ -143,10 +163,38 @@ describe("GET /api/dashboard/export", () => {
     expect(workbook.getWorksheet("Facturas vencidas")!.rowCount).toBe(1);
     expect(workbook.getWorksheet("Pagos recientes")!.rowCount).toBe(1);
     expect(workbook.getWorksheet("Gastos recientes")!.rowCount).toBe(1);
+    // Charts still render (as "Sin datos" placeholders) without throwing.
+    expect(workbook.getWorksheet("Graficos")).toBeDefined();
+    expect(workbook.model.media.length).toBe(5);
 
     const pdfResponse = await GET(new Request("http://localhost:3000/api/dashboard/export?format=pdf"));
     const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
     expect(pdfResponse.status).toBe(200);
     expect(pdfBytes.subarray(0, 4).toString("utf8")).toBe("%PDF");
+  });
+
+  it("still returns a complete, valid export when a single chart's PNG render fails (graceful degradation via safeChartPng)", async () => {
+    await signIn();
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    vi.mocked(chartImage.renderTopDebtorsPng).mockRejectedValueOnce(new Error("chart render failed (test)"));
+    const xlsxResponse = await GET(new Request("http://localhost:3000/api/dashboard/export?format=xlsx"));
+    expect(xlsxResponse.status).toBe(200);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await xlsxResponse.arrayBuffer());
+    expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(SHEET_NAMES);
+    // The other 8 data sheets are completely untouched by the chart failure.
+    expect(workbook.getWorksheet("Resumen")!.rowCount).toBe(5);
+    // Still 5 valid embedded PNGs — the failed chart is replaced by a placeholder, not dropped.
+    expect(workbook.model.media.length).toBe(5);
+
+    vi.mocked(chartImage.renderTopDebtorsPng).mockRejectedValueOnce(new Error("chart render failed (test)"));
+    const pdfResponse = await GET(new Request("http://localhost:3000/api/dashboard/export?format=pdf"));
+    const pdfBytes = Buffer.from(await pdfResponse.arrayBuffer());
+    expect(pdfResponse.status).toBe(200);
+    expect(pdfBytes.subarray(0, 4).toString("utf8")).toBe("%PDF");
+
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 });

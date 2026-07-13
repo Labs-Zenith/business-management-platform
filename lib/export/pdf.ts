@@ -3,7 +3,7 @@ import { formatCOP } from "@/lib/money";
 import { INVOICE_STATUS_LABELS } from "@/lib/export/labels";
 import { getCategoryLabel } from "@/lib/services/expense-dashboard-service";
 import type { Business, InvoiceDetail, PaymentWithRefs } from "@/lib/services/ports";
-import type { DashboardExportData, InvoiceExportRow } from "@/lib/export/excel";
+import type { DashboardChartImages, DashboardExportData, InvoiceExportRow } from "@/lib/export/excel";
 
 type PdfTableColumn<T> = {
   header: string;
@@ -63,6 +63,30 @@ function ensureRoom(doc: PDFKit.PDFDocument, neededHeight: number) {
   if (doc.y + neededHeight > doc.page.height - doc.page.margins.bottom) {
     doc.addPage();
   }
+}
+
+/**
+ * Fitted width for a dashboard chart PNG (rendered at ~640x320 by
+ * `lib/export/chart-image.ts`) — scaled down to fit comfortably within an
+ * A4 page's content width after margins. `pdfkit`'s `doc.image` preserves
+ * aspect ratio when only `width` is given, so the resulting height is
+ * always `CHART_IMAGE_WIDTH * (320 / 640)`.
+ */
+const CHART_IMAGE_WIDTH = 340;
+const CHART_IMAGE_HEIGHT = (CHART_IMAGE_WIDTH * 320) / 640;
+const CHART_IMAGE_RESERVED_HEIGHT = CHART_IMAGE_HEIGHT + 16;
+
+/**
+ * Writes a single chart PNG at the current flow position, guarded by
+ * `ensureRoom` (reserving the image's rendered height plus spacing) so it
+ * never gets orphaned split across a page break. `doc.image` with only
+ * `width` (no explicit `x`/`y`) draws at the current cursor and advances
+ * `doc.y` past the image, exactly like `writeTable`'s row-by-row flow.
+ */
+function writeChartImage(doc: PDFKit.PDFDocument, png: Buffer) {
+  ensureRoom(doc, CHART_IMAGE_RESERVED_HEIGHT);
+  doc.image(png, { width: CHART_IMAGE_WIDTH });
+  doc.moveDown(1);
 }
 
 function writeTable<T>(doc: PDFKit.PDFDocument, rows: T[], columns: PdfTableColumn<T>[]) {
@@ -203,7 +227,7 @@ function writeResumenSection(doc: PDFKit.PDFDocument, data: DashboardExportData)
   );
 }
 
-function writeSaldoPorEstadoSection(doc: PDFKit.PDFDocument, charts: DashboardExportData["charts"]) {
+function writeSaldoPorEstadoSection(doc: PDFKit.PDFDocument, charts: DashboardExportData["charts"], chartPng: Buffer) {
   writeSectionHeading(doc, "Saldo por estado");
   writeTable(doc, charts.receivablesByStatus, [
     { header: "Estado", width: 110, value: (row) => row.label },
@@ -211,22 +235,25 @@ function writeSaldoPorEstadoSection(doc: PDFKit.PDFDocument, charts: DashboardEx
     { header: "Saldo", width: 110, align: "right", value: (row) => formatCOP(row.balance) },
     { header: "Total", width: 110, align: "right", value: (row) => formatCOP(row.total) },
   ]);
+  writeChartImage(doc, chartPng);
 }
 
-function writeMayoresSaldosSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"]) {
+function writeMayoresSaldosSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"], chartPng: Buffer) {
   writeSectionHeading(doc, "Mayores saldos");
   writeTable(doc, summary.topDebtors, [
     { header: "Cliente", width: 280, value: (row) => row.name },
     { header: "Saldo", width: 150, align: "right", value: (row) => formatCOP(row.balance) },
   ]);
+  writeChartImage(doc, chartPng);
 }
 
-function writePagosPorMesSection(doc: PDFKit.PDFDocument, charts: DashboardExportData["charts"]) {
+function writePagosPorMesSection(doc: PDFKit.PDFDocument, charts: DashboardExportData["charts"], chartPng: Buffer) {
   writeSectionHeading(doc, "Pagos por mes");
   writeTable(doc, charts.monthlyPayments, [
     { header: "Mes", width: 130, value: (row) => row.label },
     { header: "Monto", width: 150, align: "right", value: (row) => formatCOP(row.amount) },
   ]);
+  writeChartImage(doc, chartPng);
 }
 
 function writeFacturasVencidasSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"]) {
@@ -254,12 +281,27 @@ function writePagosRecientesSection(doc: PDFKit.PDFDocument, summary: DashboardE
   ]);
 }
 
-function writeGastosPorCategoriaSection(doc: PDFKit.PDFDocument, expenses: DashboardExportData["expenses"]) {
+function writeGastosPorCategoriaSection(
+  doc: PDFKit.PDFDocument,
+  expenses: DashboardExportData["expenses"],
+  chartPng: Buffer,
+) {
   writeSectionHeading(doc, "Gastos por categoria");
   writeTable(doc, expenses.byCategory, [
     { header: "Categoria", width: 280, value: (row) => row.label },
     { header: "Total", width: 150, align: "right", value: (row) => formatCOP(row.total) },
   ]);
+  writeChartImage(doc, chartPng);
+}
+
+/**
+ * "Gastos por mes" has no pre-existing data table/sheet (unlike the other 4
+ * chart sections) — `getExpensesByMonth` is new, chart-only data added for
+ * this PR. Just a heading + the chart image, no `writeTable` call.
+ */
+function writeGastosPorMesSection(doc: PDFKit.PDFDocument, chartPng: Buffer) {
+  writeSectionHeading(doc, "Gastos por mes");
+  writeChartImage(doc, chartPng);
 }
 
 function writeGastosRecientesSection(doc: PDFKit.PDFDocument, expenses: DashboardExportData["expenses"]) {
@@ -282,21 +324,29 @@ function writeGastosRecientesSection(doc: PDFKit.PDFDocument, expenses: Dashboar
  * construction lives in its own `write*Section` helper above, matching
  * `./excel`'s `renderDashboardWorkbook`/`add*Sheet` precedent. Section
  * list/order matches `renderDashboardWorkbook` in `./excel` exactly, per
- * `openspec/changes/dashboard-excel-export/design.md`.
+ * `openspec/changes/dashboard-excel-export/design.md`, plus a chart image
+ * (via `writeChartImage`, itself guarded by `ensureRoom`) appended after each
+ * section's table, and a new chart-only "Gastos por mes" section inserted
+ * right after "Gastos por categoria" (see `writeGastosPorMesSection`'s doc
+ * comment for why it has no table of its own).
  */
-export async function renderDashboardExportPdf(data: DashboardExportData): Promise<Buffer> {
+export async function renderDashboardExportPdf(
+  data: DashboardExportData,
+  chartImages: DashboardChartImages,
+): Promise<Buffer> {
   const doc = createDocument();
   const done = collectDocument(doc);
 
   writeTitle(doc, "Reporte de Dashboard");
 
   writeResumenSection(doc, data);
-  writeSaldoPorEstadoSection(doc, data.charts);
-  writeMayoresSaldosSection(doc, data.summary);
-  writePagosPorMesSection(doc, data.charts);
+  writeSaldoPorEstadoSection(doc, data.charts, chartImages.receivablesByStatus);
+  writeMayoresSaldosSection(doc, data.summary, chartImages.topDebtors);
+  writePagosPorMesSection(doc, data.charts, chartImages.monthlyPayments);
   writeFacturasVencidasSection(doc, data.summary);
   writePagosRecientesSection(doc, data.summary);
-  writeGastosPorCategoriaSection(doc, data.expenses);
+  writeGastosPorCategoriaSection(doc, data.expenses, chartImages.expensesByCategory);
+  writeGastosPorMesSection(doc, chartImages.expensesByMonth);
   writeGastosRecientesSection(doc, data.expenses);
 
   doc.end();

@@ -188,6 +188,62 @@ function addGastosPorCategoriaSheet(workbook: ExcelJS.Workbook, expenses: Expens
   }
 }
 
+/**
+ * The 5 chart PNG buffers embedded into the export's "Graficos" sheet —
+ * produced once via `lib/export/chart-image.ts`'s renderers in
+ * `app/api/dashboard/export/route.ts`, from the SAME data the on-screen
+ * `recharts` chart cards use.
+ */
+export type DashboardChartImages = {
+  receivablesByStatus: Buffer;
+  topDebtors: Buffer;
+  monthlyPayments: Buffer;
+  expensesByCategory: Buffer;
+  expensesByMonth: Buffer;
+};
+
+/**
+ * Vertical spacing (in rows) reserved per chart image on the "Graficos"
+ * sheet: each rendered PNG is ~640x320 — at ExcelJS's default ~20px row
+ * height that's roughly 16 rows tall, plus 2 rows of breathing room between
+ * charts so consecutive images never visually overlap.
+ */
+const GRAFICOS_ROW_SPAN = 18;
+const GRAFICOS_IMAGE_WIDTH = 480;
+const GRAFICOS_IMAGE_HEIGHT = 240;
+
+const GRAFICOS_ORDER: { key: keyof DashboardChartImages; title: string }[] = [
+  { key: "receivablesByStatus", title: "Saldo por estado" },
+  { key: "topDebtors", title: "Mayores saldos" },
+  { key: "monthlyPayments", title: "Pagos por mes" },
+  { key: "expensesByCategory", title: "Gastos por categoria" },
+  { key: "expensesByMonth", title: "Gastos por mes" },
+];
+
+/**
+ * Single new sheet stacking all 5 dashboard chart images vertically — kept
+ * separate from the 8 existing data sheets (additive only) so this change
+ * never touches their columns/rows/tests.
+ */
+function addGraficosSheet(workbook: ExcelJS.Workbook, chartImages: DashboardChartImages) {
+  const graficos = workbook.addWorksheet("Graficos");
+  let row = 0;
+  for (const { key, title } of GRAFICOS_ORDER) {
+    graficos.getCell(row + 1, 1).value = title;
+    graficos.getCell(row + 1, 1).font = { bold: true };
+    // `as any`: same non-deduped `@types/node` mismatch as `excel.test.ts`'s
+    // `loadWorkbook` helper — `exceljs`'s own `.d.ts` expects a structurally
+    // different (but runtime-identical) `Buffer` type.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const imageId = workbook.addImage({ buffer: chartImages[key] as any, extension: "png" });
+    graficos.addImage(imageId, {
+      tl: { col: 0, row: row + 1 },
+      ext: { width: GRAFICOS_IMAGE_WIDTH, height: GRAFICOS_IMAGE_HEIGHT },
+    });
+    row += GRAFICOS_ROW_SPAN;
+  }
+}
+
 function addGastosRecientesSheet(workbook: ExcelJS.Workbook, expenses: ExpensesSummary) {
   const gastosRecientes = workbook.addWorksheet("Gastos recientes");
   gastosRecientes.columns = [
@@ -220,8 +276,16 @@ function addGastosRecientesSheet(workbook: ExcelJS.Workbook, expenses: ExpensesS
  * `Cliente` column — `overdueInvoiceList` only carries `customerId`, and the
  * design deliberately avoids a 4th `collectAllCustomers`-style join just to
  * resolve names for this sheet.
+ *
+ * A 9th sheet, "Graficos", is appended last (additive only — the original 8
+ * data sheets and their order are unchanged): it stacks the 5 dashboard
+ * chart PNGs vertically, one per `DashboardChartImages` key, via
+ * `addGraficosSheet`.
  */
-export async function renderDashboardWorkbook(data: DashboardExportData): Promise<Buffer> {
+export async function renderDashboardWorkbook(
+  data: DashboardExportData,
+  chartImages: DashboardChartImages,
+): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
 
   addResumenSheet(workbook, data);
@@ -232,6 +296,7 @@ export async function renderDashboardWorkbook(data: DashboardExportData): Promis
   addPagosRecientesSheet(workbook, data.summary);
   addGastosPorCategoriaSheet(workbook, data.expenses);
   addGastosRecientesSheet(workbook, data.expenses);
+  addGraficosSheet(workbook, chartImages);
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
