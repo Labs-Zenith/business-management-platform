@@ -38,6 +38,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Switch } from "@/components/ui/switch";
 import { pesosToCents } from "@/lib/money";
 
@@ -53,17 +54,29 @@ export type EmployeeFormDialogEmployee = {
 
 type EmployeeFormValues = {
   name: string;
-  /** Whole COP pesos, as entered by the user — converted at submit time. */
-  baseSalary: number;
+  /** Whole COP pesos, as entered by the user (raw string) — converted at submit time. */
+  baseSalary: string;
   active: boolean;
+};
+
+type EmployeeFormFieldErrors = {
+  baseSalary?: string;
 };
 
 function toFormValues(employee?: EmployeeFormDialogEmployee): EmployeeFormValues {
   return {
     name: employee?.name ?? "",
-    baseSalary: employee ? employee.baseSalary / 100 : 0,
+    baseSalary: employee ? String(employee.baseSalary / 100) : "",
     active: employee?.active ?? true,
   };
+}
+
+function validate(values: EmployeeFormValues): EmployeeFormFieldErrors {
+  const nextFieldErrors: EmployeeFormFieldErrors = {};
+  if (values.baseSalary === "" || Number(values.baseSalary) <= 0) {
+    nextFieldErrors.baseSalary = "El salario base debe ser mayor a 0";
+  }
+  return nextFieldErrors;
 }
 
 export type EmployeeFormDialogProps = {
@@ -78,6 +91,7 @@ export default function EmployeeFormDialog({ mode, employee, trigger }: Employee
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<EmployeeFormValues>(() => toFormValues(employee));
+  const [fieldErrors, setFieldErrors] = useState<EmployeeFormFieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -89,6 +103,7 @@ export default function EmployeeFormDialog({ mode, employee, trigger }: Employee
     setOpen(nextOpen);
     if (nextOpen) {
       setValues(toFormValues(employee));
+      setFieldErrors({});
       setError(null);
     }
   }
@@ -96,14 +111,22 @@ export default function EmployeeFormDialog({ mode, employee, trigger }: Employee
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+
+    const nextFieldErrors = validate(values);
+    setFieldErrors(nextFieldErrors);
+    if (Object.keys(nextFieldErrors).length > 0) {
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const isCreate = mode === "create";
       const url = isCreate ? "/api/employees" : `/api/employees/${employee!.id}`;
+      const baseSalary = pesosToCents(Number(values.baseSalary) || 0);
       const payload = isCreate
-        ? { name: values.name.trim(), baseSalary: pesosToCents(values.baseSalary) }
-        : { name: values.name.trim(), baseSalary: pesosToCents(values.baseSalary), active: values.active };
+        ? { name: values.name.trim(), baseSalary }
+        : { name: values.name.trim(), baseSalary, active: values.active };
 
       const response = await fetch(url, {
         method: isCreate ? "POST" : "PATCH",
@@ -151,16 +174,14 @@ export default function EmployeeFormDialog({ mode, employee, trigger }: Employee
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="employee-base-salary">Salario base</Label>
-            <Input
+            <MoneyInput
               id="employee-base-salary"
               name="baseSalary"
-              type="number"
-              min="0"
-              step="0.01"
               required
               value={values.baseSalary}
-              onChange={(event) => updateField("baseSalary", event.target.valueAsNumber || 0)}
+              onChange={(value) => updateField("baseSalary", value)}
             />
+            {fieldErrors.baseSalary ? <p className="text-xs text-destructive">{fieldErrors.baseSalary}</p> : null}
           </div>
           {mode === "edit" ? (
             <div className="flex items-center gap-2.5">

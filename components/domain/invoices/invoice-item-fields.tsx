@@ -1,9 +1,10 @@
 "use client";
 
-import { useFieldArray, type Control, type FieldErrors, type UseFormRegister } from "react-hook-form";
+import { Controller, useFieldArray, type Control, type FieldErrors, type UseFormRegister } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput } from "@/components/ui/money-input";
 import type { InvoiceFormValues } from "./invoice-form-schema";
 
 /**
@@ -56,12 +57,19 @@ export function InvoiceItemFields({ control, register, errors }: InvoiceItemFiel
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`items.${index}.unitPrice`}>Valor unitario (COP)</Label>
-              <Input
-                id={`items.${index}.unitPrice`}
-                type="number"
-                step="any"
-                className="w-full sm:w-32"
-                {...register(`items.${index}.unitPrice` as const, { valueAsNumber: true })}
+              <Controller
+                control={control}
+                name={`items.${index}.unitPrice` as const}
+                render={({ field }) => (
+                  <MoneyInput
+                    id={`items.${index}.unitPrice`}
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    className="w-full sm:w-32"
+                    aria-invalid={!!itemErrors?.unitPrice}
+                  />
+                )}
               />
               {itemErrors?.unitPrice ? (
                 <p className="text-xs text-destructive">{itemErrors.unitPrice.message}</p>
@@ -85,7 +93,7 @@ export function InvoiceItemFields({ control, register, errors }: InvoiceItemFiel
         type="button"
         variant="outline"
         className="w-full sm:w-fit"
-        onClick={() => append({ description: "", quantity: 1, unitPrice: 0 })}
+        onClick={() => append({ description: "", quantity: 1, unitPrice: "" })}
       >
         Agregar item
       </Button>

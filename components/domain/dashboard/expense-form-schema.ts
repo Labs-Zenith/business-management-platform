@@ -11,7 +11,14 @@ import { z } from "zod";
 export const expenseFormSchema = z.object({
   category: z.enum(["nomina", "otro"]),
   description: z.string().trim().min(1, "Descripcion requerida"),
-  amount: z.number().positive("El monto debe ser mayor a 0"),
+  // Whole-COP-peso `amount` as a RAW string from `MoneyInput` ("" when
+  // empty) — `.refine` checks `!== ""` explicitly rather than `Number(v) ||
+  // 0`, since `Number("") || 0 === 0` is indistinguishable from a real "0"
+  // entry (see `money-input.tsx`'s contract decision).
+  amount: z
+    .string()
+    .trim()
+    .refine((value) => value !== "" && Number(value) > 0, "El monto debe ser mayor a 0"),
   expenseDate: z.string().trim().min(1, "Fecha requerida"),
   notes: z.string().trim().optional(),
 });

@@ -64,12 +64,44 @@ describe("InvoiceFormContent", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks submission client-side and shows a validation error when an item's unitPrice is left empty (no request sent)", async () => {
+    // `unitPrice` defaults to `""` (see `invoice-form-content.tsx`'s
+    // `toDefaultValues`) and `invoiceItemFormSchema`'s first `.refine` checks
+    // `value !== ""` explicitly, distinct from the second `.refine`'s
+    // "No puede ser negativo" message — this proves the empty case renders
+    // its own "Requerido" error (not the negative-value message) and blocks
+    // the request, mirroring `expense-form-dialog-content.test.tsx`'s
+    // "blocks submission client-side ... when amount is not greater than 0"
+    // precedent.
+    const user = userEvent.setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+
+    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await user.type(screen.getByLabelText(/descripcion/i), "Consultoria");
+    await user.clear(screen.getByLabelText(/cantidad/i));
+    await user.type(screen.getByLabelText(/cantidad/i), "1");
+    // unitPrice left at its default ("") — invalid, must be non-empty
+    await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+    expect(await screen.findByText(/^requerido$/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // `MoneyInput` (COP mask) caps entry at 2 decimals and uses "," as the
+  // decimal separator, so a 3-decimal (half-cent) peso amount can no longer
+  // be typed through this UI at all — that exact IEEE-754 edge case is still
+  // covered directly at the unit level by `lib/money.test.ts`'s
+  // `pesosToCents` tests (unchanged). These cases now exercise a 2-decimal
+  // comma-typed amount that round-trips to the SAME expected cents value.
   it.each([
-    { typed: "1.005", expectedCents: 101 },
-    { typed: "8.575", expectedCents: 858 },
-    { typed: "5.015", expectedCents: 502 },
+    { typed: "1,01", expectedCents: 101 },
+    { typed: "8,58", expectedCents: 858 },
+    { typed: "5,02", expectedCents: 502 },
   ])(
-    "converts a $typed unitPrice in pesos to $expectedCents cents without IEEE-754 rounding-down artifacts",
+    "converts a $typed unitPrice in pesos (comma decimal) to $expectedCents cents through the MoneyInput mask",
     async ({ typed, expectedCents }) => {
       const user = userEvent.setup();
       const fetchMock = vi.fn().mockResolvedValue({
@@ -266,6 +298,11 @@ describe("InvoiceFormContent", () => {
     // `lineTotal(quantity, pesosToCents(unitPrice))` (cents rounded first, then
     // multiplied) must be exactly what's rendered — not a naive
     // `Math.round(quantity * unitPrice * 100)` computed in one shot.
+    // `MoneyInput` (COP mask) caps entry at 2 decimals and uses "," as the
+    // decimal separator, so the unitPrice below is typed as "8,58" (comma) —
+    // the pure-function order-of-operations logic itself is unchanged and
+    // still exercised by `lib/money.test.ts`'s dedicated `lineTotal`/
+    // `pesosToCents` unit tests with 3-decimal inputs.
     const user = userEvent.setup();
     render(<InvoiceFormContent customers={[CUSTOMER]} />);
 
@@ -273,9 +310,9 @@ describe("InvoiceFormContent", () => {
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "3");
     await user.clear(screen.getByLabelText(/valor unitario/i));
-    await user.type(screen.getByLabelText(/valor unitario/i), "8.575");
+    await user.type(screen.getByLabelText(/valor unitario/i), "8,58");
 
-    const expectedCents = lineTotal(3, pesosToCents(8.575));
+    const expectedCents = lineTotal(3, pesosToCents(8.58));
     expect(await screen.findByText(normalizeMoney(formatCOP(expectedCents)))).toBeInTheDocument();
   });
 
@@ -286,7 +323,7 @@ describe("InvoiceFormContent", () => {
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "3");
     await user.clear(screen.getByLabelText(/valor unitario/i));
-    await user.type(screen.getByLabelText(/valor unitario/i), "8.575");
+    await user.type(screen.getByLabelText(/valor unitario/i), "8,58");
 
     await user.click(screen.getByRole("button", { name: /agregar item/i }));
 
@@ -295,9 +332,9 @@ describe("InvoiceFormContent", () => {
     await user.clear(quantityInputs[1]);
     await user.type(quantityInputs[1], "2");
     await user.clear(unitPriceInputs[1]);
-    await user.type(unitPriceInputs[1], "5.015");
+    await user.type(unitPriceInputs[1], "5,02");
 
-    const expectedCents = lineTotal(3, pesosToCents(8.575)) + lineTotal(2, pesosToCents(5.015));
+    const expectedCents = lineTotal(3, pesosToCents(8.58)) + lineTotal(2, pesosToCents(5.02));
     expect(await screen.findByText(normalizeMoney(formatCOP(expectedCents)))).toBeInTheDocument();
   });
 
@@ -343,7 +380,8 @@ describe("InvoiceFormContent", () => {
       expect(screen.getByLabelText(/nota/i)).toHaveValue(INVOICE.notes);
       expect(screen.getByLabelText(/descripcion/i)).toHaveValue(INVOICE.items[0].description);
       expect(screen.getByLabelText(/cantidad/i)).toHaveValue(INVOICE.items[0].quantity);
-      expect(screen.getByLabelText(/valor unitario/i)).toHaveValue(INVOICE.items[0].unitPrice / 100);
+      // Displayed value is COP-grouped ("1.500" pesos), not the raw "1500".
+      expect(screen.getByLabelText(/valor unitario/i)).toHaveValue("1.500");
     });
 
     it("renders the 'Guardar cambios' submit label instead of 'Crear factura'", () => {

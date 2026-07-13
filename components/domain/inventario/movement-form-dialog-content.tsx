@@ -46,8 +46,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { QuantityInput } from "@/components/ui/money-input";
 import { Textarea } from "@/components/ui/textarea";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo registrar el movimiento. Verifica los datos e intenta de nuevo.";
@@ -59,8 +59,8 @@ export type MovementFormDialogProduct = { id: string; name: string };
 type MovementFormValues = {
   productId: string;
   type: MovementType;
-  /** Plain integer unit count — NOT money. */
-  quantity: number;
+  /** Plain integer unit count — NOT money. Raw string from `QuantityInput` ("" when empty). */
+  quantity: string;
   note: string;
 };
 
@@ -73,7 +73,7 @@ function defaultValues(products: MovementFormDialogProduct[]): MovementFormValue
   return {
     productId: products[0]?.id ?? "",
     type: "in",
-    quantity: 0,
+    quantity: "",
     note: "",
   };
 }
@@ -111,7 +111,8 @@ export default function MovementFormDialog({ products, trigger }: MovementFormDi
     if (!values.productId) {
       nextFieldErrors.productId = "Producto requerido";
     }
-    if (!Number.isInteger(values.quantity) || values.quantity <= 0) {
+    const quantity = Number(values.quantity);
+    if (values.quantity === "" || !Number.isInteger(quantity) || quantity <= 0) {
       nextFieldErrors.quantity = "La cantidad debe ser un entero mayor a 0";
     }
     return nextFieldErrors;
@@ -136,7 +137,7 @@ export default function MovementFormDialog({ products, trigger }: MovementFormDi
       const payload = {
         productId: values.productId,
         type: values.type,
-        quantity: values.quantity,
+        quantity: Number(values.quantity) || 0,
         ...(trimmedNote ? { note: trimmedNote } : {}),
       };
 
@@ -201,15 +202,12 @@ export default function MovementFormDialog({ products, trigger }: MovementFormDi
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="movement-quantity">Cantidad</Label>
-            <Input
+            <QuantityInput
               id="movement-quantity"
               name="quantity"
-              type="number"
-              min="1"
-              step="1"
               required
               value={values.quantity}
-              onChange={(event) => updateField("quantity", event.target.valueAsNumber || 0)}
+              onChange={(value) => updateField("quantity", value)}
             />
             {fieldErrors.quantity ? <p className="text-xs text-destructive">{fieldErrors.quantity}</p> : null}
           </div>

@@ -43,6 +43,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Textarea } from "@/components/ui/textarea";
 import { todayIsoDate } from "@/lib/dates";
 import { pesosToCents } from "@/lib/money";
@@ -51,7 +52,7 @@ import { expenseFormSchema, type ExpenseFormValues } from "./expense-form-schema
 const GENERIC_ERROR_MESSAGE = "No se pudo crear el gasto. Verifica los datos e intenta de nuevo.";
 
 function defaultValues(): ExpenseFormValues {
-  return { category: "otro", description: "", amount: 0, expenseDate: todayIsoDate(), notes: "" };
+  return { category: "otro", description: "", amount: "", expenseDate: todayIsoDate(), notes: "" };
 }
 
 export type ExpenseFormDialogProps = {
@@ -89,7 +90,7 @@ export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
       const payload = {
         category: values.category,
         description: values.description,
-        amount: pesosToCents(values.amount),
+        amount: pesosToCents(Number(values.amount) || 0),
         expenseDate: values.expenseDate,
         ...(values.notes?.trim() ? { notes: values.notes.trim() } : {}),
       };
@@ -141,12 +142,18 @@ export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="expense-amount">Monto</Label>
-            <Input
-              id="expense-amount"
-              type="number"
-              min="0"
-              step="0.01"
-              {...register("amount", { valueAsNumber: true })}
+            <Controller
+              control={control}
+              name="amount"
+              render={({ field }) => (
+                <MoneyInput
+                  id="expense-amount"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  aria-invalid={!!errors.amount}
+                />
+              )}
             />
             {errors.amount ? <p className="text-xs text-destructive">{errors.amount.message}</p> : null}
           </div>

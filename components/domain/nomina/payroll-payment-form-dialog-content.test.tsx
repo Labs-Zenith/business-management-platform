@@ -76,7 +76,12 @@ describe("PayrollPaymentFormDialog", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
-  it("converts a tricky decimal amount (8.575 pesos) to 858 cents, without IEEE-754 rounding-down artifacts", async () => {
+  it("converts a decimal amount (8,58 pesos, comma decimal) to 858 cents through the MoneyInput mask", async () => {
+    // `MoneyInput` (COP mask) caps entry at 2 decimals and uses "," as the
+    // decimal separator, so the original 3-decimal (half-cent) IEEE-754 edge
+    // case can no longer be typed through this UI — that exact case is still
+    // covered directly at the unit level by `lib/money.test.ts`'s
+    // `pesosToCents` tests (unchanged).
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "payment-1" } }) });
     vi.stubGlobal("fetch", fetchMock);
@@ -87,7 +92,7 @@ describe("PayrollPaymentFormDialog", () => {
 
     await openDialog(user);
     await user.clear(screen.getByLabelText(/monto/i));
-    await user.type(screen.getByLabelText(/monto/i), "8.575");
+    await user.type(screen.getByLabelText(/monto/i), "8,58");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -126,7 +131,7 @@ describe("PayrollPaymentFormDialog", () => {
     );
 
     await openDialog(user);
-    // amount left at its default (0) — invalid, must be > 0
+    // amount left at its default ("") — invalid, must be > 0
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(await screen.findByText(/el monto debe ser mayor a 0/i)).toBeInTheDocument();

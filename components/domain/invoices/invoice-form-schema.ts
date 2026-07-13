@@ -17,7 +17,19 @@ export const invoiceItemFormSchema = z.object({
   // `@hookform/resolvers`' `zodResolver` generic inference against
   // `useForm<InvoiceFormValues>`.
   quantity: z.number().positive("Debe ser mayor a 0"),
-  unitPrice: z.number().nonnegative("No puede ser negativo"),
+  // Whole-COP-peso `unitPrice` as a RAW string from `MoneyInput` ("" when
+  // empty) — the first `.refine` checks `!== ""` explicitly rather than
+  // `Number(v) || 0`, since `Number("") || 0 === 0` is indistinguishable from
+  // a real "0" entry (see `money-input.tsx`'s contract decision). Two chained
+  // refines (rather than one combined condition) so each invalid case gets
+  // its own accurate message instead of both showing "No puede ser negativo".
+  // Mirrors the original `nonnegative` semantics: 0 is a valid explicit
+  // entry, "" is not.
+  unitPrice: z
+    .string()
+    .trim()
+    .refine((value) => value !== "", "Requerido")
+    .refine((value) => Number(value) >= 0, "No puede ser negativo"),
 });
 
 export const invoiceFormSchema = z.object({

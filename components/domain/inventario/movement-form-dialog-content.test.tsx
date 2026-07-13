@@ -100,30 +100,35 @@ describe("MovementFormDialog", () => {
     render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
 
     await openDialog(user);
-    // quantity left at its default (0) — invalid, must be > 0
+    // quantity left at its default ("") — invalid, must be > 0
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(await screen.findByText(/la cantidad debe ser un entero mayor a 0/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("blocks submission client-side and shows a validation error when quantity is negative (no request sent)", async () => {
+  it("strips a typed negative sign via the QuantityInput mask, so a '-3' entry submits the positive quantity 3 (negative entry is impossible)", async () => {
+    // `QuantityInput`'s underlying mask (`sanitizeRawInput`) strips a typed
+    // "-" unconditionally, per PR1's non-negative-by-design contract decision
+    // — this replaces the old `type="number"` test that asserted a validation
+    // error for a negative value, since that value can no longer be entered
+    // at all through this input.
     const user = userEvent.setup();
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "movement-1" } }) });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
 
     await openDialog(user);
-    // `user.type` doesn't reliably drive a leading "-" into a
-    // `type="number"` input across jsdom versions — `fireEvent.change` sets
-    // the value directly, mirroring `payroll-payment-form-dialog-content.test.tsx`'s
-    // established `fireEvent.change` convention for inputs.
     fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: "-3" } });
+    expect(screen.getByLabelText(/cantidad/i)).toHaveValue("3");
+
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
-    expect(await screen.findByText(/la cantidad debe ser un entero mayor a 0/i)).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(options.body);
+    expect(body.quantity).toBe(3);
   });
 
   it("shows the server's floor-at-zero rejection message, keeps the dialog open, and does not refresh", async () => {
@@ -149,7 +154,7 @@ describe("MovementFormDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Movement would drive stock below zero");
     expect(refreshMock).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByLabelText(/cantidad/i)).toHaveValue(999);
+    expect(screen.getByLabelText(/cantidad/i)).toHaveValue("999");
     expect(screen.getByLabelText(/tipo/i)).toHaveValue("out");
   });
 

@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Textarea } from "@/components/ui/textarea";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo registrar el pago. Verifica los datos e intenta de nuevo.";
@@ -162,15 +163,12 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payment-amount">Monto</Label>
-            <Input
+            <MoneyInput
               id="payment-amount"
               name="amount"
-              type="number"
-              min="0"
-              step="0.01"
               required
               value={values.amount}
-              onChange={(event) => updateField("amount", event.target.value)}
+              onChange={(value) => updateField("amount", value)}
             />
             {exceedsBalance ? (
               <p className="text-xs text-destructive">El monto no puede exceder el saldo pendiente.</p>

@@ -98,12 +98,19 @@ describe("PaymentFormDialog", () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
+  // `MoneyInput` (COP mask) caps entry at 2 decimals and uses "," as the
+  // decimal separator, so a 3-decimal (half-cent) peso amount can no longer
+  // be typed through this UI at all — that exact IEEE-754 edge case is still
+  // covered directly at the unit level by `lib/money.test.ts`'s
+  // `pesosToCents` tests (unchanged). These cases now exercise a 2-decimal
+  // comma-typed amount that round-trips to the SAME expected cents value,
+  // proving the mask + `pesosToCents` conversion still works end-to-end.
   it.each([
-    { typed: "1.005", expectedCents: 101 },
-    { typed: "8.575", expectedCents: 858 },
-    { typed: "5.015", expectedCents: 502 },
+    { typed: "1,01", expectedCents: 101 },
+    { typed: "8,58", expectedCents: 858 },
+    { typed: "5,02", expectedCents: 502 },
   ])(
-    "converts $typed pesos to $expectedCents cents without IEEE-754 rounding-down artifacts",
+    "converts $typed pesos (comma decimal) to $expectedCents cents through the MoneyInput mask",
     async ({ typed, expectedCents }) => {
       const user = userEvent.setup();
       const fetchMock = vi.fn().mockResolvedValue({

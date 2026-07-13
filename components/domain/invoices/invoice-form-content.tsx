@@ -60,6 +60,7 @@ export type InvoiceFormContentInvoice = {
   }[];
 };
 
+
 export type InvoiceFormContentProps = {
   customers: InvoiceFormCustomer[];
   /** Preselects the customer, e.g. when arriving from "Crear factura para este cliente". Ignored in edit mode. */
@@ -78,9 +79,10 @@ function toDefaultValues(defaultCustomerId?: string, invoice?: InvoiceFormConten
       items: invoice.items.map((item) => ({
         description: item.description,
         quantity: item.quantity,
-        // Cents -> whole pesos, the inverse of `pesosToCents` applied at
-        // submit time — matches this form's "entered in pesos" convention.
-        unitPrice: item.unitPrice / 100,
+        // Cents -> whole pesos (raw string), the inverse of `pesosToCents`
+        // applied at submit time — matches this form's "entered in pesos"
+        // convention and `MoneyInput`'s raw-string contract.
+        unitPrice: String(item.unitPrice / 100),
       })),
     };
   }
@@ -89,7 +91,7 @@ function toDefaultValues(defaultCustomerId?: string, invoice?: InvoiceFormConten
     issueDate: todayIsoDate(),
     dueDate: "",
     notes: "",
-    items: [{ description: "", quantity: 1, unitPrice: 0 }],
+    items: [{ description: "", quantity: 1, unitPrice: "" }],
   };
 }
 
@@ -140,7 +142,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId, invoi
         items: values.items.map((item) => ({
           description: item.description,
           quantity: item.quantity,
-          unitPrice: pesosToCents(item.unitPrice),
+          unitPrice: pesosToCents(Number(item.unitPrice) || 0),
         })),
       };
 

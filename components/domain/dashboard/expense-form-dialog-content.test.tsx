@@ -58,7 +58,7 @@ describe("ExpenseFormDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
-    // amount left at its default (0) — invalid, must be > 0
+    // amount left at its default ("") — invalid, must be > 0
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(await screen.findByText(/el monto debe ser mayor a 0/i)).toBeInTheDocument();
@@ -104,7 +104,7 @@ describe("ExpenseFormDialog", () => {
     // The dialog must remain open and usable — not silently closed on error.
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByLabelText(/descripcion/i)).toHaveValue("Papeleria");
-    expect(screen.getByLabelText(/monto/i)).toHaveValue(500);
+    expect(screen.getByLabelText(/monto/i)).toHaveValue("500");
   });
 
   it("shows the generic error message and keeps the dialog open when fetch throws (network failure)", async () => {
@@ -153,12 +153,18 @@ describe("ExpenseFormDialog", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  // `MoneyInput` (COP mask) caps entry at 2 decimals and uses "," as the
+  // decimal separator, so a 3-decimal (half-cent) peso amount can no longer
+  // be typed through this UI at all — that exact IEEE-754 edge case is still
+  // covered directly at the unit level by `lib/money.test.ts`'s
+  // `pesosToCents` tests (unchanged). These cases now exercise a 2-decimal
+  // comma-typed amount that round-trips to the SAME expected cents value.
   it.each([
-    { typed: "1.005", expectedCents: 101 },
-    { typed: "8.575", expectedCents: 858 },
-    { typed: "5.015", expectedCents: 502 },
+    { typed: "1,01", expectedCents: 101 },
+    { typed: "8,58", expectedCents: 858 },
+    { typed: "5,02", expectedCents: 502 },
   ])(
-    "converts $typed pesos to $expectedCents cents without IEEE-754 rounding-down artifacts",
+    "converts $typed pesos (comma decimal) to $expectedCents cents through the MoneyInput mask",
     async ({ typed, expectedCents }) => {
       const user = userEvent.setup();
       const fetchMock = vi.fn().mockResolvedValue({

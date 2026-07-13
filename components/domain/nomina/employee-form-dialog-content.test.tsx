@@ -50,7 +50,12 @@ describe("EmployeeFormDialog (create mode)", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
-  it("converts a tricky decimal base salary (8.575 pesos) to 858 cents, without IEEE-754 rounding-down artifacts", async () => {
+  it("converts a decimal base salary (8,58 pesos, comma decimal) to 858 cents through the MoneyInput mask", async () => {
+    // `MoneyInput` (COP mask) caps entry at 2 decimals and uses "," as the
+    // decimal separator, so the original 3-decimal (half-cent) IEEE-754 edge
+    // case can no longer be typed through this UI — that exact case is still
+    // covered directly at the unit level by `lib/money.test.ts`'s
+    // `pesosToCents` tests (unchanged).
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -63,13 +68,34 @@ describe("EmployeeFormDialog (create mode)", () => {
     await user.click(screen.getByRole("button", { name: /nuevo empleado/i }));
     await user.type(await screen.findByLabelText(/nombre/i), "Nuevo Empleado");
     await user.clear(screen.getByLabelText(/salario base/i));
-    await user.type(screen.getByLabelText(/salario base/i), "8.575");
+    await user.type(screen.getByLabelText(/salario base/i), "8,58");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
     const body = JSON.parse(options.body);
     expect(body.baseSalary).toBe(858);
+  });
+
+  it("blocks submission client-side and shows an inline validation error when baseSalary is cleared (no request sent)", async () => {
+    // Plain `useState` form with `<form noValidate>` — no client-side
+    // validation existed for `baseSalary` before this fix (clearing it
+    // submitted `0`, only caught by the server), mirroring
+    // `movement-form-dialog-content.tsx`'s established `validate()`/
+    // `fieldErrors` pattern.
+    const user = userEvent.setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<EmployeeFormDialog mode="create" trigger={<button type="button">Nuevo empleado</button>} />);
+
+    await user.click(screen.getByRole("button", { name: /nuevo empleado/i }));
+    await user.type(await screen.findByLabelText(/nombre/i), "Nuevo Empleado");
+    await user.clear(screen.getByLabelText(/salario base/i));
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    expect(await screen.findByText(/el salario base debe ser mayor a 0/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("does not render the active switch in create mode (a new employee is always active by construction)", async () => {
@@ -180,7 +206,8 @@ describe("EmployeeFormDialog (edit mode)", () => {
     await user.click(screen.getByRole("button", { name: /editar/i }));
 
     expect(await screen.findByDisplayValue("Ana Empleada")).toBeInTheDocument();
-    expect(screen.getByLabelText(/salario base/i)).toHaveValue(150_000);
+    // Displayed value is COP-grouped ("150.000" pesos), not the raw "150000".
+    expect(screen.getByLabelText(/salario base/i)).toHaveValue("150.000");
   });
 
   it("renders the active switch in edit mode, defaulting to the employee's current active state", async () => {

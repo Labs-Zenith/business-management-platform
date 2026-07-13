@@ -49,8 +49,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Textarea } from "@/components/ui/textarea";
 import { todayIsoDate } from "@/lib/dates";
 import { pesosToCents } from "@/lib/money";
@@ -64,7 +64,7 @@ export type PayrollPaymentFormDialogEmployee = { id: string; name: string };
 function defaultValues(employees: PayrollPaymentFormDialogEmployee[]): PayrollPaymentFormValues {
   return {
     employeeId: employees[0]?.id ?? "",
-    amount: 0,
+    amount: "",
     periodType: "quincenal",
     referenceDate: todayIsoDate(),
     paymentDate: todayIsoDate(),
@@ -123,7 +123,7 @@ export default function PayrollPaymentFormDialog({ employees, trigger }: Payroll
     try {
       const payload = {
         employeeId: values.employeeId,
-        amount: pesosToCents(values.amount),
+        amount: pesosToCents(Number(values.amount) || 0),
         periodType: values.periodType,
         referenceDate: values.referenceDate,
         paymentDate: values.paymentDate,
@@ -176,12 +176,18 @@ export default function PayrollPaymentFormDialog({ employees, trigger }: Payroll
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payroll-amount">Monto</Label>
-            <Input
-              id="payroll-amount"
-              type="number"
-              min="0"
-              step="0.01"
-              {...register("amount", { valueAsNumber: true })}
+            <Controller
+              control={control}
+              name="amount"
+              render={({ field }) => (
+                <MoneyInput
+                  id="payroll-amount"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  aria-invalid={!!errors.amount}
+                />
+              )}
             />
             {errors.amount ? <p className="text-xs text-destructive">{errors.amount.message}</p> : null}
           </div>

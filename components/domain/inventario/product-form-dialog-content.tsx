@@ -41,6 +41,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoneyInput, QuantityInput } from "@/components/ui/money-input";
 import { Switch } from "@/components/ui/switch";
 import { pesosToCents } from "@/lib/money";
 
@@ -60,20 +61,33 @@ export type ProductFormDialogProduct = {
 type ProductFormValues = {
   name: string;
   sku: string;
-  /** Whole COP pesos, as entered by the user — converted at submit time. */
-  unitCost: number;
-  minStockThreshold: number;
+  /** Whole COP pesos, as entered by the user (raw string) — converted at submit time. */
+  unitCost: string;
+  /** Plain integer unit count (raw string) — NOT money. */
+  minStockThreshold: string;
   active: boolean;
+};
+
+type ProductFormFieldErrors = {
+  unitCost?: string;
 };
 
 function toFormValues(product?: ProductFormDialogProduct): ProductFormValues {
   return {
     name: product?.name ?? "",
     sku: product?.sku ?? "",
-    unitCost: product ? product.unitCost / 100 : 0,
-    minStockThreshold: product?.minStockThreshold ?? 0,
+    unitCost: product ? String(product.unitCost / 100) : "",
+    minStockThreshold: String(product?.minStockThreshold ?? ""),
     active: product?.active ?? true,
   };
+}
+
+function validate(values: ProductFormValues): ProductFormFieldErrors {
+  const nextFieldErrors: ProductFormFieldErrors = {};
+  if (values.unitCost === "" || Number(values.unitCost) <= 0) {
+    nextFieldErrors.unitCost = "El costo debe ser mayor a 0";
+  }
+  return nextFieldErrors;
 }
 
 export type ProductFormDialogProps = {
@@ -88,6 +102,7 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<ProductFormValues>(() => toFormValues(product));
+  const [fieldErrors, setFieldErrors] = useState<ProductFormFieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -99,6 +114,7 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
     setOpen(nextOpen);
     if (nextOpen) {
       setValues(toFormValues(product));
+      setFieldErrors({});
       setError(null);
     }
   }
@@ -109,24 +125,33 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
       return;
     }
     setError(null);
+
+    const nextFieldErrors = validate(values);
+    setFieldErrors(nextFieldErrors);
+    if (Object.keys(nextFieldErrors).length > 0) {
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
       const isCreate = mode === "create";
       const url = isCreate ? "/api/products" : `/api/products/${product!.id}`;
       const trimmedSku = values.sku.trim();
+      const unitCost = pesosToCents(Number(values.unitCost) || 0);
+      const minStockThreshold = Number(values.minStockThreshold) || 0;
       const payload = isCreate
         ? {
             name: values.name.trim(),
             ...(trimmedSku ? { sku: trimmedSku } : {}),
-            unitCost: pesosToCents(values.unitCost),
-            minStockThreshold: values.minStockThreshold,
+            unitCost,
+            minStockThreshold,
           }
         : {
             name: values.name.trim(),
             sku: trimmedSku || null,
-            unitCost: pesosToCents(values.unitCost),
-            minStockThreshold: values.minStockThreshold,
+            unitCost,
+            minStockThreshold,
             active: values.active,
           };
 
@@ -185,28 +210,23 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="product-unit-cost">Costo unitario</Label>
-            <Input
+            <MoneyInput
               id="product-unit-cost"
               name="unitCost"
-              type="number"
-              min="0"
-              step="0.01"
               required
               value={values.unitCost}
-              onChange={(event) => updateField("unitCost", event.target.valueAsNumber || 0)}
+              onChange={(value) => updateField("unitCost", value)}
             />
+            {fieldErrors.unitCost ? <p className="text-xs text-destructive">{fieldErrors.unitCost}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="product-min-stock-threshold">Stock minimo</Label>
-            <Input
+            <QuantityInput
               id="product-min-stock-threshold"
               name="minStockThreshold"
-              type="number"
-              min="0"
-              step="1"
               required
               value={values.minStockThreshold}
-              onChange={(event) => updateField("minStockThreshold", event.target.valueAsNumber || 0)}
+              onChange={(value) => updateField("minStockThreshold", value)}
             />
           </div>
           {mode === "edit" ? (
