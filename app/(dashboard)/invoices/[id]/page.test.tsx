@@ -148,7 +148,7 @@ describe("InvoiceDetailPage", () => {
     expect(screen.getByRole("button", { name: /editar factura/i })).toBeInTheDocument();
   });
 
-  it("hides the 'Editar factura' action once ANY payment exists on the invoice (paidAmount > 0)", async () => {
+  it("shows the 'Editar factura' action for a partially-paid invoice (paidAmount > 0 but balance > 0)", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(ADMIN_SESSION);
     mockGetInvoice.mockResolvedValue(
       buildInvoice({
@@ -176,7 +176,7 @@ describe("InvoiceDetailPage", () => {
 
     render(await InvoiceDetailPage({ params: Promise.resolve({ id: INVOICE_ID }) }));
 
-    expect(screen.queryByRole("button", { name: /editar factura/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /editar factura/i })).toBeInTheDocument();
   });
 
   it("hides the 'Editar factura' action for a fully-paid invoice (paidAmount === total, balance === 0)", async () => {

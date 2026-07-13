@@ -26,11 +26,13 @@ import { MovementsPanel } from "@/components/domain/audit-log/movements-panel";
  * spec's "payment on an already-paid invoice is always rejected" rule —
  * no point offering an action that can only fail).
  *
- * "Editar factura" (PR3, `openspec/changes/audit-log/specs/invoices/spec.md`)
- * links to `/invoices/{id}/edit`, shown ONLY when `invoice.paidAmount === 0`
- * (reusing the already-fetched invoice's derived field, no extra call) — a
- * UI-level reflection of the server's zero-payment edit-lock rule, not a
- * replacement for it.
+ * "Editar factura" (PR3, `openspec/changes/audit-log/specs/invoices/spec.md`;
+ * relaxed by `openspec/changes/invoice-edit-partial/specs/invoices/spec.md`'s
+ * "Invoice Editing Locked to Fully-Paid Invoices") links to
+ * `/invoices/{id}/edit`, shown while `invoice.balance > 0` (not fully paid —
+ * reusing the already-fetched invoice's derived field, no extra call) and
+ * hidden once `invoice.balance <= 0` (fully paid) — a UI-level reflection of
+ * the server's not-fully-paid edit-lock rule, not a replacement for it.
  *
  * `<MovementsPanel>` (PR3, `openspec/changes/audit-log/specs/audit-logging/spec.md`'s
  * "MovementsPanel Is a Widget-Level Gate, Not a Page-Level Gate") is gated by
@@ -61,7 +63,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           <InvoiceStatusBadge status={invoice.status} />
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          {invoice.paidAmount === 0 ? (
+          {invoice.balance > 0 ? (
             <Button
               variant="outline"
               className="w-full sm:w-auto"

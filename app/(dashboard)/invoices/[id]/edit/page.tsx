@@ -7,24 +7,30 @@ import { getInvoice } from "@/lib/services/invoice-service";
 import InvoiceForm from "@/components/domain/invoices/invoice-form";
 
 /**
- * Editar factura screen, per `openspec/changes/audit-log/specs/invoices/spec.md`'s
- * "Invoice Editing Locked to Zero-Payment Invoices" and this change's PR3
- * scope ("least structural rework of the existing create flow" — see this
- * change's apply-progress notes). Mirrors `app/(dashboard)/invoices/new/page.tsx`
- * almost exactly: a Server Component resolving the session + customer list,
- * handing them to the SAME lazy-loaded `InvoiceForm` client component, which
- * now also receives the fetched `invoice` (via `getInvoice`) so it pre-fills
- * and PATCHes `/api/invoices/{id}` instead of POSTing.
+ * Editar factura screen, per
+ * `openspec/changes/invoice-edit-partial/specs/invoices/spec.md`'s "Invoice
+ * Editing Locked to Fully-Paid Invoices" (this change relaxes the original
+ * `audit-log` change's zero-payment gate to "editable while not fully paid")
+ * and this change's PR3 scope ("least structural rework of the existing
+ * create flow" — see this change's apply-progress notes). Mirrors
+ * `app/(dashboard)/invoices/new/page.tsx` almost exactly: a Server Component
+ * resolving the session + customer list, handing them to the SAME
+ * lazy-loaded `InvoiceForm` client component, which now also receives the
+ * fetched `invoice` (via `getInvoice`) so it pre-fills and PATCHes
+ * `/api/invoices/{id}` instead of POSTing.
  *
- * Zero-payments UI gate (defense-in-depth nicety, NOT the enforcement — the
+ * Not-fully-paid UI gate (defense-in-depth nicety, NOT the enforcement — the
  * server's edit-lock in `updateInvoice`/`InvoiceRepository.update` is the
- * actual enforcement): if the invoice already has any payment recorded
- * (`paidAmount !== 0`), this page redirects back to the invoice detail page
- * rather than rendering a form whose submit would always be rejected with
- * `CONFLICT`. The detail page itself only renders the "Editar factura" link
- * when `paidAmount === 0`, so reaching this page with a paid invoice can only
- * happen via a stale link, back button, or a direct URL — redirect is not a
- * security control here, it's just a coherent recovery.
+ * actual enforcement, per this change's relaxed rule: editable while
+ * `balance > 0`, locked once `balance <= 0`): only once the invoice is FULLY
+ * paid (`balance <= 0`) does this page redirect back to the invoice detail
+ * page rather than rendering a form whose submit would always be rejected
+ * with `CONFLICT`. A partially-paid invoice (`paidAmount > 0` but
+ * `balance > 0`) still renders the form normally. The detail page itself only
+ * renders the "Editar factura" link while `balance > 0`, so reaching this
+ * page with a fully-paid invoice can only happen via a stale link, back
+ * button, or a direct URL — redirect is not a security control here, it's
+ * just a coherent recovery.
  */
 
 const CUSTOMER_LOOKUP_PAGE_SIZE = 50;
@@ -39,7 +45,7 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
   const { id } = await params;
 
   const invoice = await getInvoice(session, id);
-  if (invoice.paidAmount !== 0) {
+  if (invoice.balance <= 0) {
     redirect(`/invoices/${id}`);
   }
 
@@ -61,6 +67,7 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
           issueDate: invoice.issueDate,
           dueDate: invoice.dueDate,
           notes: invoice.notes,
+          paidAmount: invoice.paidAmount,
           items: invoice.items.map((item) => ({
             description: item.description,
             quantity: item.quantity,

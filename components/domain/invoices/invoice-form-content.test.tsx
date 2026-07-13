@@ -369,6 +369,7 @@ describe("InvoiceFormContent", () => {
       items: [
         { description: "Consultoria previa", quantity: 2, unitPrice: 150000 }, // 1500.00 pesos in cents
       ],
+      paidAmount: 0, // zero payments — below-paid-total warning never applies to these tests
     };
 
     it("pre-fills every field from the invoice prop, converting cents back to whole pesos", async () => {
@@ -460,6 +461,65 @@ describe("InvoiceFormContent", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent("La factura ya tiene pagos registrados.");
       expect(pushMock).not.toHaveBeenCalled();
       expect(refreshMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("edit mode — below-paid-total warning", () => {
+    // 2 x 150000 cents (1500 pesos) = 300000 cents total, matching `INVOICE`
+    // above — `paidAmount` is set BELOW that initial total so the warning is
+    // NOT shown on first render (only once the live total is edited down
+    // past it), per `invoice-edit-partial`'s relaxed edit-lock rule: the
+    // server rejects a new total below `paidAmount`, this is the UX-only
+    // early warning mirroring that rule client-side.
+    const PARTIALLY_PAID_INVOICE = {
+      id: "invoice-1",
+      customerId: CUSTOMER.id,
+      issueDate: "2026-06-01",
+      dueDate: "2026-06-30",
+      notes: "Nota existente",
+      items: [{ description: "Consultoria previa", quantity: 2, unitPrice: 150_000 }], // total = 300000 cents
+      paidAmount: 250_000,
+    };
+
+    it("shows the below-paid-total warning and disables submit once the live total drops below paidAmount", async () => {
+      const user = userEvent.setup();
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={PARTIALLY_PAID_INVOICE} />);
+
+      // Initial total (300000) >= paidAmount (250000): no warning, submit enabled.
+      expect(screen.queryByText(/no puede ser menor a lo ya pagado/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /guardar cambios/i })).toBeEnabled();
+
+      // Drop unitPrice to 1000 pesos: new total = lineTotal(2, pesosToCents(1000)) = 200000 < 250000.
+      await user.clear(screen.getByLabelText(/valor unitario/i));
+      await user.type(screen.getByLabelText(/valor unitario/i), "1000");
+
+      expect(
+        await screen.findByText(normalizeMoney(`El total no puede ser menor a lo ya pagado (${formatCOP(250_000)}).`)),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /guardar cambios/i })).toBeDisabled();
+    });
+
+    it("re-enables submit and hides the warning once the live total is raised back to at least paidAmount", async () => {
+      const user = userEvent.setup();
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={PARTIALLY_PAID_INVOICE} />);
+
+      await user.clear(screen.getByLabelText(/valor unitario/i));
+      await user.type(screen.getByLabelText(/valor unitario/i), "1000");
+      expect(await screen.findByText(/no puede ser menor a lo ya pagado/i)).toBeInTheDocument();
+
+      // Raise unitPrice back to 1500 pesos: new total = lineTotal(2, pesosToCents(1500)) = 300000 >= 250000.
+      await user.clear(screen.getByLabelText(/valor unitario/i));
+      await user.type(screen.getByLabelText(/valor unitario/i), "1500");
+
+      expect(screen.queryByText(/no puede ser menor a lo ya pagado/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /guardar cambios/i })).toBeEnabled();
+    });
+
+    it("never applies the warning in create mode (no invoice prop, no paidAmount)", () => {
+      render(<InvoiceFormContent customers={[CUSTOMER]} />);
+
+      expect(screen.queryByText(/no puede ser menor a lo ya pagado/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /crear factura/i })).toBeEnabled();
     });
   });
 

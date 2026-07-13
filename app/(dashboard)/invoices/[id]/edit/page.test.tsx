@@ -131,16 +131,22 @@ describe("EditInvoicePage", () => {
     expect(mockRedirect).not.toHaveBeenCalled();
   });
 
-  it("redirects back to the invoice detail page instead of rendering the form when the invoice already has a payment (paidAmount > 0)", async () => {
+  it("renders the form (does NOT redirect) for a partially-paid invoice (paidAmount > 0 but balance > 0)", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
-    mockGetInvoice.mockResolvedValue(buildInvoice({ paidAmount: 40_000, balance: 60_000 }));
-
-    await expect(EditInvoicePage({ params: Promise.resolve({ id: INVOICE_ID }) })).rejects.toMatchObject({
-      digest: expect.stringContaining("NEXT_REDIRECT"),
+    mockGetInvoice.mockResolvedValue(buildInvoice({ paidAmount: 40_000, balance: 60_000, status: "partially_paid" }));
+    mockListCustomers.mockResolvedValue({
+      data: [{ ...buildInvoice().customer, balance: 0 }],
+      page: 1,
+      pageSize: 50,
+      total: 1,
     });
 
-    expect(mockRedirect).toHaveBeenCalledWith(`/invoices/${INVOICE_ID}`);
-    expect(mockListCustomers).not.toHaveBeenCalled();
+    render(await EditInvoicePage({ params: Promise.resolve({ id: INVOICE_ID }) }));
+
+    expect(mockGetInvoice).toHaveBeenCalledWith(SESSION, INVOICE_ID);
+    const form = JSON.parse(screen.getByTestId("invoice-form").textContent ?? "{}");
+    expect(form.invoice.id).toBe(INVOICE_ID);
+    expect(mockRedirect).not.toHaveBeenCalled();
   });
 
   it("redirects back to the invoice detail page for a fully-paid invoice (balance === 0) under the same edit-lock rule", async () => {

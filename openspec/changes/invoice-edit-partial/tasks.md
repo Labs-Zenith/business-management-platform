@@ -53,10 +53,17 @@ Chain strategy: feature-branch-chain
 - [x] 5.3 `npm run test` (full suite)
 - [x] 5.4 `npx vitest run --sequence.shuffle` (full suite, shuffled seed)
 
-## Phase 6: UI Updates (PR2 — deferred, out of scope for this batch)
+## Phase 6: UI Updates (PR2)
 
-- [ ] 6.1 `components/domain/invoices/invoice-form-content.tsx` / invoice edit page: update any copy or logic that assumes "editable only before any payment"; reflect "editable until fully paid."
-- [ ] 6.2 `app/(dashboard)/invoices/[id]/page.tsx`: update the "Editar factura" action's visibility condition from `paidAmount === 0` to `balance > 0` (not fully paid).
+- [x] 6.1 `app/(dashboard)/invoices/[id]/edit/page.tsx`: redirect condition changed from `invoice.paidAmount !== 0` to `invoice.balance <= 0` (redirect only when FULLY paid; a partially-paid invoice now renders the form). Doc comment updated from the old zero-payment gate description to "editable while not fully paid; redirect only when fully paid."
+- [x] 6.2 `app/(dashboard)/invoices/[id]/page.tsx`: updated the "Editar factura" action's visibility condition from `invoice.paidAmount === 0` to `invoice.balance > 0` (not fully paid). Doc comment updated to match.
+- [x] 6.3 `components/domain/invoices/invoice-form-content.tsx`: threaded `paidAmount: number` into `InvoiceFormContentInvoice`; added a live below-paid-total warning (`text-xs text-destructive`, "El total no puede ser menor a lo ya pagado (<formatCOP>)."), shown in edit mode when `paidAmount > 0 && totalCents < paidAmount`, and disabled the submit button while that condition holds (UX only — server remains authoritative). `app/(dashboard)/invoices/[id]/edit/page.tsx` now passes `invoice.paidAmount` into the form prop.
+
+### Phase 6 Tests
+
+- [x] `app/(dashboard)/invoices/[id]/edit/page.test.tsx`: replaced the any-payment-redirects test with a partially-paid-renders-the-form test; kept the fully-paid-redirects test (fixture-equivalent to fixture 10/7 semantics via `buildInvoice` overrides).
+- [x] `app/(dashboard)/invoices/[id]/page.test.tsx`: replaced the any-payment-hides test with a partially-paid-shows-the-link test; kept the fully-paid-hides test.
+- [x] `components/domain/invoices/invoice-form-content.test.tsx`: added an "edit mode — below-paid-total warning" suite — warning+disabled-submit once the live total (typed via the money input) drops below `paidAmount`, re-enabled once raised back to at least `paidAmount`, and never applies in create mode.
 
 ## Review-Fix Addendum (PR1, post-review pass)
 

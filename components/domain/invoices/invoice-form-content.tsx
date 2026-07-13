@@ -13,17 +13,21 @@
  * (`docs/ui-ux-flow.md`'s "Calcular total en pantalla") — the server always
  * recomputes and is the authoritative source (`lib/services/invoice-service.ts`).
  *
- * Edit mode (`openspec/changes/audit-log/specs/invoices/spec.md`'s "Invoice
- * Editing Locked to Zero-Payment Invoices"): passing the optional `invoice`
- * prop pre-fills every field from the existing invoice (cents converted back
- * to whole pesos for `unitPrice`, matching the create form's input
- * convention) and switches submission from `POST /api/invoices` to
+ * Edit mode (`openspec/changes/invoice-edit-partial/specs/invoices/spec.md`'s
+ * "Invoice Editing Locked to Fully-Paid Invoices"): passing the optional
+ * `invoice` prop pre-fills every field from the existing invoice (cents
+ * converted back to whole pesos for `unitPrice`, matching the create form's
+ * input convention) and switches submission from `POST /api/invoices` to
  * `PATCH /api/invoices/{invoice.id}`. The caller (the edit page/route) is
  * solely responsible for only reaching this component with the `invoice`
- * prop when `invoice.paidAmount === 0` — this form itself does not
- * re-check that (the server's edit-lock in `updateInvoice`/`InvoiceRepository.update`
- * is the actual enforcement; the UI-level gating is a defense-in-depth nicety
- * on top of it, not a replacement for it).
+ * prop while `invoice.balance > 0` (not fully paid) — this form itself does
+ * not re-check that (the server's edit-lock in
+ * `updateInvoice`/`InvoiceRepository.update` is the actual enforcement; the
+ * UI-level gating is a defense-in-depth nicety on top of it, not a
+ * replacement for it). It DOES, however, show a live UX-only warning and
+ * disable submit once the LIVE computed total would drop below the
+ * invoice's `paidAmount` — mirroring the server's separate "new total below
+ * paid" rejection rule (also UX only; the server remains authoritative).
  */
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,7 +40,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { todayIsoDate } from "@/lib/dates";
-import { lineTotal, pesosToCents } from "@/lib/money";
+import { formatCOP, lineTotal, pesosToCents } from "@/lib/money";
 import { InvoiceItemFields } from "./invoice-item-fields";
 import { invoiceFormSchema, type InvoiceFormValues } from "./invoice-form-schema";
 
@@ -58,6 +62,15 @@ export type InvoiceFormContentInvoice = {
     /** Integer minor units (COP cents), per `lib/money.ts`'s convention. */
     unitPrice: number;
   }[];
+  /**
+   * Integer minor units (COP cents) already collected against this invoice,
+   * per `InvoiceDetail#paidAmount`. Used ONLY for the live below-paid-total
+   * warning below — a UX-only early signal mirroring
+   * `invoice-edit-partial`'s server-side rule that a new total may never
+   * drop below `paidAmount`. The server remains authoritative; this never
+   * blocks the request itself, only the submit button.
+   */
+  paidAmount: number;
 };
 
 
@@ -130,6 +143,12 @@ export default function InvoiceFormContent({ customers, defaultCustomerId, invoi
       }, 0),
     [items],
   );
+
+  // Below-paid-total warning (this change's PR2, UX-only mirror of the
+  // server's `invoice-edit-partial` rule): only applies in edit mode, and
+  // only once the invoice already has a payment recorded — a brand-new
+  // invoice or a create-mode form has no `paidAmount` to compare against.
+  const isBelowPaidTotal = isEditing && invoice!.paidAmount > 0 && totalCents < invoice!.paidAmount;
 
   async function onSubmit(values: InvoiceFormValues) {
     setSubmitError(null);
@@ -222,13 +241,19 @@ export default function InvoiceFormContent({ customers, defaultCustomerId, invoi
         Total: <MoneyAmount cents={totalCents} size="sm" />
       </p>
 
+      {isBelowPaidTotal ? (
+        <p className="text-xs text-destructive">
+          {`El total no puede ser menor a lo ya pagado (${formatCOP(invoice!.paidAmount)}).`}
+        </p>
+      ) : null}
+
       {submitError ? (
         <p role="alert" className="text-sm text-destructive">
           {submitError}
         </p>
       ) : null}
 
-      <Button type="submit" disabled={isSubmitting} className="w-full sm:w-fit">
+      <Button type="submit" disabled={isSubmitting || isBelowPaidTotal} className="w-full sm:w-fit">
         {isSubmitting ? "Guardando..." : isEditing ? "Guardar cambios" : "Crear factura"}
       </Button>
     </form>
