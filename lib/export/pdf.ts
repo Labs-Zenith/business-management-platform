@@ -1,8 +1,9 @@
 import PDFDocument from "pdfkit";
 import { formatCOP } from "@/lib/money";
 import { INVOICE_STATUS_LABELS } from "@/lib/export/labels";
+import { getCategoryLabel } from "@/lib/services/expense-dashboard-service";
 import type { Business, InvoiceDetail, PaymentWithRefs } from "@/lib/services/ports";
-import type { InvoiceExportRow } from "@/lib/export/excel";
+import type { DashboardExportData, InvoiceExportRow } from "@/lib/export/excel";
 
 type PdfTableColumn<T> = {
   header: string;
@@ -30,6 +31,27 @@ function writeTitle(doc: PDFKit.PDFDocument, title: string, subtitle?: string) {
     doc.moveDown(0.25).font("Helvetica").fontSize(9).fillColor("#666666").text(subtitle);
   }
   doc.moveDown(1);
+}
+
+/**
+ * Reserved height for a section heading: enough room for the heading's own
+ * text line plus the `moveDown(0.5)` spacing before the first row of the
+ * table that follows it. Used by `ensureRoom` so a heading never gets
+ * orphaned alone at the bottom of a page, separated from its table.
+ */
+const SECTION_HEADING_RESERVED_HEIGHT = 70;
+
+/**
+ * Section heading for the multi-section dashboard export — lighter weight
+ * than `writeTitle` (which is sized for a document/page title, not a
+ * per-section label within one flowing document). Wrapped in `ensureRoom` so
+ * a heading never gets orphaned alone at the bottom of a page, separated
+ * from the table that follows it.
+ */
+function writeSectionHeading(doc: PDFKit.PDFDocument, text: string) {
+  ensureRoom(doc, SECTION_HEADING_RESERVED_HEIGHT);
+  doc.font("Helvetica-Bold").fontSize(12).fillColor("#171717").text(text);
+  doc.moveDown(0.5);
 }
 
 function writeKeyValue(doc: PDFKit.PDFDocument, label: string, value: string) {
@@ -159,6 +181,124 @@ export async function renderPaymentsExportPdf(rows: PaymentWithRefs[]): Promise<
     { header: "Metodo", width: 90, value: (payment) => payment.method ?? "-" },
     { header: "Notas", width: 110, value: (payment) => payment.notes ?? "-" },
   ]);
+  doc.end();
+  return done;
+}
+
+function writeResumenSection(doc: PDFKit.PDFDocument, data: DashboardExportData) {
+  const { summary, expenses } = data;
+  writeSectionHeading(doc, "Resumen");
+  writeTable(
+    doc,
+    [
+      { concept: "Saldo pendiente por cobrar", value: formatCOP(summary.pendingBalance) },
+      { concept: "Pagado este mes", value: formatCOP(summary.paidThisMonth) },
+      { concept: "Facturas vencidas", value: String(summary.overdueInvoices) },
+      { concept: "Gastos del mes", value: formatCOP(expenses.totalThisMonth) },
+    ],
+    [
+      { header: "Concepto", width: 280, value: (row) => row.concept },
+      { header: "Valor", width: 160, align: "right", value: (row) => row.value },
+    ],
+  );
+}
+
+function writeSaldoPorEstadoSection(doc: PDFKit.PDFDocument, charts: DashboardExportData["charts"]) {
+  writeSectionHeading(doc, "Saldo por estado");
+  writeTable(doc, charts.receivablesByStatus, [
+    { header: "Estado", width: 110, value: (row) => row.label },
+    { header: "Cantidad", width: 80, align: "right", value: (row) => String(row.count) },
+    { header: "Saldo", width: 110, align: "right", value: (row) => formatCOP(row.balance) },
+    { header: "Total", width: 110, align: "right", value: (row) => formatCOP(row.total) },
+  ]);
+}
+
+function writeMayoresSaldosSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"]) {
+  writeSectionHeading(doc, "Mayores saldos");
+  writeTable(doc, summary.topDebtors, [
+    { header: "Cliente", width: 280, value: (row) => row.name },
+    { header: "Saldo", width: 150, align: "right", value: (row) => formatCOP(row.balance) },
+  ]);
+}
+
+function writePagosPorMesSection(doc: PDFKit.PDFDocument, charts: DashboardExportData["charts"]) {
+  writeSectionHeading(doc, "Pagos por mes");
+  writeTable(doc, charts.monthlyPayments, [
+    { header: "Mes", width: 130, value: (row) => row.label },
+    { header: "Monto", width: 150, align: "right", value: (row) => formatCOP(row.amount) },
+  ]);
+}
+
+function writeFacturasVencidasSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"]) {
+  writeSectionHeading(doc, "Facturas vencidas");
+  writeTable(doc, summary.overdueInvoiceList, [
+    { header: "Numero", width: 65, value: (row) => row.number },
+    { header: "Fecha", width: 60, value: (row) => row.issueDate },
+    { header: "Vencimiento", width: 65, value: (row) => row.dueDate ?? "-" },
+    { header: "Total", width: 75, align: "right", value: (row) => formatCOP(row.total) },
+    { header: "Pagado", width: 75, align: "right", value: (row) => formatCOP(row.paidAmount) },
+    { header: "Saldo", width: 75, align: "right", value: (row) => formatCOP(row.balance) },
+    { header: "Estado", width: 75, value: (row) => INVOICE_STATUS_LABELS[row.status] },
+  ]);
+}
+
+function writePagosRecientesSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"]) {
+  writeSectionHeading(doc, "Pagos recientes");
+  writeTable(doc, summary.recentPayments, [
+    { header: "Fecha", width: 65, value: (row) => row.paymentDate },
+    { header: "Cliente", width: 110, value: (row) => row.customer.name },
+    { header: "Factura", width: 75, value: (row) => row.invoice.number },
+    { header: "Monto", width: 75, align: "right", value: (row) => formatCOP(row.amount) },
+    { header: "Metodo", width: 70, value: (row) => row.method ?? "-" },
+    { header: "Notas", width: 85, value: (row) => row.notes ?? "-" },
+  ]);
+}
+
+function writeGastosPorCategoriaSection(doc: PDFKit.PDFDocument, expenses: DashboardExportData["expenses"]) {
+  writeSectionHeading(doc, "Gastos por categoria");
+  writeTable(doc, expenses.byCategory, [
+    { header: "Categoria", width: 280, value: (row) => row.label },
+    { header: "Total", width: 150, align: "right", value: (row) => formatCOP(row.total) },
+  ]);
+}
+
+function writeGastosRecientesSection(doc: PDFKit.PDFDocument, expenses: DashboardExportData["expenses"]) {
+  writeSectionHeading(doc, "Gastos recientes");
+  writeTable(doc, expenses.recentExpenses, [
+    { header: "Fecha", width: 65, value: (row) => row.expenseDate },
+    { header: "Categoria", width: 90, value: (row) => getCategoryLabel(row.category) },
+    { header: "Descripcion", width: 150, value: (row) => row.description },
+    { header: "Monto", width: 80, align: "right", value: (row) => formatCOP(row.amount) },
+    { header: "Notas", width: 90, value: (row) => row.notes ?? "-" },
+  ]);
+}
+
+/**
+ * Full dashboard export (both "Ingresos" and "Egresos" tabs, no filters): one
+ * continuous flowing document with a `writeSectionHeading` + `writeTable`
+ * pair per section (not one page per section) — `ensureRoom` (already inside
+ * `writeTable`, and also guarding each heading via `writeSectionHeading`)
+ * drives page breaks. Reads as a table of contents — each section's actual
+ * construction lives in its own `write*Section` helper above, matching
+ * `./excel`'s `renderDashboardWorkbook`/`add*Sheet` precedent. Section
+ * list/order matches `renderDashboardWorkbook` in `./excel` exactly, per
+ * `openspec/changes/dashboard-excel-export/design.md`.
+ */
+export async function renderDashboardExportPdf(data: DashboardExportData): Promise<Buffer> {
+  const doc = createDocument();
+  const done = collectDocument(doc);
+
+  writeTitle(doc, "Reporte de Dashboard");
+
+  writeResumenSection(doc, data);
+  writeSaldoPorEstadoSection(doc, data.charts);
+  writeMayoresSaldosSection(doc, data.summary);
+  writePagosPorMesSection(doc, data.charts);
+  writeFacturasVencidasSection(doc, data.summary);
+  writePagosRecientesSection(doc, data.summary);
+  writeGastosPorCategoriaSection(doc, data.expenses);
+  writeGastosRecientesSection(doc, data.expenses);
+
   doc.end();
   return done;
 }

@@ -33,9 +33,9 @@ Chain strategy: pending
 
 ## Phase 2: PDF Renderer (PR 2)
 
-- [ ] 2.1 In `lib/export/pdf.ts`, add private `writeSectionHeading(doc, text)` (lighter than 18pt `writeTitle`, wrapped in `ensureRoom` to guard orphans).
-- [ ] 2.2 In `lib/export/pdf.ts`, add `export async function renderDashboardExportPdf(data: DashboardExportData)` importing `DashboardExportData` from `./excel`; one flowing document, `writeTitle` once ("Reporte de Dashboard") then `writeSectionHeading` + `writeTable` per the 8 sections. Reuse `getCategoryLabel` for recent-expenses category. `writeTable` over `[]` for empty lists.
-- [ ] 2.3 In `lib/export/pdf.test.ts`, add tests asserting the buffer starts with `%PDF` and that empty-state data renders without throwing. Match the file's existing renderer-call test style.
+- [x] 2.1 In `lib/export/pdf.ts`, add private `writeSectionHeading(doc, text)` (lighter than 18pt `writeTitle`, wrapped in `ensureRoom` to guard orphans).
+- [x] 2.2 In `lib/export/pdf.ts`, add `export async function renderDashboardExportPdf(data: DashboardExportData)` importing `DashboardExportData` from `./excel`; one flowing document, `writeTitle` once ("Reporte de Dashboard") then `writeSectionHeading` + `writeTable` per the 8 sections. Reuse `getCategoryLabel` for recent-expenses category. `writeTable` over `[]` for empty lists.
+- [x] 2.3 In `lib/export/pdf.test.ts` (new file), add tests asserting the buffer starts with `%PDF`, real rendered values per section (captured via a `PDFDocument.prototype.text` spy, since no PDF-text-extraction library exists in this project), null-fallback branches (`dueDate`, `method`, `notes`), and `formatCOP(0)` zero-amount formatting in the empty-state case.
 
 ## Phase 3: Export Route (PR 3)
 
