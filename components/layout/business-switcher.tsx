@@ -17,16 +17,36 @@
  * in flight.
  *
  * Only renders the dropdown when the user holds more than one membership
- * (`memberships.length <= 1` is the static-text guard) — this covers both
- * the "exactly one membership" case (nothing to switch to) and the
- * "zero memberships" case (nothing to render as options at all), showing
- * the business name (or a generic fallback) as static text instead.
+ * (`memberships.length <= 1` is the static guard) — this covers both the
+ * "exactly one membership" case (nothing to switch to) and the "zero
+ * memberships" case (nothing to render as options at all), showing a
+ * non-interactive avatar (business initial) instead.
+ *
+ * The trigger itself (Fase 4 Lane C — business switcher as an avatar) is a
+ * small round `Avatar`/`AvatarFallback` showing the current business
+ * name's first initial, matching `dashboard-topbar.tsx`'s session avatar —
+ * NOT the previous labeled button (name + chevron). The visible name is
+ * intentionally dropped, so `title`/`aria-label` carry the current business
+ * name for accessibility instead. Composed via `DropdownMenuTrigger`'s
+ * polymorphic `render` prop (same pattern as `components/domain/export-menu.tsx`),
+ * with `nativeButton={false}` since the rendered element is a `<span>`
+ * (`Avatar`'s root), not a `<button>` — this makes base-ui's `useButton`
+ * emit `role="button"` and `aria-disabled` (rather than a native `disabled`
+ * attribute) when `isSwitching` is true.
+ *
+ * The avatar initial is derived via `lib/utils.ts`'s shared `avatarInitial`
+ * (review-fix pass) rather than an inline `charAt(0)` — that inline version
+ * returned an empty string (blank avatar) for an empty business name;
+ * `avatarInitial` falls back to `"?"` instead, and is also used by
+ * `dashboard-topbar.tsx`'s session avatar so both derive the initial the
+ * same way.
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDownIcon } from "lucide-react";
 import type { BusinessMembership } from "@/lib/services/ports";
+import { avatarInitial } from "@/lib/utils";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,7 +73,13 @@ export default function BusinessSwitcher({
   const currentName = current?.businessName ?? "Negocio";
 
   if (memberships.length <= 1) {
-    return <span className="text-sm font-medium">{currentName}</span>;
+    return (
+      <Avatar size="sm" title={currentName} aria-label={currentName}>
+        <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+          {avatarInitial(currentName)}
+        </AvatarFallback>
+      </Avatar>
+    );
   }
 
   const otherBusinesses = memberships.filter(
@@ -95,16 +121,27 @@ export default function BusinessSwitcher({
     }
   }
 
+  const triggerLabel = isSwitching ? "Cambiando de negocio..." : currentName;
+
   return (
     <div className="flex flex-col items-end gap-1">
       <DropdownMenu>
         <DropdownMenuTrigger
           disabled={isSwitching}
-          className="flex items-center gap-1 rounded-md border border-input px-2 py-1 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isSwitching ? "Cambiando..." : currentName}
-          <ChevronDownIcon className="size-4 text-muted-foreground" />
-        </DropdownMenuTrigger>
+          nativeButton={false}
+          title={triggerLabel}
+          aria-label={triggerLabel}
+          render={
+            <Avatar
+              size="sm"
+              className="cursor-pointer data-disabled:cursor-not-allowed data-disabled:opacity-50"
+            >
+              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                {avatarInitial(currentName)}
+              </AvatarFallback>
+            </Avatar>
+          }
+        />
         <DropdownMenuContent align="end">
           {otherBusinesses.map((membership) => (
             <DropdownMenuItem

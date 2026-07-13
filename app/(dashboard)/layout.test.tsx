@@ -14,6 +14,19 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
+/**
+ * `next/headers`'s `cookies()` only works inside a real Next.js request
+ * context — mocked the same way `lib/mock/cookie-persistence.test.ts`
+ * mocks it. This layout reads the `sidebar_collapsed` cookie (Fase 4 Lane
+ * C) to pass `defaultCollapsed` to `DashboardSidebar`, avoiding a
+ * hydration flash.
+ */
+const mockCookieGet = vi.fn<(name: string) => { name: string; value: string } | undefined>();
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: (name: string) => mockCookieGet(name) }),
+}));
+
 // `loadStoreFromCookie` calls `next/headers`'s `cookies()`, unavailable
 // outside a real Next.js request context — irrelevant to this layout's own
 // nav/session-gating behavior under test.
@@ -36,6 +49,7 @@ vi.mock("@/lib/services/repositories", () => ({
 }));
 
 import DashboardLayout from "./layout";
+import { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
 
 const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
@@ -68,6 +82,8 @@ describe("DashboardLayout (shared navigation shell)", () => {
   beforeEach(() => {
     mockRequireSessionOrRedirect.mockReset();
     mockListMembershipsForUser.mockReset();
+    mockCookieGet.mockReset();
+    mockCookieGet.mockReturnValue(undefined);
   });
 
   it("resolves the session, then renders links to every dashboard section, the page content, and a logout action", async () => {
@@ -134,6 +150,36 @@ describe("DashboardLayout (shared navigation shell)", () => {
     await expect(
       DashboardLayout({ children: <div>Page content</div> })
     ).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
+  });
+
+  it("renders the desktop sidebar expanded by default when the sidebar_collapsed cookie is absent", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListMembershipsForUser.mockResolvedValue(SINGLE_MEMBERSHIP);
+
+    render(await DashboardLayout({ children: <div>Page content</div> }));
+
+    // Expanded: the nav label is visible text, not just an icon exposed via `title`.
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+  });
+
+  it("renders the desktop sidebar collapsed when the sidebar_collapsed cookie is 'true' (Fase 4 Lane C)", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListMembershipsForUser.mockResolvedValue(SINGLE_MEMBERSHIP);
+    mockCookieGet.mockImplementation((name) =>
+      name === SIDEBAR_COLLAPSED_COOKIE ? { name, value: "true" } : undefined
+    );
+
+    render(await DashboardLayout({ children: <div>Page content</div> }));
+
+    // Collapsed: no visible "Dashboard" text node, but the link itself
+    // still exists (icon-only) with its label exposed via `title` for
+    // accessibility/tooltip — same contract as `dashboard-sidebar.test.tsx`.
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    const dashboardLinks = screen.getAllByRole("link", { name: "Dashboard" });
+    expect(dashboardLinks.length).toBeGreaterThan(0);
+    for (const link of dashboardLinks) {
+      expect(link).toHaveAttribute("title", "Dashboard");
+    }
   });
 
   it("currently propagates (crashes the shell) when listMembershipsForUser rejects — documents existing behavior, not a fix", async () => {

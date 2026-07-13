@@ -3,24 +3,48 @@
 /**
  * Desktop nav ("Sidebar o navegacion lateral" per `docs/ui-ux-flow.md`'s
  * "En escritorio" section), visible at `md` and up. Mobile uses
- * `dashboard-bottom-nav.tsx` instead — both read from the same
- * `NAV_ITEMS` source of truth.
+ * `mobile-nav-sheet.tsx` instead (Fase 4 Lane C — replaces the removed
+ * `dashboard-bottom-nav.tsx`) — both read from the same `NAV_ITEMS` source
+ * of truth.
  *
  * Uses the `--sidebar*` token family from `app/globals.css` (not the
  * generic `--card`/`--accent` tokens) so the sidebar can read as a
  * distinct panel from the main content area, matching the dark
  * "sidebar + content" shell this was restyled after.
+ *
+ * Collapse toggle (Fase 4 Lane C): `defaultCollapsed` is read server-side
+ * from the `sidebar_collapsed` cookie by `app/(dashboard)/layout.tsx` and
+ * passed down as this component's initial React state — this avoids a
+ * hydration flash (a client-only `useState(false)` would render expanded
+ * for one frame even when the user last chose collapsed). The toggle
+ * button then flips local state AND persists the choice via
+ * `document.cookie` (standard shadcn "cookie-backed sidebar" pattern),
+ * so a reload restores it without any additional client-side fetch.
+ * Collapsed items keep their filtered `navItemsForRole(role)` list — only
+ * the label `<span>`s are hidden — and use `title` for a native tooltip
+ * on each icon-only link, since there is no dedicated Tooltip primitive
+ * in this codebase yet.
+ *
+ * `isActivePath` and the `sidebar_collapsed` cookie name (review-fix pass)
+ * are single-sourced in `nav-items.ts` — see that file's doc comment —
+ * rather than duplicated here, and item rendering is delegated to the
+ * shared `nav-link.tsx`'s `NavLink`, also used by `mobile-nav-sheet.tsx`.
  */
 
-import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Wallet } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { navItemsForRole } from "./nav-items";
+import { Button } from "@/components/ui/button";
+import { isActivePath, navItemsForRole, SIDEBAR_COLLAPSED_COOKIE } from "./nav-items";
+import { NavLink } from "./nav-link";
 import type { Role } from "@/lib/services/ports";
 
-function isActivePath(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+const COLLAPSED_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // 1 year
+
+/** Persists the collapsed/expanded choice client-side, mirrored server-side by `app/(dashboard)/layout.tsx`'s cookie read. */
+function persistCollapsedCookie(collapsed: boolean): void {
+  document.cookie = `${SIDEBAR_COLLAPSED_COOKIE}=${collapsed}; path=/; max-age=${COLLAPSED_COOKIE_MAX_AGE_SECONDS}`;
 }
 
 /**
@@ -36,38 +60,63 @@ function isActivePath(pathname: string, href: string): boolean {
  * components are resolved here, client-side, straight from the `NAV_ITEMS`
  * module import in `nav-items.ts` (which never crosses that boundary).
  */
-export default function DashboardSidebar({ role }: { role: Role }) {
+export default function DashboardSidebar({
+  role,
+  defaultCollapsed = false,
+}: {
+  role: Role;
+  defaultCollapsed?: boolean;
+}) {
   const pathname = usePathname();
   const items = navItemsForRole(role);
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
+  function toggleCollapsed() {
+    setCollapsed((current) => {
+      const next = !current;
+      persistCollapsedCookie(next);
+      return next;
+    });
+  }
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-4 text-sidebar-foreground md:flex">
+    <aside
+      className={cn(
+        "hidden shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex",
+        collapsed ? "w-14 items-center p-2" : "w-60 p-4"
+      )}
+    >
       <div className="mb-4 flex items-center gap-2 px-2">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
           <Wallet className="size-4" aria-hidden="true" />
         </span>
-        <span className="text-sm font-semibold tracking-tight">Negocio</span>
+        {!collapsed && <span className="text-sm font-semibold tracking-tight">Negocio</span>}
       </div>
 
-      {items.map((item) => {
-        const active = isActivePath(pathname, item.href);
-        const Icon = item.icon;
+      {items.map((item) => (
+        <NavLink
+          key={item.href}
+          item={item}
+          active={isActivePath(pathname, item.href)}
+          collapsed={collapsed}
+        />
+      ))}
 
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              active && "bg-sidebar-accent text-sidebar-accent-foreground"
-            )}
-          >
-            <Icon className="size-4 shrink-0" aria-hidden="true" />
-            <span className="truncate">{item.label}</span>
-          </Link>
-        );
-      })}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        onClick={toggleCollapsed}
+        title={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+        aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+        className={cn("mt-auto", !collapsed && "self-end")}
+      >
+        {collapsed ? (
+          <PanelLeftOpen className="size-4" aria-hidden="true" />
+        ) : (
+          <PanelLeftClose className="size-4" aria-hidden="true" />
+        )}
+      </Button>
     </aside>
   );
 }

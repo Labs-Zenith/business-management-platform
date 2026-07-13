@@ -1,20 +1,22 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { repositories } from "@/lib/services/repositories";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
 import DashboardSidebar from "@/components/layout/dashboard-sidebar";
-import DashboardBottomNav from "@/components/layout/dashboard-bottom-nav";
+import { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
 
 /**
  * Shared navigation shell for every `(dashboard)` route-group screen
  * (dashboard, customers, customers/[id], invoices, invoices/new,
  * invoices/[id], payments, settings), per `docs/ui-ux-flow.md`'s
  * "Navegacion principal" section: a persistent sidebar on desktop
- * ("Sidebar o navegacion lateral") and a bottom nav on mobile
- * ("Navegacion inferior o menu compacto"), both linking to Dashboard,
- * Clientes, Facturas, Pagos, and Negocio, plus a logout action always
- * reachable from the top bar regardless of viewport.
+ * ("Sidebar o navegacion lateral") and a hamburger-triggered nav drawer on
+ * mobile (Fase 4 Lane C — replaces the earlier "Navegacion inferior o menu
+ * compacto" bottom nav), both linking to Dashboard, Clientes, Facturas,
+ * Pagos, and Negocio, plus a logout action always reachable from the top
+ * bar regardless of viewport.
  *
  * This closes a gap that PR2 through PR10 each individually deferred: until
  * now there was no way for a real user to click between sections or log out
@@ -43,10 +45,19 @@ import DashboardBottomNav from "@/components/layout/dashboard-bottom-nav";
  * `DashboardTopbar`'s `BusinessSwitcher` can render without doing any
  * fetching of its own.
  *
+ * `DashboardSidebar`'s collapse state (Fase 4 Lane C) is read here from the
+ * `SIDEBAR_COLLAPSED_COOKIE` cookie (single-sourced in `nav-items.ts` —
+ * review-fix pass, so this name and `dashboard-sidebar.tsx`'s client-side
+ * write of the same cookie can never drift apart) via `next/headers`'s
+ * `cookies()`, and passed down as `defaultCollapsed` — the standard shadcn
+ * "cookie-backed sidebar" pattern. Doing this server-side (rather than a
+ * client-only `useState`) avoids a hydration flash: without it, a user who
+ * last collapsed the sidebar would see it flash open for one frame on every
+ * reload before the client-side toggle state caught up.
+ *
  * Existing page content is untouched: each `page.tsx` keeps its own
  * `flex flex-1 flex-col p-4` wrapper unchanged; this layout only adds
- * shared chrome around it, and reserves bottom padding on `<main>` on
- * mobile so the fixed bottom nav never overlaps page content.
+ * shared chrome around it.
  */
 export default async function DashboardLayout({
   children,
@@ -61,6 +72,9 @@ export default async function DashboardLayout({
   // degradation (e.g. falling back to an empty `memberships` list) is a
   // possible future improvement, not implemented here.
   const memberships = await repositories.business.listMembershipsForUser(session.userId);
+  const cookieStore = await cookies();
+  const sidebarDefaultCollapsed =
+    cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === "true";
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col">
@@ -78,11 +92,12 @@ export default async function DashboardLayout({
           to Client Components…"). This is a UX complement only; the
           authoritative check is each gated page's/route's own
           `requireCapabilityOrNotFound`/`requireCapability` call.
+          `DashboardTopbar` renders `MobileNavSheet` internally (also
+          `role`-filtered) for the mobile drawer.
         */}
-        <DashboardSidebar role={session.role} />
-        <main className="flex min-w-0 flex-1 flex-col pb-24 md:pb-0">{children}</main>
+        <DashboardSidebar role={session.role} defaultCollapsed={sidebarDefaultCollapsed} />
+        <main className="flex min-w-0 flex-1 flex-col">{children}</main>
       </div>
-      <DashboardBottomNav role={session.role} />
     </div>
   );
 }
