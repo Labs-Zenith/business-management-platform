@@ -114,7 +114,8 @@ describe("DashboardLayout (shared navigation shell)", () => {
     // — both rendered by the shared `sidebar-content.tsx` inside
     // `DashboardSidebar`'s desktop `<aside>`) are both reachable.
     expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: SESSION.email })).toBeInTheDocument();
+    expect(screen.getByText(SESSION.email)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();
   });
 
   it("exposes Cerrar sesion inside the opened bottom-of-sidebar user menu", async () => {
@@ -125,7 +126,7 @@ describe("DashboardLayout (shared navigation shell)", () => {
 
     render(await DashboardLayout({ children: <div>Page content</div> }));
 
-    await user.click(screen.getByRole("button", { name: SESSION.email }));
+    await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
 
     expect(await screen.findByRole("menuitem", { name: /cerrar sesion/i })).toBeInTheDocument();
   });

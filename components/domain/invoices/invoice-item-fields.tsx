@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import { Controller, useFieldArray, type Control, type FieldErrors, type UseFormRegister } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,6 +96,7 @@ export function InvoiceItemFields({ control, register, errors }: InvoiceItemFiel
         className="w-full sm:w-fit"
         onClick={() => append({ description: "", quantity: 1, unitPrice: "" })}
       >
+        <Plus className="size-4" />
         Agregar item
       </Button>
     </div>

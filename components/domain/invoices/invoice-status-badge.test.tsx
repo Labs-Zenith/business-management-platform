@@ -8,19 +8,19 @@ describe("InvoiceStatusBadge", () => {
     expect(screen.getByText("Pendiente")).toBeInTheDocument();
   });
 
-  it("gives 'pending' its own amber (--chart-5) treatment, distinct from 'partially_paid'", () => {
+  it("gives 'pending' its own warning treatment, distinct from 'partially_paid'", () => {
     render(<InvoiceStatusBadge status="pending" />);
-    expect(screen.getByText("Pendiente")).toHaveClass("text-chart-5", "bg-chart-5/15");
+    expect(screen.getByText("Pendiente")).toHaveClass("text-warning", "bg-warning/15");
   });
 
-  it("gives 'partially_paid' a blue (--chart-2) treatment", () => {
+  it("gives 'partially_paid' an info treatment", () => {
     render(<InvoiceStatusBadge status="partially_paid" />);
-    expect(screen.getByText("Parcialmente pagada")).toHaveClass("text-chart-2", "bg-chart-2/15");
+    expect(screen.getByText("Parcialmente pagada")).toHaveClass("text-info", "bg-info/15");
   });
 
-  it("gives 'paid' a teal (--chart-1) treatment", () => {
+  it("gives 'paid' a success treatment", () => {
     render(<InvoiceStatusBadge status="paid" />);
-    expect(screen.getByText("Pagada")).toHaveClass("text-chart-1", "bg-chart-1/15");
+    expect(screen.getByText("Pagada")).toHaveClass("text-success", "bg-success/15");
   });
 
   it("gives 'overdue' the destructive (red) treatment", () => {

@@ -101,7 +101,7 @@ describe("DashboardSidebar", () => {
     expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
   });
 
-  it("renders the user row at the bottom (avatar + email trigger)", () => {
+  it("renders the user row at the bottom (avatar + email, plus an Opciones de cuenta trigger)", () => {
     render(
       <DashboardSidebar
         role="admin"
@@ -111,7 +111,8 @@ describe("DashboardSidebar", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: EMAIL })).toBeInTheDocument();
+    expect(screen.getByText(EMAIL)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();
   });
 
   it("expands by default (labels visible, toggle offers to collapse) when defaultCollapsed is not passed", () => {

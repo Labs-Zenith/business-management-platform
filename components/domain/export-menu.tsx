@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, Download } from "lucide-react";
 import { buildExportHref } from "@/lib/export/url";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,6 +45,7 @@ export function ExportMenu({ path, params }: ExportMenuProps) {
       <DropdownMenuTrigger
         render={
           <Button variant="outline" className="w-full sm:w-auto">
+            <Download className="size-4" />
             Exportar
             <ChevronDownIcon className="size-4 text-muted-foreground" />
           </Button>

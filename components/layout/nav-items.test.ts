@@ -48,10 +48,10 @@ describe("navItemsForRole", () => {
    * "switch business" `Collapsible` and no longer surfaces
    * Configuración/Editar perfil links itself, so Settings gets its own
    * plain (capability-less) `NAV_ITEMS` entry, visible to every role, at
-   * the end of the list.
+   * the end of the list. Fase 5.2 F3 renamed its label to "Configuración".
    */
-  it("includes a Settings nav item (/settings) at the end of NAV_ITEMS, visible to every role", () => {
-    expect(NAV_ITEMS.at(-1)).toMatchObject({ href: "/settings", label: "Settings" });
+  it("includes a Configuración nav item (/settings) at the end of NAV_ITEMS, visible to every role", () => {
+    expect(NAV_ITEMS.at(-1)).toMatchObject({ href: "/settings", label: "Configuración" });
     expect(navItemsForRole("worker").some((item) => item.href === "/settings")).toBe(true);
     expect(navItemsForRole("admin").some((item) => item.href === "/settings")).toBe(true);
   });

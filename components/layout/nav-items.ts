@@ -10,7 +10,9 @@
  * "Settings" nav entry at the END of the list: the business switcher
  * (`business-switcher.tsx`) was rewritten into an inline "switch business"
  * `Collapsible` and no longer surfaces account-level links itself, so
- * Settings needs its own place in the nav like every other section.
+ * Settings needs its own place in the nav like every other section. Fase
+ * 5.2 F3 renamed the label to "Configuración" (Spanish, matching the rest
+ * of the nav's labels) — the `href`/`icon` are unchanged.
  *
  * A single source of truth used by both the desktop sidebar and the mobile
  * nav drawer (`mobile-nav-sheet.tsx`, Fase 4 Lane C — replaces the removed
@@ -64,7 +66,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/egresos", label: "Egresos", icon: Receipt },
   { href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
   { href: "/inventario", label: "Inventario", icon: Package },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Configuración", icon: Settings },
 ];
 
 /** Filters `NAV_ITEMS` down to those `role` may see (deny-by-default, via `can()`). */

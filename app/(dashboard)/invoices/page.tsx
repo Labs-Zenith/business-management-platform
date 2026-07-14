@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
@@ -6,10 +7,12 @@ import { listCustomers } from "@/lib/services/customer-service";
 import { listInvoices } from "@/lib/services/invoice-service";
 import type { InvoiceStatus } from "@/lib/services/status";
 import { Button } from "@/components/ui/button";
+import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateFilterField } from "@/components/domain/filters/date-filter-field";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 import { ExportMenu } from "@/components/domain/export-menu";
+import { PageHeader } from "@/components/domain/page-header";
 
 /**
  * Facturas screen, per `docs/ui-ux-flow.md`'s "Facturas" section and
@@ -79,19 +82,20 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Facturas</h1>
-          <p className="text-sm text-muted-foreground">Consulta tus facturas internas y su estado.</p>
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:flex">
-          <ExportMenu path="/api/invoices/export" params={exportParams} />
-          <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
-            Crear factura
-          </Button>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Facturas"
+        description="Consulta tus facturas internas y su estado."
+        actions={
+          <>
+            <ExportMenu path="/api/invoices/export" params={exportParams} />
+            <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
+              <Plus className="size-4" />
+              Crear factura
+            </Button>
+          </>
+        }
+      />
 
       <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_12rem_10rem_10rem_auto]">
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -181,6 +185,6 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
       <p className="text-sm text-muted-foreground">
         Pagina {result.page} de {totalPages} - {result.total} facturas
       </p>
-    </div>
+    </PageShell>
   );
 }

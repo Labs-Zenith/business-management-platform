@@ -25,12 +25,24 @@ function collectDocument(doc: PDFKit.PDFDocument): Promise<Buffer> {
   });
 }
 
-function writeTitle(doc: PDFKit.PDFDocument, title: string, subtitle?: string) {
-  doc.font("Helvetica-Bold").fontSize(18).fillColor("#171717").text(title);
+function contentWidth(doc: PDFKit.PDFDocument) {
+  return doc.page.width - doc.page.margins.left - doc.page.margins.right;
+}
+
+function writeTitle(
+  doc: PDFKit.PDFDocument,
+  title: string,
+  subtitle?: string,
+  align: "left" | "center" = "left",
+) {
+  const left = doc.page.margins.left;
+  const width = contentWidth(doc);
+  doc.font("Helvetica-Bold").fontSize(18).fillColor("#171717").text(title, left, doc.y, { width, align });
   if (subtitle) {
-    doc.moveDown(0.25).font("Helvetica").fontSize(9).fillColor("#666666").text(subtitle);
+    doc.moveDown(0.25).font("Helvetica").fontSize(9).fillColor("#666666").text(subtitle, left, doc.y, { width, align });
   }
   doc.moveDown(1);
+  doc.x = left;
 }
 
 /**
@@ -46,12 +58,20 @@ const SECTION_HEADING_RESERVED_HEIGHT = 70;
  * than `writeTitle` (which is sized for a document/page title, not a
  * per-section label within one flowing document). Wrapped in `ensureRoom` so
  * a heading never gets orphaned alone at the bottom of a page, separated
- * from the table that follows it.
+ * from the table that follows it. Drawn centered across the content width
+ * with an explicit `x`, and resets `doc.x` to the left margin afterward so
+ * the table that follows starts flush-left (never inheriting a stale cursor).
  */
 function writeSectionHeading(doc: PDFKit.PDFDocument, text: string) {
   ensureRoom(doc, SECTION_HEADING_RESERVED_HEIGHT);
-  doc.font("Helvetica-Bold").fontSize(12).fillColor("#171717").text(text);
+  const left = doc.page.margins.left;
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(12)
+    .fillColor("#171717")
+    .text(text, left, doc.y, { width: contentWidth(doc), align: "center" });
   doc.moveDown(0.5);
+  doc.x = left;
 }
 
 function writeKeyValue(doc: PDFKit.PDFDocument, label: string, value: string) {
@@ -77,16 +97,23 @@ const CHART_IMAGE_HEIGHT = (CHART_IMAGE_WIDTH * 320) / 640;
 const CHART_IMAGE_RESERVED_HEIGHT = CHART_IMAGE_HEIGHT + 16;
 
 /**
- * Writes a single chart PNG at the current flow position, guarded by
+ * Writes a single chart PNG horizontally centered on the page, guarded by
  * `ensureRoom` (reserving the image's rendered height plus spacing) so it
- * never gets orphaned split across a page break. `doc.image` with only
- * `width` (no explicit `x`/`y`) draws at the current cursor and advances
- * `doc.y` past the image, exactly like `writeTable`'s row-by-row flow.
+ * never gets orphaned split across a page break. An explicit `x`/`y` is
+ * passed (so the chart never inherits a stale `doc.x` from the preceding
+ * table's last cell and drifts off the right edge); because explicit
+ * coordinates put `doc.image` in absolute mode — which does NOT advance the
+ * cursor — `doc.y` is advanced manually past the image's rendered height.
  */
 function writeChartImage(doc: PDFKit.PDFDocument, png: Buffer) {
   ensureRoom(doc, CHART_IMAGE_RESERVED_HEIGHT);
-  doc.image(png, { width: CHART_IMAGE_WIDTH });
+  const left = doc.page.margins.left;
+  const x = left + (contentWidth(doc) - CHART_IMAGE_WIDTH) / 2;
+  const y = doc.y;
+  doc.image(png, x, y, { width: CHART_IMAGE_WIDTH });
+  doc.y = y + CHART_IMAGE_HEIGHT;
   doc.moveDown(1);
+  doc.x = left;
 }
 
 function writeTable<T>(doc: PDFKit.PDFDocument, rows: T[], columns: PdfTableColumn<T>[]) {
@@ -129,6 +156,7 @@ function writeTable<T>(doc: PDFKit.PDFDocument, rows: T[], columns: PdfTableColu
   }
 
   doc.strokeColor("#ebebeb").moveTo(startX, doc.y).lineTo(startX + tableWidth, doc.y).stroke();
+  doc.x = startX; // restore the cursor to the left margin (each cell left doc.x parked at the last column)
   doc.moveDown(1);
 }
 
@@ -337,7 +365,7 @@ export async function renderDashboardExportPdf(
   const doc = createDocument();
   const done = collectDocument(doc);
 
-  writeTitle(doc, "Reporte de Dashboard");
+  writeTitle(doc, "Reporte de Dashboard", undefined, "center");
 
   writeResumenSection(doc, data);
   writeSaldoPorEstadoSection(doc, data.charts, chartImages.receivablesByStatus);

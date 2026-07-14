@@ -65,7 +65,7 @@ describe("DashboardTopbar", () => {
 
     expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: SESSION.email }));
+    await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
 
     expect(await screen.findByRole("menuitem", { name: /cerrar sesion/i })).toBeInTheDocument();
   });

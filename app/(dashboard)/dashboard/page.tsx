@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { PageShell } from "@/components/ui/page-shell";
+import { PageHeader } from "@/components/domain/page-header";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { DashboardExportMenu } from "@/components/domain/dashboard/dashboard-export-menu";
 import { KpiCards, KpiCardsSkeleton } from "@/components/domain/dashboard/kpi-cards";
@@ -56,16 +58,12 @@ import { RecentExpenses, RecentExpensesSkeleton } from "@/components/domain/dash
  */
 export default function DashboardPage() {
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Claridad inmediata sobre tu cartera.</p>
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:flex">
-          <DashboardExportMenu />
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Dashboard"
+        description="Claridad inmediata sobre tu cartera."
+        actions={<DashboardExportMenu />}
+      />
 
       <Tabs defaultValue="ingresos">
         <TabsList>
@@ -116,6 +114,6 @@ export default function DashboardPage() {
           </Suspense>
         </TabsPanel>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

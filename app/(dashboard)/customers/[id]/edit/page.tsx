@@ -10,6 +10,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { PageShell } from "@/components/ui/page-shell";
+import { PageHeader } from "@/components/domain/page-header";
 import CustomerForm from "@/components/domain/customers/customer-form";
 
 /**
@@ -34,25 +36,27 @@ export default async function EditCustomerPage({ params }: EditCustomerPageProps
   const customer = await getCustomer(session, id);
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-1">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink render={<Link href="/customers" />}>Clientes</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink render={<Link href={`/customers/${id}`} />}>{customer.name}</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Editar</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-        <h1 className="text-lg font-semibold">Editar cliente</h1>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Editar cliente"
+        breadcrumb={
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href="/customers" />}>Clientes</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href={`/customers/${id}`} />}>{customer.name}</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Editar</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        }
+      />
       <CustomerForm
         customer={{
           id: customer.id,
@@ -65,6 +69,6 @@ export default async function EditCustomerPage({ params }: EditCustomerPageProps
           isActive: customer.isActive,
         }}
       />
-    </div>
+    </PageShell>
   );
 }

@@ -1,15 +1,18 @@
 import { requireSession } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getExpensesTotalThisMonth } from "@/lib/services/expense-dashboard-service";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/domain/stat-card";
 import { MoneyAmount } from "@/components/domain/money-amount";
 
 /**
  * Egresos KPI section ("egresos del mes"), mirroring
- * `components/domain/dashboard/kpi-cards.tsx`'s shape. A standalone async
- * Server Component so it streams independently inside the Egresos
- * `TabsPanel` — see `kpi-cards.tsx` for the shared Suspense rationale.
+ * `components/domain/dashboard/kpi-cards.tsx`'s shape — including the shared
+ * `StatCard` (`components/domain/stat-card.tsx`) for the figure. A
+ * standalone async Server Component so it streams independently inside the
+ * Egresos `TabsPanel` — see `kpi-cards.tsx` for the shared Suspense
+ * rationale.
  */
 export async function ExpenseKpiCards() {
   await loadStoreFromCookie();
@@ -18,14 +21,7 @@ export async function ExpenseKpiCards() {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <Card>
-        <CardHeader>
-          <CardDescription>Egresos del mes</CardDescription>
-          <CardTitle>
-            <MoneyAmount cents={totalThisMonth} size="lg" />
-          </CardTitle>
-        </CardHeader>
-      </Card>
+      <StatCard label="Egresos del mes" value={<MoneyAmount cents={totalThisMonth} size="lg" />} />
     </div>
   );
 }

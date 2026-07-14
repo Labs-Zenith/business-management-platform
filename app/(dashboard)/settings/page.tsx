@@ -9,6 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PageShell } from "@/components/ui/page-shell";
+import { PageHeader } from "@/components/domain/page-header";
 import BusinessProfileForm from "@/components/domain/settings/business-profile-form";
 
 /**
@@ -27,6 +29,13 @@ import BusinessProfileForm from "@/components/domain/settings/business-profile-f
  * `requireSessionOrRedirect()` runs before any data fetch (defense in depth
  * alongside `middleware.ts`'s route guard on `/settings`); an unauthenticated
  * request never reaches `getBusinessProfile`.
+ *
+ * Fase 5.2 Wave 2 R2: this page previously had NO page-level header (unlike
+ * every other dashboard screen) — added `PageHeader` (title "Configuración",
+ * matching the renamed `/settings` nav item from Fase 5.2 F3) and swapped
+ * the hand-rolled wrapper for `PageShell`. The admin/worker capability gate
+ * above (`canEditBusinessProfile`) and its server-side enforcement in
+ * `updateBusinessProfile` are unchanged by this purely visual pass.
  */
 export default async function SettingsPage() {
   await loadStoreFromCookie();
@@ -35,7 +44,8 @@ export default async function SettingsPage() {
   const canEdit = canEditBusinessProfile(session.role);
 
   return (
-    <div className="flex flex-1 flex-col p-4">
+    <PageShell>
+      <PageHeader title="Configuración" />
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Negocio</CardTitle>
@@ -54,6 +64,6 @@ export default async function SettingsPage() {
           />
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

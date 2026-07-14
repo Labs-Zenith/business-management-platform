@@ -6,8 +6,9 @@ import {
   getPaidThisMonth,
   getPendingBalance,
 } from "@/lib/services/dashboard-service";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/domain/stat-card";
 import { MoneyAmount } from "@/components/domain/money-amount";
 
 /**
@@ -21,6 +22,11 @@ import { MoneyAmount } from "@/components/domain/money-amount";
  * `RecentPayments`/`TopDebtors`/`OverdueList` — each fetches only what it
  * needs directly from `lib/services/dashboard-service.ts`, never a shared
  * blocking `getDashboardSummary` call.
+ *
+ * Renders each figure via the shared `StatCard`
+ * (`components/domain/stat-card.tsx`), replacing this file's previously
+ * hand-rolled `Card`/`CardHeader`/`CardDescription`/`CardTitle` markup —
+ * `expense-kpi-cards.tsx` mirrors the same shape.
  */
 export async function KpiCards() {
   await loadStoreFromCookie();
@@ -34,36 +40,10 @@ export async function KpiCards() {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Card>
-        <CardHeader>
-          <CardDescription>Pendiente por cobrar</CardDescription>
-          <CardTitle>
-            <MoneyAmount cents={pendingBalance} size="lg" />
-          </CardTitle>
-        </CardHeader>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardDescription>Facturado este mes</CardDescription>
-          <CardTitle>
-            <MoneyAmount cents={invoicedThisMonth} size="lg" />
-          </CardTitle>
-        </CardHeader>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardDescription>Pagado este mes</CardDescription>
-          <CardTitle>
-            <MoneyAmount cents={paidThisMonth} size="lg" />
-          </CardTitle>
-        </CardHeader>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardDescription>Facturas vencidas</CardDescription>
-          <CardTitle className="text-2xl">{overdueCount}</CardTitle>
-        </CardHeader>
-      </Card>
+      <StatCard label="Pendiente por cobrar" value={<MoneyAmount cents={pendingBalance} size="lg" />} />
+      <StatCard label="Facturado este mes" value={<MoneyAmount cents={invoicedThisMonth} size="lg" />} />
+      <StatCard label="Pagado este mes" value={<MoneyAmount cents={paidThisMonth} size="lg" />} />
+      <StatCard label="Facturas vencidas" value={overdueCount} />
     </div>
   );
 }

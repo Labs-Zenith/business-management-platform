@@ -11,16 +11,18 @@
  * to; this IS the destination page.
  *
  * `canEdit` (from `canEditBusinessProfile(session.role)`) gates the editable
- * form: non-admins get a read-only `<dl>` rendering instead (same shape as
- * the original read-only settings page — see `docs/business-rules.md`'s
- * "Negocios" section), with no inputs and no Save button. This is a UX
- * convenience only — the authoritative gate is `updateBusinessProfile`'s
- * server-side `can(session.role, "editBusinessProfile")` check.
+ * form: non-admins get a read-only rendering instead — Vercel-style
+ * `CardRow` labeled sub-sections (Fase 5.2 Wave 2 R2), same fields as the
+ * original read-only `<dl>` (see `docs/business-rules.md`'s "Negocios"
+ * section) — with no inputs and no Save button. This is a UX convenience
+ * only — the authoritative gate is `updateBusinessProfile`'s server-side
+ * `can(session.role, "editBusinessProfile")` check.
  */
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { CardRow } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -88,14 +90,13 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
   if (!canEdit) {
     const formValues = toFormValues(business);
     return (
-      <dl className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
         {READ_ONLY_FIELDS.map((field) => (
-          <div key={field.key} className="flex flex-col gap-1">
-            <dt className="text-sm text-muted-foreground">{field.label}</dt>
-            <dd className="text-sm font-medium">{formValues[field.key] || "-"}</dd>
-          </div>
+          <CardRow key={field.key} label={field.label}>
+            {formValues[field.key] || "-"}
+          </CardRow>
         ))}
-      </dl>
+      </div>
     );
   }
 

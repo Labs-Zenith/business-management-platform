@@ -10,6 +10,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { PageShell } from "@/components/ui/page-shell";
+import { PageHeader } from "@/components/domain/page-header";
 import InvoiceForm from "@/components/domain/invoices/invoice-form";
 
 /**
@@ -34,25 +36,27 @@ export default async function NewInvoicePage({ searchParams }: NewInvoicePagePro
   const result = await listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE });
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-1">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink render={<Link href="/invoices" />}>Facturas</BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Nueva factura</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
-        <h1 className="text-lg font-semibold">Crear factura</h1>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Crear factura"
+        breadcrumb={
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href="/invoices" />}>Facturas</BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>Nueva factura</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        }
+      />
       <InvoiceForm
         customers={result.data.map((customer) => ({ id: customer.id, name: customer.name }))}
         defaultCustomerId={params.customerId}
       />
-    </div>
+    </PageShell>
   );
 }

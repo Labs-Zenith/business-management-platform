@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getCustomer } from "@/lib/services/customer-service";
@@ -13,10 +12,13 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardRow, CardTitle } from "@/components/ui/card";
+import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 import { MoneyAmount } from "@/components/domain/money-amount";
+import { PageHeader } from "@/components/domain/page-header";
+import { StatCard } from "@/components/domain/stat-card";
 
 /**
  * Detalle de cliente screen, per `docs/ui-ux-flow.md`'s "Detalle de
@@ -42,9 +44,10 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
   const customer = await getCustomer(session, id);
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-1">
+    <PageShell>
+      <PageHeader
+        title={customer.name}
+        breadcrumb={
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -56,39 +59,40 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <h1 className="text-lg font-semibold">{customer.name}</h1>
-          <Badge variant={customer.isActive ? "default" : "outline"} className="w-fit">
+        }
+        description={
+          <Badge variant={customer.isActive ? "success" : "outline"} className="w-fit">
             {customer.isActive ? "Activo" : "Inactivo"}
           </Badge>
-        </div>
-        <Button
-          variant="outline"
-          className="w-full sm:w-auto"
-          nativeButton={false}
-          render={<Link href={`/customers/${customer.id}/edit`} />}
-        >
-          Editar
-        </Button>
-      </div>
+        }
+        actions={
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href={`/customers/${customer.id}/edit`} />}
+          >
+            Editar
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <SummaryCard label="Total facturado" value={<MoneyAmount cents={customer.totalInvoiced} size="lg" />} />
-        <SummaryCard label="Total pagado" value={<MoneyAmount cents={customer.totalPaid} size="lg" />} />
-        <SummaryCard label="Saldo pendiente" value={<MoneyAmount cents={customer.balance} size="lg" />} />
+        <StatCard label="Total facturado" value={<MoneyAmount cents={customer.totalInvoiced} size="lg" />} />
+        <StatCard label="Total pagado" value={<MoneyAmount cents={customer.totalPaid} size="lg" />} />
+        <StatCard label="Saldo pendiente" value={<MoneyAmount cents={customer.balance} size="lg" />} />
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Datos del cliente</CardTitle>
         </CardHeader>
-        <CardContent>
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <Field label="Documento" value={customer.documentNumber ?? "-"} />
-            <Field label="Email" value={customer.email ?? "-"} />
-            <Field label="Telefono" value={customer.phone ?? "-"} />
-            <Field label="Direccion" value={customer.address ?? "-"} />
-            <Field label="Notas" value={customer.notes ?? "-"} />
-          </dl>
+        <CardContent className="flex flex-col gap-2">
+          <CardRow label="Documento">{customer.documentNumber ?? "-"}</CardRow>
+          <CardRow label="Email">{customer.email ?? "-"}</CardRow>
+          <CardRow label="Telefono">{customer.phone ?? "-"}</CardRow>
+          <CardRow label="Direccion">{customer.address ?? "-"}</CardRow>
+          <CardRow label="Notas">{customer.notes ?? "-"}</CardRow>
         </CardContent>
       </Card>
 
@@ -159,26 +163,6 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
           )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-1 py-4">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="text-lg font-semibold">{value}</span>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm font-medium">{value}</dd>
-    </div>
+    </PageShell>
   );
 }

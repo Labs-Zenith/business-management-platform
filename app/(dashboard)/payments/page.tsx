@@ -3,6 +3,8 @@ import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listPayments } from "@/lib/services/payment-service";
+import { PageShell } from "@/components/ui/page-shell";
+import { PageHeader } from "@/components/domain/page-header";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateFilterField } from "@/components/domain/filters/date-filter-field";
@@ -63,16 +65,12 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
   };
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Pagos</h1>
-          <p className="text-sm text-muted-foreground">Consulta los pagos registrados en tu negocio.</p>
-        </div>
-        <div className="grid grid-cols-1 gap-2 sm:flex">
-          <ExportMenu path="/api/payments/export" params={exportParams} />
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Pagos"
+        description="Consulta los pagos registrados en tu negocio."
+        actions={<ExportMenu path="/api/payments/export" params={exportParams} />}
+      />
 
       <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[10rem_10rem_auto]">
         <DateFilterField name="from" id="from" label="Desde" defaultValue={params.from} />
@@ -135,6 +133,6 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
       <p className="text-sm text-muted-foreground">
         Pagina {result.page} de {totalPages} - {result.total} pagos
       </p>
-    </div>
+    </PageShell>
   );
 }

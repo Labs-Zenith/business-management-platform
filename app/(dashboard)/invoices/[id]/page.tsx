@@ -13,9 +13,13 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardRow, CardTitle } from "@/components/ui/card";
+import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PageHeader } from "@/components/domain/page-header";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
+import { StatCard } from "@/components/domain/stat-card";
+import { MoneyAmount } from "@/components/domain/money-amount";
 import PaymentFormDialog from "@/components/domain/payments/payment-form-dialog";
 import { MovementsPanel } from "@/components/domain/audit-log/movements-panel";
 
@@ -61,9 +65,11 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
   const invoice = await getInvoice(session, id);
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-1">
+    <PageShell>
+      <PageHeader
+        title={invoice.number}
+        description={<InvoiceStatusBadge status={invoice.status} />}
+        breadcrumb={
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
@@ -75,48 +81,46 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <h1 className="text-lg font-semibold">{invoice.number}</h1>
-          <InvoiceStatusBadge status={invoice.status} />
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
-          {invoice.balance > 0 ? (
+        }
+        actions={
+          <>
+            {invoice.balance > 0 ? (
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto"
+                nativeButton={false}
+                render={<Link href={`/invoices/${invoice.id}/edit`} />}
+              >
+                Editar factura
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               className="w-full sm:w-auto"
               nativeButton={false}
-              render={<Link href={`/invoices/${invoice.id}/edit`} />}
+              render={<Link href={`/api/invoices/${invoice.id}/pdf`} />}
             >
-              Editar factura
+              Descargar PDF
             </Button>
-          ) : null}
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            nativeButton={false}
-            render={<Link href={`/api/invoices/${invoice.id}/pdf`} />}
-          >
-            Descargar PDF
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <SummaryCard label="Total" value={formatCOP(invoice.total)} />
-        <SummaryCard label="Pagado" value={formatCOP(invoice.paidAmount)} />
-        <SummaryCard label="Saldo pendiente" value={formatCOP(invoice.balance)} />
+        <StatCard label="Total" value={<MoneyAmount cents={invoice.total} size="lg" />} />
+        <StatCard label="Pagado" value={<MoneyAmount cents={invoice.paidAmount} size="lg" />} />
+        <StatCard label="Saldo pendiente" value={<MoneyAmount cents={invoice.balance} size="lg" />} />
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Datos de factura</CardTitle>
         </CardHeader>
-        <CardContent>
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <Field label="Cliente" value={invoice.customer.name} />
-            <Field label="Fecha de emision" value={invoice.issueDate} />
-            <Field label="Fecha de vencimiento" value={invoice.dueDate ?? "Sin fecha"} />
-            <Field label="Nota" value={invoice.notes ?? "-"} />
-          </dl>
+        <CardContent className="flex flex-col gap-2">
+          <CardRow label="Cliente">{invoice.customer.name}</CardRow>
+          <CardRow label="Fecha de emision">{invoice.issueDate}</CardRow>
+          <CardRow label="Fecha de vencimiento">{invoice.dueDate ?? "Sin fecha"}</CardRow>
+          <CardRow label="Nota">{invoice.notes ?? "-"}</CardRow>
         </CardContent>
       </Card>
 
@@ -203,26 +207,6 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
       {canViewAuditLog(session.role) ? (
         <MovementsPanel session={session} entityType="invoice" entityId={invoice.id} />
       ) : null}
-    </div>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: string }) {
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-1 py-4">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="text-lg font-semibold">{value}</span>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm font-medium">{value}</dd>
-    </div>
+    </PageShell>
   );
 }

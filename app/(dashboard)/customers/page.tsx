@@ -1,12 +1,15 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MoneyAmount } from "@/components/domain/money-amount";
+import { PageHeader } from "@/components/domain/page-header";
 
 /**
  * Clientes screen, per `docs/ui-ux-flow.md`'s "Clientes" section and
@@ -51,18 +54,17 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Clientes</h1>
-          <p className="text-sm text-muted-foreground">
-            Gestiona tus clientes y consulta su saldo pendiente.
-          </p>
-        </div>
-        <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/customers/new" />}>
-          Crear cliente
-        </Button>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Clientes"
+        description="Gestiona tus clientes y consulta su saldo pendiente."
+        actions={
+          <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/customers/new" />}>
+            <Plus className="size-4" />
+            Crear cliente
+          </Button>
+        }
+      />
 
       <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[minmax(0,1fr)_12rem_auto]">
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -127,7 +129,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                   <MoneyAmount cents={customer.balance} />
                 </TableCell>
                 <TableCell>
-                  <Badge variant={customer.isActive ? "default" : "outline"}>
+                  <Badge variant={customer.isActive ? "success" : "outline"}>
                     {customer.isActive ? "Activo" : "Inactivo"}
                   </Badge>
                 </TableCell>
@@ -150,6 +152,6 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
       <p className="text-sm text-muted-foreground">
         Pagina {result.page} de {totalPages} - {result.total} clientes
       </p>
-    </div>
+    </PageShell>
   );
 }

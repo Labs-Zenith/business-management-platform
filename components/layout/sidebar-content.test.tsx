@@ -38,7 +38,7 @@ describe("SidebarContent", () => {
     for (const item of navItemsForRole("admin")) {
       expect(screen.getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
     }
-    expect(screen.getByRole("button", { name: EMAIL })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();
   });
 
   it("hides the Nómina nav item for a worker role (matches navItemsForRole filtering), keeping every capability-less item", () => {
@@ -53,7 +53,7 @@ describe("SidebarContent", () => {
 
     expect(screen.queryByRole("link", { name: "Nómina" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Configuración" })).toBeInTheDocument();
   });
 
   it("only renders the collapse toggle when showCollapseToggle + onToggleCollapse are both provided", () => {

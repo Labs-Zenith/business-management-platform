@@ -49,7 +49,7 @@ describe("MobileNavSheet", () => {
       "Egresos",
       "Nómina",
       "Inventario",
-      "Settings",
+      "Configuración",
     ]) {
       expect(within(dialog).getByRole("link", { name: label })).toBeInTheDocument();
     }
@@ -70,7 +70,8 @@ describe("MobileNavSheet", () => {
     const dialog = await screen.findByRole("dialog");
 
     expect(within(dialog).getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: EMAIL })).toBeInTheDocument();
+    expect(within(dialog).getByText(EMAIL)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();
   });
 
   it("hides the Nómina link for a worker role inside the drawer (matches navItemsForRole filtering), keeping Inventario", async () => {

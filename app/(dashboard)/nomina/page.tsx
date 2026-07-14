@@ -1,7 +1,10 @@
+import { Plus } from "lucide-react";
 import { requireCapabilityOrNotFound } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listEmployees } from "@/lib/services/employee-service";
 import { listPayrollPayments } from "@/lib/services/payroll-service";
+import { PageShell } from "@/components/ui/page-shell";
+import { PageHeader } from "@/components/domain/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
@@ -55,11 +58,8 @@ export default async function NominaPage() {
     .map((employee) => ({ id: employee.id, name: employee.name }));
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div>
-        <h1 className="text-lg font-semibold">Nomina</h1>
-        <p className="text-sm text-muted-foreground">Gestiona empleados y registra pagos de nomina.</p>
-      </div>
+    <PageShell>
+      <PageHeader title="Nomina" description="Gestiona empleados y registra pagos de nomina." />
 
       <Tabs defaultValue="empleados">
         <TabsList>
@@ -72,7 +72,15 @@ export default async function NominaPage() {
             rationale (base-ui's default unmounts inactive panels). */}
         <TabsPanel value="empleados" keepMounted>
           <div className="flex items-center justify-end">
-            <EmployeeFormDialog mode="create" trigger={<Button>Nuevo empleado</Button>} />
+            <EmployeeFormDialog
+              mode="create"
+              trigger={
+                <Button>
+                  <Plus className="size-4" />
+                  Nuevo empleado
+                </Button>
+              }
+            />
           </div>
           <Table className="min-w-[640px]">
             <TableHeader>
@@ -98,7 +106,7 @@ export default async function NominaPage() {
                       <MoneyAmount cents={employee.baseSalary} />
                     </TableCell>
                     <TableCell>
-                      <Badge variant={employee.active ? "default" : "outline"}>
+                      <Badge variant={employee.active ? "success" : "outline"}>
                         {employee.active ? "Activo" : "Inactivo"}
                       </Badge>
                     </TableCell>
@@ -125,7 +133,12 @@ export default async function NominaPage() {
           <div className="flex items-center justify-end">
             <PayrollPaymentFormDialog
               employees={activeEmployees}
-              trigger={<Button>Registrar pago</Button>}
+              trigger={
+                <Button>
+                  <Plus className="size-4" />
+                  Registrar pago
+                </Button>
+              }
             />
           </div>
           <Table className="min-w-[720px]">
@@ -162,6 +175,6 @@ export default async function NominaPage() {
           </Table>
         </TabsPanel>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

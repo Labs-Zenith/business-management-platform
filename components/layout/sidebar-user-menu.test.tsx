@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const pushMock = vi.fn();
@@ -17,6 +17,12 @@ const EMAIL = "demo@negociodemo.test";
  * of the deleted topbar `user-menu.tsx` — same fetch/router mocking
  * pattern ("POST an auth endpoint, then redirect").
  *
+ * Fase 5.2 F3: in expanded mode `[avatar + email]` is now a plain
+ * non-interactive row and the "⋯" button (`aria-label="Opciones de
+ * cuenta"`) on the right is the real `DropdownMenuTrigger`. In `collapsed`
+ * (rail) mode there's no separate `⋯` button — the avatar itself remains
+ * the trigger, still named by the session email.
+ *
  * Deliberately has NO `onNavigate`/close-the-drawer prop: this component
  * used to accept one and fire it synchronously at the start of
  * `handleLogout`, which — in the mobile drawer — unmounted the component
@@ -33,19 +39,23 @@ describe("SidebarUserMenu", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders an avatar + email trigger, with the email as its accessible name", () => {
+  it("renders a non-interactive avatar + email row, plus an 'Opciones de cuenta' trigger button", () => {
     render(<SidebarUserMenu email={EMAIL} />);
 
-    const trigger = screen.getByRole("button", { name: EMAIL });
-    expect(trigger).toBeInTheDocument();
-    expect(within(trigger).getByText("D")).toBeInTheDocument();
     expect(screen.getByText(EMAIL)).toBeInTheDocument();
+    expect(screen.getByText("D")).toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "Opciones de cuenta" });
+    expect(trigger).toBeInTheDocument();
+    // The email row itself is not a button.
+    expect(screen.queryByRole("button", { name: EMAIL })).not.toBeInTheDocument();
   });
 
-  it("hides the email label (avatar-only) when collapsed, but keeps it as the accessible name", () => {
+  it("hides the email label AND the ⋯ trigger when collapsed, making the avatar itself the trigger", () => {
     render(<SidebarUserMenu email={EMAIL} collapsed />);
 
     expect(screen.queryByText(EMAIL)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Opciones de cuenta" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: EMAIL })).toBeInTheDocument();
   });
 
@@ -53,7 +63,7 @@ describe("SidebarUserMenu", () => {
     const user = userEvent.setup();
     render(<SidebarUserMenu email={EMAIL} />);
 
-    await user.click(screen.getByRole("button", { name: EMAIL }));
+    await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
 
     expect(await screen.findByRole("menuitem", { name: /cerrar sesion/i })).toBeInTheDocument();
     expect(screen.getAllByText(EMAIL).length).toBeGreaterThan(0);
@@ -69,7 +79,7 @@ describe("SidebarUserMenu", () => {
 
     render(<SidebarUserMenu email={EMAIL} />);
 
-    await user.click(screen.getByRole("button", { name: EMAIL }));
+    await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
     await user.click(await screen.findByRole("menuitem", { name: /cerrar sesion/i }));
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -91,7 +101,7 @@ describe("SidebarUserMenu", () => {
 
     render(<SidebarUserMenu email={EMAIL} />);
 
-    await user.click(screen.getByRole("button", { name: EMAIL }));
+    await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
     await user.click(await screen.findByRole("menuitem", { name: /cerrar sesion/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
@@ -104,7 +114,7 @@ describe("SidebarUserMenu", () => {
 
     render(<SidebarUserMenu email={EMAIL} />);
 
-    await user.click(screen.getByRole("button", { name: EMAIL }));
+    await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
     await user.click(await screen.findByRole("menuitem", { name: /cerrar sesion/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
@@ -130,11 +140,11 @@ describe("SidebarUserMenu", () => {
 
     render(<SidebarUserMenu email={EMAIL} />);
 
-    await user.click(screen.getByRole("button", { name: EMAIL }));
+    await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
     await user.click(await screen.findByRole("menuitem", { name: /cerrar sesion/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: EMAIL })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
   });
 });

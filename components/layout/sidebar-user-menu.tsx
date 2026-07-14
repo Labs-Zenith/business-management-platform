@@ -8,23 +8,29 @@
  * `user-menu.tsx` (deleted — this is its direct successor, moved into the
  * sidebar/drawer chrome instead of the topbar).
  *
- * The avatar + email trigger opens a `DropdownMenu` showing the session
- * email (`DropdownMenuLabel`) and a single "Cerrar sesion" `DropdownMenuItem`
- * that runs the same `POST /api/auth/logout -> router.push("/login")` logic
- * `user-menu.tsx` used to run. Mirrors `business-switcher.tsx`'s
- * fetch/pending/error shape: a local `error` string rendered as
- * `role="alert"`, and a disabled/pending trigger while the request is in
- * flight.
+ * Fase 5.2 F3 restructured the row to match Vercel's own chrome: in
+ * expanded mode, `[avatar + email]` is now a plain NON-interactive row on
+ * the left, and a small `⋯` icon button sits on the right (`justify-
+ * between`) as the actual `DropdownMenuTrigger` (`Button
+ * variant="ghost" size="icon-sm"`, `aria-label="Opciones de cuenta"`).
+ * Previously the entire row (avatar + email) was itself the trigger; that
+ * made the whole row look clickable/navigable when its only action is
+ * opening a menu with a single "Cerrar sesion" item, which reads as
+ * over-affordance next to `NavLink`'s real navigation rows. In `collapsed`
+ * (rail) mode there's no room for a separate `⋯` button, so the avatar
+ * itself remains the trigger there (logout must stay reachable).
  *
- * The trigger is composed via `DropdownMenuTrigger`'s polymorphic `render`
- * prop as a real `<button>` (avatar + email label), same pattern as
- * `business-switcher.tsx` — so `nativeButton` stays at its default `true`
- * (native `disabled` attribute while logging out) rather than
- * `user-menu.tsx`'s old `nativeButton={false}` (which was needed there only
- * because that trigger was an `Avatar`/`<span>`, not a `<button>`).
+ * The dropdown content is unchanged: session email (`DropdownMenuLabel`)
+ * and a single "Cerrar sesion" `DropdownMenuItem` that runs the same
+ * `POST /api/auth/logout -> router.push("/login")` logic `user-menu.tsx`
+ * used to run. Mirrors `business-switcher.tsx`'s fetch/pending/error shape:
+ * a local `error` string rendered as `role="alert"`, and a disabled/pending
+ * trigger while the request is in flight.
  *
- * `collapsed` hides the email label (avatar-only), matching how
- * `business-switcher.tsx` and `NavLink` collapse.
+ * Both triggers are composed via `DropdownMenuTrigger`'s polymorphic
+ * `render` prop as a real `<button>`/`Button`, same pattern as
+ * `business-switcher.tsx` and `export-menu.tsx` — so `nativeButton` stays
+ * at its default `true` (native `disabled` attribute while logging out).
  *
  * Deliberately does NOT take an `onNavigate`/close-the-drawer callback (this
  * used to fire one synchronously at the start of `handleLogout`, mirroring
@@ -40,8 +46,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { avatarInitial, cn } from "@/lib/utils";
+import { Ellipsis } from "lucide-react";
+import { avatarInitial } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -88,43 +96,74 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
 
   const initial = avatarInitial(email);
 
+  const menuContent = (
+    <DropdownMenuContent align="start" side="top">
+      <DropdownMenuGroup>
+        <DropdownMenuLabel>{email}</DropdownMenuLabel>
+      </DropdownMenuGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
+        {isLoggingOut ? "Cerrando sesion..." : "Cerrar sesion"}
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  );
+
   return (
     <div className="flex w-full flex-col gap-1">
       <DropdownMenu>
-        <DropdownMenuTrigger
-          disabled={isLoggingOut}
-          title={email}
-          aria-label={email}
-          render={
-            <button
-              type="button"
-              className={cn(
-                "flex w-full items-center gap-2 rounded-md text-left transition-colors hover:bg-sidebar-accent data-disabled:cursor-not-allowed data-disabled:opacity-50",
-                collapsed ? "justify-center p-1" : "px-1.5 py-1"
-              )}
-            >
+        {collapsed ? (
+          // Rail mode: no room for a separate `⋯` button, so the avatar
+          // itself is the trigger (logout must stay reachable).
+          <DropdownMenuTrigger
+            disabled={isLoggingOut}
+            title={email}
+            aria-label={email}
+            render={
+              <button
+                type="button"
+                className="flex w-full items-center justify-center rounded-md p-1 transition-colors hover:bg-sidebar-accent data-disabled:cursor-not-allowed data-disabled:opacity-50"
+              >
+                <Avatar size="sm" className="shrink-0">
+                  <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                    {initial}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            }
+          />
+        ) : (
+          // Expanded mode: `[avatar + email]` is a plain, non-interactive
+          // row; the `⋯` button on the right is the actual trigger.
+          <div className="flex w-full items-center justify-between gap-2 rounded-md px-1.5 py-1">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <Avatar size="sm" className="shrink-0">
                 <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
                   {initial}
                 </AvatarFallback>
               </Avatar>
-              {!collapsed && (
-                <span className="truncate text-sm font-medium text-sidebar-foreground">
-                  {email}
-                </span>
-              )}
-            </button>
-          }
-        />
-        <DropdownMenuContent align="start" side="top">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>{email}</DropdownMenuLabel>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
-            {isLoggingOut ? "Cerrando sesion..." : "Cerrar sesion"}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
+              <span
+                title={email}
+                className="truncate text-sm font-medium text-sidebar-foreground"
+              >
+                {email}
+              </span>
+            </div>
+            <DropdownMenuTrigger
+              disabled={isLoggingOut}
+              aria-label="Opciones de cuenta"
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 text-sidebar-foreground/60 hover:text-sidebar-foreground"
+                >
+                  <Ellipsis aria-hidden="true" />
+                </Button>
+              }
+            />
+          </div>
+        )}
+        {menuContent}
       </DropdownMenu>
       {error ? (
         <p role="alert" className="text-xs text-destructive">

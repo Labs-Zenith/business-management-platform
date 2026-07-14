@@ -1,8 +1,11 @@
+import { Plus } from "lucide-react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listExpenses } from "@/lib/services/expense-service";
 import { getCategoryLabel } from "@/lib/services/expense-dashboard-service";
 import { formatCOP } from "@/lib/money";
+import { PageShell } from "@/components/ui/page-shell";
+import { PageHeader } from "@/components/domain/page-header";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog";
@@ -51,14 +54,21 @@ export default async function EgresosPage({ searchParams }: EgresosPageProps) {
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Egresos</h1>
-          <p className="text-sm text-muted-foreground">Registra y consulta los egresos de tu negocio.</p>
-        </div>
-        <ExpenseFormDialog trigger={<Button className="w-full sm:w-auto">Registrar egreso</Button>} />
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Egresos"
+        description="Registra y consulta los egresos de tu negocio."
+        actions={
+          <ExpenseFormDialog
+            trigger={
+              <Button className="w-full sm:w-auto">
+                <Plus className="size-4" />
+                Registrar egreso
+              </Button>
+            }
+          />
+        }
+      />
 
       <Table className="min-w-[640px]">
         <TableHeader>
@@ -92,6 +102,6 @@ export default async function EgresosPage({ searchParams }: EgresosPageProps) {
       <p className="text-sm text-muted-foreground">
         Pagina {result.page} de {totalPages} - {result.total} egresos
       </p>
-    </div>
+    </PageShell>
   );
 }

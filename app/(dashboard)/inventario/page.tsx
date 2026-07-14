@@ -1,7 +1,10 @@
+import { Plus } from "lucide-react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listProducts } from "@/lib/services/product-service";
 import { listMovements } from "@/lib/services/inventory-service";
+import { PageShell } from "@/components/ui/page-shell";
+import { PageHeader } from "@/components/domain/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
@@ -52,11 +55,8 @@ export default async function InventarioPage() {
     .map((product) => ({ id: product.id, name: product.name }));
 
   return (
-    <div className="flex flex-1 flex-col gap-4 p-4">
-      <div>
-        <h1 className="text-lg font-semibold">Inventario</h1>
-        <p className="text-sm text-muted-foreground">Gestiona productos y registra movimientos de stock.</p>
-      </div>
+    <PageShell>
+      <PageHeader title="Inventario" description="Gestiona productos y registra movimientos de stock." />
 
       <Tabs defaultValue="productos">
         <TabsList>
@@ -69,7 +69,15 @@ export default async function InventarioPage() {
             rationale (base-ui's default unmounts inactive panels). */}
         <TabsPanel value="productos" keepMounted>
           <div className="flex items-center justify-end">
-            <ProductFormDialog mode="create" trigger={<Button>Nuevo producto</Button>} />
+            <ProductFormDialog
+              mode="create"
+              trigger={
+                <Button>
+                  <Plus className="size-4" />
+                  Nuevo producto
+                </Button>
+              }
+            />
           </div>
           <Table className="min-w-[760px]">
             <TableHeader>
@@ -96,7 +104,7 @@ export default async function InventarioPage() {
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <span>{product.name}</span>
-                        {product.isLowStock ? <Badge variant="destructive">Stock bajo</Badge> : null}
+                        {product.isLowStock ? <Badge variant="warning">Stock bajo</Badge> : null}
                       </div>
                     </TableCell>
                     <TableCell>{product.sku ?? "-"}</TableCell>
@@ -108,7 +116,7 @@ export default async function InventarioPage() {
                       <MoneyAmount cents={product.totalValue} />
                     </TableCell>
                     <TableCell>
-                      <Badge variant={product.active ? "default" : "outline"}>
+                      <Badge variant={product.active ? "success" : "outline"}>
                         {product.active ? "Activo" : "Inactivo"}
                       </Badge>
                     </TableCell>
@@ -133,7 +141,15 @@ export default async function InventarioPage() {
         {/* keepMounted is required: do not remove — see the Productos panel's comment above. */}
         <TabsPanel value="movimientos" keepMounted>
           <div className="flex items-center justify-end">
-            <MovementFormDialog products={activeProducts} trigger={<Button>Registrar movimiento</Button>} />
+            <MovementFormDialog
+              products={activeProducts}
+              trigger={
+                <Button>
+                  <Plus className="size-4" />
+                  Registrar movimiento
+                </Button>
+              }
+            />
           </div>
           <Table className="min-w-[720px]">
             <TableHeader>
@@ -157,7 +173,7 @@ export default async function InventarioPage() {
                   <TableRow key={movement.id}>
                     <TableCell className="font-medium">{movement.product.name}</TableCell>
                     <TableCell>
-                      <Badge variant={movement.type === "in" ? "default" : "outline"}>
+                      <Badge variant={movement.type === "in" ? "success" : "outline"}>
                         {movement.type === "in" ? "Entrada" : "Salida"}
                       </Badge>
                     </TableCell>
@@ -171,6 +187,6 @@ export default async function InventarioPage() {
           </Table>
         </TabsPanel>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }
