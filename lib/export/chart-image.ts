@@ -77,11 +77,16 @@ export async function safeChartPng(render: () => Promise<Buffer>): Promise<Buffe
   }
 }
 
-/** Multi-color bar per status — mirrors `receivablesByStatus`'s fixed 4-status order. */
+/**
+ * Multi-color bar per status — mirrors `receivablesByStatus`'s fixed 4-status
+ * order, minus the "paid" status: it always has balance 0 (paid = balance 0)
+ * so it adds a flat, uninformative bar, matching the exclusion in the
+ * on-screen `dashboard-chart-cards.tsx` chart.
+ */
 export async function renderReceivablesByStatusPng(data: DashboardCharts["receivablesByStatus"]): Promise<Buffer> {
   const svg = renderBarChartSvg({
     title: "Saldo por estado",
-    data: data.map((datum) => ({ label: datum.label, value: datum.balance })),
+    data: data.filter((datum) => datum.status !== "paid").map((datum) => ({ label: datum.label, value: datum.balance })),
     valueFormatter: formatCOP,
   });
   return svgToPng(svg);
