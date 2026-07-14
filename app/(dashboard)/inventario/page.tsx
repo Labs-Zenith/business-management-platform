@@ -56,7 +56,32 @@ export default async function InventarioPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Inventario" description="Gestiona productos y registra movimientos de stock." />
+      <PageHeader
+        title="Inventario"
+        description="Gestiona productos y registra movimientos de stock."
+        actions={
+          <>
+            <ProductFormDialog
+              mode="create"
+              trigger={
+                <Button className="w-full sm:w-auto">
+                  <Plus className="size-4" />
+                  Nuevo producto
+                </Button>
+              }
+            />
+            <MovementFormDialog
+              products={activeProducts}
+              trigger={
+                <Button className="w-full sm:w-auto">
+                  <Plus className="size-4" />
+                  Registrar movimiento
+                </Button>
+              }
+            />
+          </>
+        }
+      />
 
       <Tabs defaultValue="productos">
         <TabsList>
@@ -68,17 +93,6 @@ export default async function InventarioPage() {
             established mechanic — see that file's comment for the full
             rationale (base-ui's default unmounts inactive panels). */}
         <TabsPanel value="productos" keepMounted>
-          <div className="flex items-center justify-end">
-            <ProductFormDialog
-              mode="create"
-              trigger={
-                <Button>
-                  <Plus className="size-4" />
-                  Nuevo producto
-                </Button>
-              }
-            />
-          </div>
           <Table className="min-w-[760px]">
             <TableHeader>
               <TableRow>
@@ -140,17 +154,6 @@ export default async function InventarioPage() {
 
         {/* keepMounted is required: do not remove — see the Productos panel's comment above. */}
         <TabsPanel value="movimientos" keepMounted>
-          <div className="flex items-center justify-end">
-            <MovementFormDialog
-              products={activeProducts}
-              trigger={
-                <Button>
-                  <Plus className="size-4" />
-                  Registrar movimiento
-                </Button>
-              }
-            />
-          </div>
           <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>

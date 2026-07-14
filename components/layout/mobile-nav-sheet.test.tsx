@@ -45,7 +45,7 @@ describe("MobileNavSheet", () => {
       "Dashboard",
       "Clientes",
       "Facturas",
-      "Pagos",
+      "Ingresos",
       "Egresos",
       "Nómina",
       "Inventario",

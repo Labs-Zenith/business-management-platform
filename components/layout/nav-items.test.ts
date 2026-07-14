@@ -23,7 +23,7 @@ describe("navItemsForRole", () => {
     expect(items.some((item) => item.href === "/nomina")).toBe(true);
   });
 
-  it("keeps every capability-less nav item for both roles (Dashboard/Clientes/Facturas/Pagos/Egresos/Inventario never filtered)", () => {
+  it("keeps every capability-less nav item for both roles (Dashboard/Clientes/Facturas/Ingresos/Egresos/Inventario never filtered)", () => {
     const capabilityLessHrefs = NAV_ITEMS.filter((item) => !item.capability).map((item) => item.href);
     expect(capabilityLessHrefs.length).toBeGreaterThan(0);
 

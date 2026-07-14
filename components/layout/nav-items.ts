@@ -1,7 +1,7 @@
 /**
  * Shared nav link definitions for the `(dashboard)` route group's shell
  * (`app/(dashboard)/layout.tsx`), per `docs/ui-ux-flow.md`'s "Navegacion
- * principal" section: Dashboard, Clientes, Facturas, Pagos, Egresos, Nómina,
+ * principal" section: Dashboard, Clientes, Facturas, Ingresos, Egresos, Nómina,
  * Inventario, Settings. Fase 5 Lane 4 removed the earlier "Negocio" item
  * (`/settings`) — the sidebar's business switcher briefly provided
  * Configuración/Editar perfil access instead — and added "Egresos"
@@ -62,7 +62,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Clientes", icon: Users },
   { href: "/invoices", label: "Facturas", icon: FileText },
-  { href: "/payments", label: "Pagos", icon: CreditCard },
+  { href: "/payments", label: "Ingresos", icon: CreditCard },
   { href: "/egresos", label: "Egresos", icon: Receipt },
   { href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
   { href: "/inventario", label: "Inventario", icon: Package },

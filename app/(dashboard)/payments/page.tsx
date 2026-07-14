@@ -67,8 +67,8 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
   return (
     <PageShell>
       <PageHeader
-        title="Pagos"
-        description="Consulta los pagos registrados en tu negocio."
+        title="Ingresos"
+        description="Consulta los ingresos registrados en tu negocio."
         actions={<ExportMenu path="/api/payments/export" params={exportParams} />}
       />
 

@@ -59,7 +59,32 @@ export default async function NominaPage() {
 
   return (
     <PageShell>
-      <PageHeader title="Nomina" description="Gestiona empleados y registra pagos de nomina." />
+      <PageHeader
+        title="Nomina"
+        description="Gestiona empleados y registra pagos de nomina."
+        actions={
+          <>
+            <EmployeeFormDialog
+              mode="create"
+              trigger={
+                <Button className="w-full sm:w-auto">
+                  <Plus className="size-4" />
+                  Nuevo empleado
+                </Button>
+              }
+            />
+            <PayrollPaymentFormDialog
+              employees={activeEmployees}
+              trigger={
+                <Button className="w-full sm:w-auto">
+                  <Plus className="size-4" />
+                  Registrar pago
+                </Button>
+              }
+            />
+          </>
+        }
+      />
 
       <Tabs defaultValue="empleados">
         <TabsList>
@@ -71,17 +96,6 @@ export default async function NominaPage() {
             established mechanic — see that file's comment for the full
             rationale (base-ui's default unmounts inactive panels). */}
         <TabsPanel value="empleados" keepMounted>
-          <div className="flex items-center justify-end">
-            <EmployeeFormDialog
-              mode="create"
-              trigger={
-                <Button>
-                  <Plus className="size-4" />
-                  Nuevo empleado
-                </Button>
-              }
-            />
-          </div>
           <Table className="min-w-[640px]">
             <TableHeader>
               <TableRow>
@@ -130,17 +144,6 @@ export default async function NominaPage() {
 
         {/* keepMounted is required: do not remove — see the Empleados panel's comment above. */}
         <TabsPanel value="pagos" keepMounted>
-          <div className="flex items-center justify-end">
-            <PayrollPaymentFormDialog
-              employees={activeEmployees}
-              trigger={
-                <Button>
-                  <Plus className="size-4" />
-                  Registrar pago
-                </Button>
-              }
-            />
-          </div>
           <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
