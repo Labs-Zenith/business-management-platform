@@ -80,12 +80,18 @@ export function ChartTooltip({
   label,
   payload,
   valueLabel,
+  seriesLabels,
   extraLines,
 }: {
   active?: boolean;
   label?: unknown;
   payload?: readonly ChartTooltipPayload[];
   valueLabel: string;
+  // Optional per-series label override keyed by the Bar's `dataKey` — for
+  // multi-series/grouped charts (e.g. "Facturado vs Cobrado por mes") where
+  // each payload item needs its own label instead of one shared `valueLabel`.
+  // Series without a matching key fall back to `valueLabel`.
+  seriesLabels?: Record<string, string>;
   // Optional secondary label/value lines rendered below the plotted value —
   // e.g. "Total facturado" and "Facturas" on the receivables-by-status chart,
   // so a $0 "Saldo" on the Pagada bar is explained rather than looking empty.
@@ -98,13 +104,17 @@ export function ChartTooltip({
   return (
     <div className="rounded-lg border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-sm">
       <p className="mb-1 font-medium">{String(label ?? "")}</p>
-      {payload.map((item, index) => (
-        <div key={`${String(item.dataKey ?? item.name ?? valueLabel)}-${index}`} className="flex items-center gap-2">
-          <span className="size-2 rounded-full" style={{ backgroundColor: item.color ?? "var(--primary)" }} />
-          <span className="text-muted-foreground">{valueLabel}:</span>
-          <span className="font-medium tabular-nums">{formatTooltipMoney(item.value)}</span>
-        </div>
-      ))}
+      {payload.map((item, index) => {
+        const seriesKey = item.dataKey != null ? String(item.dataKey) : undefined;
+        const itemLabel = (seriesKey && seriesLabels?.[seriesKey]) ?? valueLabel;
+        return (
+          <div key={`${String(item.dataKey ?? item.name ?? valueLabel)}-${index}`} className="flex items-center gap-2">
+            <span className="size-2 rounded-full" style={{ backgroundColor: item.color ?? "var(--primary)" }} />
+            <span className="text-muted-foreground">{itemLabel}:</span>
+            <span className="font-medium tabular-nums">{formatTooltipMoney(item.value)}</span>
+          </div>
+        );
+      })}
       {extraLines?.map((line) => (
         <div key={line.label} className="mt-1 flex items-center gap-2 pl-4">
           <span className="text-muted-foreground">{line.label}:</span>

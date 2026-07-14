@@ -11,7 +11,6 @@ import { DashboardCharts, DashboardChartsSkeleton } from "@/components/domain/da
 import { ExpenseKpiCards, ExpenseKpiCardsSkeleton } from "@/components/domain/dashboard/expense-kpi-cards";
 import { ExpenseCharts, ExpenseChartsSkeleton } from "@/components/domain/dashboard/expense-charts";
 import { RecentExpenses, RecentExpensesSkeleton } from "@/components/domain/dashboard/recent-expenses";
-import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog";
 
 /**
@@ -41,13 +40,13 @@ import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog
  * directly (never a single combined summary fetch, which would defeat
  * independent streaming).
  *
- * "Crear cliente" reuses the same lazy (`ssr:false`) dialog as
- * `app/(dashboard)/customers/page.tsx` (PR4) rather than linking away, for a
- * genuine one-click quick action; "Crear factura" links to the dedicated
- * `/invoices/new` page (a full line-item form, not a dialog). Both stay in
- * the page header as global/Ingresos-oriented actions; "Crear gasto" (Egresos
- * quick action) is tab-local — it lives inside the Egresos `TabsPanel` (see
- * design.md section 6), not the shared page header.
+ * "Crear cliente" links to the dedicated `/customers/new` page (Fase 4 Lane
+ * D converted the customer create dialog into a page, matching
+ * `app/(dashboard)/invoices/new/page.tsx`'s pattern); "Crear factura" links
+ * to the dedicated `/invoices/new` page (a full line-item form, not a
+ * dialog). Both stay in the page header as global/Ingresos-oriented actions;
+ * "Crear gasto" (Egresos quick action) is tab-local — it lives inside the
+ * Egresos `TabsPanel` (see design.md section 6), not the shared page header.
  *
  * "Exportar" exports the FULL dashboard (both tabs, all sections, no
  * filters), per `openspec/changes/dashboard-excel-export/design.md`. It is a
@@ -71,14 +70,14 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-1 gap-2 sm:flex">
           <DashboardExportMenu />
-          <CustomerFormDialog
-            mode="create"
-            trigger={
-              <Button variant="outline" className="w-full sm:w-auto">
-                Crear cliente
-              </Button>
-            }
-          />
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            nativeButton={false}
+            render={<Link href="/customers/new" />}
+          >
+            Crear cliente
+          </Button>
           <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
             Crear factura
           </Button>

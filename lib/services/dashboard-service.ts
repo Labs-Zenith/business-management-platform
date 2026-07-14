@@ -81,6 +81,8 @@ export type DashboardCharts = {
   receivablesByStatus: ReceivablesByStatusDatum[];
   topDebtorBalances: TopDebtor[];
   monthlyPayments: MonthlyPaymentDatum[];
+  /** "Facturado" series, parallel to `monthlyPayments` ("cobrado") — same 6-month bucketing, aligned by index. */
+  monthlyInvoiced: MonthlyPaymentDatum[];
 };
 
 async function listAllInvoices(session: Session): Promise<InvoiceWithFinance[]> {
@@ -131,6 +133,15 @@ export async function getPaidThisMonth(session: Session, now: Date = new Date())
   return payments
     .filter((payment) => payment.paymentDate.startsWith(monthPrefix))
     .reduce((sum, payment) => sum + payment.amount, 0);
+}
+
+/** "Total facturado del mes": sum of invoice `total` whose `issueDate` falls in the current calendar month. */
+export async function getInvoicedThisMonth(session: Session, now: Date = new Date()): Promise<number> {
+  const invoices = await listAllInvoices(session);
+  const monthPrefix = currentMonthPrefix(now);
+  return invoices
+    .filter((invoice) => invoice.issueDate.startsWith(monthPrefix))
+    .reduce((sum, invoice) => sum + invoice.total, 0);
 }
 
 /**
@@ -208,6 +219,14 @@ export async function getDashboardCharts(
     }
   }
 
+  const invoicedAmountsByMonth = new Map(months.map((month) => [month, 0]));
+  for (const invoice of invoices) {
+    const invoiceMonth = invoice.issueDate.slice(0, 7);
+    if (invoicedAmountsByMonth.has(invoiceMonth)) {
+      invoicedAmountsByMonth.set(invoiceMonth, invoicedAmountsByMonth.get(invoiceMonth)! + invoice.total);
+    }
+  }
+
   return {
     receivablesByStatus,
     topDebtorBalances,
@@ -215,6 +234,11 @@ export async function getDashboardCharts(
       month,
       label: monthLabel(month),
       amount: amountsByMonth.get(month) ?? 0,
+    })),
+    monthlyInvoiced: months.map((month) => ({
+      month,
+      label: monthLabel(month),
+      amount: invoicedAmountsByMonth.get(month) ?? 0,
     })),
   };
 }

@@ -118,6 +118,10 @@ function buildDashboardData(): DashboardExportData {
         { month: "2026-06", label: "jun", amount: 200_000 },
         { month: "2026-07", label: "jul", amount: 50_000 },
       ],
+      monthlyInvoiced: [
+        { month: "2026-06", label: "jun", amount: 250_000 },
+        { month: "2026-07", label: "jul", amount: 150_000 },
+      ],
     },
     expenses: {
       totalThisMonth: 150_000,
@@ -161,6 +165,7 @@ function buildEmptyDashboardData(): DashboardExportData {
       ],
       topDebtorBalances: [],
       monthlyPayments: [],
+      monthlyInvoiced: [],
     },
     expenses: {
       totalThisMonth: 0,

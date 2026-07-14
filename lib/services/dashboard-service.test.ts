@@ -5,6 +5,7 @@ import type { InvoicePersist, Session } from "@/lib/services/ports";
 import {
   getDashboardCharts,
   getDashboardSummary,
+  getInvoicedThisMonth,
   getOverdueInvoices,
   getPaidThisMonth,
   getPendingBalance,
@@ -243,6 +244,25 @@ describe("dashboard-service", () => {
       amount: 20_000,
     });
     expect(charts.monthlyPayments.every((month) => month.amount < 5_000_000)).toBe(true);
+
+    // monthlyInvoiced: sum of invoice `total` by `issueDate` month, parallel
+    // series to monthlyPayments, aligned by index/label, business-A scoped.
+    // All 4 businessA invoices were issued THIS_MONTH_DATE:
+    // 100_000 + 50_000 + 80_000 + 60_000 = 290_000.
+    expect(charts.monthlyInvoiced).toHaveLength(6);
+    expect(charts.monthlyInvoiced.find((month) => month.month === THIS_MONTH_KEY)).toMatchObject({
+      month: THIS_MONTH_KEY,
+      amount: 290_000,
+    });
+    expect(charts.monthlyInvoiced.find((month) => month.month === PREVIOUS_MONTH_KEY)).toMatchObject({
+      month: PREVIOUS_MONTH_KEY,
+      amount: 0,
+    });
+    expect(charts.monthlyInvoiced.every((month) => month.amount < 50_000_000)).toBe(true);
+    // Same month order/labels as monthlyPayments (shared axis for the grouped chart).
+    expect(charts.monthlyInvoiced.map((month) => month.month)).toEqual(
+      charts.monthlyPayments.map((month) => month.month),
+    );
   });
 
   it("uses the repository-recomputed status, never a stale/forged persisted status field, to decide overdue/pending", async () => {
@@ -289,5 +309,36 @@ describe("dashboard-service", () => {
     expect(await getPaidThisMonth(sessionA, NOW)).toBe(0);
     expect((await getRecentPayments(sessionA)).length).toBe(0);
     expect((await getTopDebtors(sessionA)).some((debtor) => debtor.id === customerB.id)).toBe(false);
+  });
+
+  it("getInvoicedThisMonth sums invoice `total` for invoices issued in the current calendar month, scoped to session.businessId", async () => {
+    const businessA = newBusinessId();
+    const businessB = newBusinessId();
+    const sessionA = sessionFor(businessA);
+
+    const customerA = await createCustomer(businessA, "Cliente Facturado A");
+    const customerB = await createCustomer(businessB, "Cliente Facturado B");
+
+    // Issued this month -> counts.
+    await repositories.invoices.create(businessA, invoicePersist(customerA.id, 120_000, FUTURE_DUE_DATE, THIS_MONTH_DATE));
+    // Also issued this month -> counts, regardless of payment/paid status.
+    const paidThisMonth = await repositories.invoices.create(
+      businessA,
+      invoicePersist(customerA.id, 80_000, FUTURE_DUE_DATE, THIS_MONTH_DATE),
+    );
+    await repositories.payments.createForInvoice(businessA, paidThisMonth.id, {
+      paymentDate: THIS_MONTH_DATE,
+      amount: 80_000,
+      method: "cash",
+    });
+    // Issued in a previous month -> must be excluded.
+    await repositories.invoices.create(businessA, invoicePersist(customerA.id, 999_000, FUTURE_DUE_DATE, PREVIOUS_MONTH_DATE));
+
+    // Business B: far larger amount, this month -> must never bleed into A's total.
+    await repositories.invoices.create(businessB, invoicePersist(customerB.id, 50_000_000, FUTURE_DUE_DATE, THIS_MONTH_DATE));
+
+    const invoicedThisMonthA = await getInvoicedThisMonth(sessionA, NOW);
+
+    expect(invoicedThisMonthA).toBe(200_000);
   });
 });

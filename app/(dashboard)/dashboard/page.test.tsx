@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 
@@ -42,10 +41,6 @@ vi.mock("@/components/domain/dashboard/recent-expenses", () => ({
   RecentExpenses: () => <div data-testid="egresos-recent">Egresos Recent</div>,
   RecentExpensesSkeleton: () => null,
 }));
-vi.mock("@/components/domain/customers/customer-form-dialog", () => ({
-  default: ({ trigger }: { trigger: ReactNode }) => trigger,
-}));
-
 import DashboardPage from "./page";
 
 describe("DashboardPage (Ingresos/Egresos tabs)", () => {
