@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { BusinessMembership, Session } from "@/lib/services/ports";
+import type { Session } from "@/lib/services/ports";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/dashboard",
@@ -21,28 +21,27 @@ const WORKER_SESSION: Session = {
   role: "worker",
 };
 
-const SINGLE_MEMBERSHIP: BusinessMembership[] = [
-  { businessId: SESSION.businessId, businessName: "Negocio Demo", role: "admin" },
-];
-
 /**
- * `DashboardTopbar` now also renders `MobileNavSheet` (Fase 4 Lane C's
- * hamburger drawer, replacing `dashboard-bottom-nav.tsx`) — this needs
- * `session.role` threaded to it, exercised here the same way
- * `dashboard-sidebar.test.tsx` exercises role-based filtering.
+ * `DashboardTopbar` renders `MobileNavSheet` (Fase 4 Lane C's hamburger
+ * drawer, replacing `dashboard-bottom-nav.tsx`) — this needs `session.role`
+ * threaded to it, exercised here the same way `dashboard-sidebar.test.tsx`
+ * exercises role-based filtering. It also renders `UserMenu` (Fase 5 Lane 1
+ * — replaces the previous static avatar + separate `LogoutButton`), whose
+ * "Cerrar sesion" action now lives inside a dropdown rather than a directly
+ * visible button.
  */
 describe("DashboardTopbar", () => {
-  it("renders the mobile-nav hamburger button alongside the existing session avatar and logout action", () => {
-    render(<DashboardTopbar session={SESSION} memberships={SINGLE_MEMBERSHIP} />);
+  it("renders the mobile-nav hamburger button alongside the user menu avatar trigger", () => {
+    render(<DashboardTopbar session={SESSION} />);
 
     expect(screen.getByRole("button", { name: /abrir menú/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /cerrar sesion/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: SESSION.email })).toBeInTheDocument();
   });
 
   it("threads session.role into the hamburger drawer so a worker session's drawer excludes Nómina", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
-    render(<DashboardTopbar session={WORKER_SESSION} memberships={SINGLE_MEMBERSHIP} />);
+    render(<DashboardTopbar session={WORKER_SESSION} />);
 
     await user.click(screen.getByRole("button", { name: /abrir menú/i }));
 
@@ -50,5 +49,16 @@ describe("DashboardTopbar", () => {
     expect(screen.getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
     expect(dialog).not.toBeNull();
     expect(screen.queryByRole("link", { name: "Nómina" })).not.toBeInTheDocument();
+  });
+
+  it("opens the user menu to reveal the session email and a Cerrar sesion action", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+    render(<DashboardTopbar session={SESSION} />);
+
+    await user.click(screen.getByRole("button", { name: SESSION.email }));
+
+    expect(await screen.findByText(SESSION.email)).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /cerrar sesion/i })).toBeInTheDocument();
   });
 });

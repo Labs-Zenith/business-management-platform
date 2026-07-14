@@ -12,6 +12,16 @@
  * distinct panel from the main content area, matching the dark
  * "sidebar + content" shell this was restyled after.
  *
+ * Vercel-style chrome (Fase 5 Lane 1): the TOP of the sidebar now holds the
+ * `BusinessSwitcher` (business avatar + name, replacing the previous static
+ * "Negocio"+`Wallet` brand block) and the collapse toggle button, side by
+ * side — both moved from their previous locations (`BusinessSwitcher` used
+ * to live in `dashboard-topbar.tsx`; the toggle used to sit at the bottom,
+ * `mt-auto`). `BusinessSwitcher` needs `memberships`/`currentBusinessId`,
+ * threaded down from `app/(dashboard)/layout.tsx` the same way `role` is —
+ * see this component's other doc comment below for why a Server Component
+ * can't pass `NAV_ITEMS` directly.
+ *
  * Collapse toggle (Fase 4 Lane C): `defaultCollapsed` is read server-side
  * from the `sidebar_collapsed` cookie by `app/(dashboard)/layout.tsx` and
  * passed down as this component's initial React state — this avoids a
@@ -23,7 +33,8 @@
  * Collapsed items keep their filtered `navItemsForRole(role)` list — only
  * the label `<span>`s are hidden — and use `title` for a native tooltip
  * on each icon-only link, since there is no dedicated Tooltip primitive
- * in this codebase yet.
+ * in this codebase yet. `collapsed` is also threaded into `BusinessSwitcher`
+ * so it hides the business name (avatar-only) the same way.
  *
  * `isActivePath` and the `sidebar_collapsed` cookie name (review-fix pass)
  * are single-sourced in `nav-items.ts` — see that file's doc comment —
@@ -33,12 +44,13 @@
 
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { PanelLeftClose, PanelLeftOpen, Wallet } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { isActivePath, navItemsForRole, SIDEBAR_COLLAPSED_COOKIE } from "./nav-items";
 import { NavLink } from "./nav-link";
-import type { Role } from "@/lib/services/ports";
+import BusinessSwitcher from "./business-switcher";
+import type { BusinessMembership, Role } from "@/lib/services/ports";
 
 const COLLAPSED_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
@@ -62,9 +74,13 @@ function persistCollapsedCookie(collapsed: boolean): void {
  */
 export default function DashboardSidebar({
   role,
+  currentBusinessId,
+  memberships,
   defaultCollapsed = false,
 }: {
   role: Role;
+  currentBusinessId: string;
+  memberships: BusinessMembership[];
   defaultCollapsed?: boolean;
 }) {
   const pathname = usePathname();
@@ -86,12 +102,35 @@ export default function DashboardSidebar({
         collapsed ? "w-14 items-center p-2" : "w-60 p-4"
       )}
     >
-      <div className="mb-4 flex items-center gap-2 px-2">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
-          <Wallet className="size-4" aria-hidden="true" />
-        </span>
-        {!collapsed && <span className="text-sm font-semibold tracking-tight">Negocio</span>}
+      <div
+        className={cn(
+          "mb-2 flex items-center gap-1",
+          collapsed ? "flex-col" : "justify-between"
+        )}
+      >
+        <BusinessSwitcher
+          currentBusinessId={currentBusinessId}
+          memberships={memberships}
+          collapsed={collapsed}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={toggleCollapsed}
+          title={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+          aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
+          className="shrink-0"
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="size-4" aria-hidden="true" />
+          ) : (
+            <PanelLeftClose className="size-4" aria-hidden="true" />
+          )}
+        </Button>
       </div>
+
+      <div className="mb-2 border-t border-sidebar-border" />
 
       {items.map((item) => (
         <NavLink
@@ -101,22 +140,6 @@ export default function DashboardSidebar({
           collapsed={collapsed}
         />
       ))}
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        onClick={toggleCollapsed}
-        title={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
-        aria-label={collapsed ? "Expandir barra lateral" : "Colapsar barra lateral"}
-        className={cn("mt-auto", !collapsed && "self-end")}
-      >
-        {collapsed ? (
-          <PanelLeftOpen className="size-4" aria-hidden="true" />
-        ) : (
-          <PanelLeftClose className="size-4" aria-hidden="true" />
-        )}
-      </Button>
     </aside>
   );
 }

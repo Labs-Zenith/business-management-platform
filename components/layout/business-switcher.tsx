@@ -2,55 +2,60 @@
 
 /**
  * Lets a user with memberships in more than one business switch the active
- * one from the topbar. POSTs `{ businessId }` to
- * `/api/auth/switch-business` (PR2) and, on success, calls
- * `useRouter().refresh()` so every Server Component on the CURRENT route
- * re-fetches data scoped to the new `businessId` — matching
+ * one, plus (Fase 5 Lane 1 — Vercel-style chrome) surfaces account-level
+ * links ("Configuración"/"Editar perfil") below the switch options. Rendered
+ * at the TOP of `dashboard-sidebar.tsx` (moved from the topbar), showing the
+ * current business avatar + name — `collapsed` (threaded from
+ * `dashboard-sidebar.tsx`'s own collapse state) hides the name, avatar-only,
+ * matching how `NavLink` collapses.
+ *
+ * POSTs `{ businessId }` to `/api/auth/switch-business` (PR2) and, on
+ * success, calls `useRouter().refresh()` so every Server Component on the
+ * CURRENT route re-fetches data scoped to the new `businessId` — matching
  * `design.md`'s "Data Flow (switch)" contract exactly. A hard navigation to
  * `/dashboard` is intentionally NOT used: it would yank the user away from
  * whatever `(dashboard)` page they were on (e.g. an invoice detail) just
  * because they switched businesses, which `refresh()` alone does not do.
  *
- * Mirrors `logout-button.tsx`'s and `app/(auth)/login/page.tsx`'s
+ * Mirrors `user-menu.tsx`'s and `app/(auth)/login/page.tsx`'s
  * fetch/pending/error shape: a local `error` string rendered as
  * `role="alert"`, and a disabled/pending trigger while the request is
  * in flight.
  *
- * Only renders the dropdown when the user holds more than one membership
- * (`memberships.length <= 1` is the static guard) — this covers both the
- * "exactly one membership" case (nothing to switch to) and the "zero
- * memberships" case (nothing to render as options at all), showing a
- * non-interactive avatar (business initial) instead.
+ * The dropdown ALWAYS renders (even with a single/zero membership) so the
+ * "Configuración"/"Editar perfil" links stay reachable regardless of how
+ * many businesses the user belongs to; the switch-business items themselves
+ * (and the separator above the account links) only render when there is at
+ * least one OTHER business to switch to.
  *
- * The trigger itself (Fase 4 Lane C — business switcher as an avatar) is a
- * small round `Avatar`/`AvatarFallback` showing the current business
- * name's first initial, matching `dashboard-topbar.tsx`'s session avatar —
- * NOT the previous labeled button (name + chevron). The visible name is
- * intentionally dropped, so `title`/`aria-label` carry the current business
- * name for accessibility instead. Composed via `DropdownMenuTrigger`'s
- * polymorphic `render` prop (same pattern as `components/domain/export-menu.tsx`),
- * with `nativeButton={false}` since the rendered element is a `<span>`
- * (`Avatar`'s root), not a `<button>` — this makes base-ui's `useButton`
- * emit `role="button"` and `aria-disabled` (rather than a native `disabled`
- * attribute) when `isSwitching` is true.
+ * The trigger (Fase 4 Lane C — business switcher as an avatar, now with a
+ * name label alongside it per Fase 5 Lane 1) is a small round
+ * `Avatar`/`AvatarFallback` showing the current business name's first
+ * initial, plus the business name as text (hidden when `collapsed`).
+ * Composed via `DropdownMenuTrigger`'s polymorphic `render` prop (same
+ * pattern as `components/domain/export-menu.tsx`), rendering a real
+ * `<button>` (so `nativeButton` stays at its default `true`) rather than the
+ * previous bare `Avatar`-as-trigger, since the trigger now also contains the
+ * name label.
  *
  * The avatar initial is derived via `lib/utils.ts`'s shared `avatarInitial`
  * (review-fix pass) rather than an inline `charAt(0)` — that inline version
  * returned an empty string (blank avatar) for an empty business name;
  * `avatarInitial` falls back to `"?"` instead, and is also used by
- * `dashboard-topbar.tsx`'s session avatar so both derive the initial the
- * same way.
+ * `user-menu.tsx`'s session avatar so both derive the initial the same way.
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { BusinessMembership } from "@/lib/services/ports";
-import { avatarInitial } from "@/lib/utils";
+import { avatarInitial, cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -59,11 +64,13 @@ const GENERIC_ERROR_MESSAGE = "No se pudo cambiar de negocio. Intenta de nuevo."
 type BusinessSwitcherProps = {
   currentBusinessId: string;
   memberships: BusinessMembership[];
+  collapsed?: boolean;
 };
 
 export default function BusinessSwitcher({
   currentBusinessId,
   memberships,
+  collapsed = false,
 }: BusinessSwitcherProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -71,16 +78,6 @@ export default function BusinessSwitcher({
 
   const current = memberships.find((membership) => membership.businessId === currentBusinessId);
   const currentName = current?.businessName ?? "Negocio";
-
-  if (memberships.length <= 1) {
-    return (
-      <Avatar size="sm" title={currentName} aria-label={currentName}>
-        <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-          {avatarInitial(currentName)}
-        </AvatarFallback>
-      </Avatar>
-    );
-  }
 
   const otherBusinesses = memberships.filter(
     (membership) => membership.businessId !== currentBusinessId
@@ -124,25 +121,34 @@ export default function BusinessSwitcher({
   const triggerLabel = isSwitching ? "Cambiando de negocio..." : currentName;
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex w-full flex-col gap-1">
       <DropdownMenu>
         <DropdownMenuTrigger
           disabled={isSwitching}
-          nativeButton={false}
           title={triggerLabel}
           aria-label={triggerLabel}
           render={
-            <Avatar
-              size="sm"
-              className="cursor-pointer data-disabled:cursor-not-allowed data-disabled:opacity-50"
+            <button
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md text-left transition-colors hover:bg-sidebar-accent data-disabled:cursor-not-allowed data-disabled:opacity-50",
+                collapsed ? "justify-center p-1" : "px-1.5 py-1"
+              )}
             >
-              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-                {avatarInitial(currentName)}
-              </AvatarFallback>
-            </Avatar>
+              <Avatar size="sm" className="shrink-0">
+                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                  {avatarInitial(currentName)}
+                </AvatarFallback>
+              </Avatar>
+              {!collapsed && (
+                <span className="truncate text-sm font-medium text-sidebar-foreground">
+                  {triggerLabel}
+                </span>
+              )}
+            </button>
           }
         />
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="start">
           {otherBusinesses.map((membership) => (
             <DropdownMenuItem
               key={membership.businessId}
@@ -151,6 +157,13 @@ export default function BusinessSwitcher({
               {membership.businessName}
             </DropdownMenuItem>
           ))}
+          {otherBusinesses.length > 0 && <DropdownMenuSeparator />}
+          <DropdownMenuItem nativeButton={false} render={<Link href="/settings" />}>
+            Configuración
+          </DropdownMenuItem>
+          <DropdownMenuItem nativeButton={false} render={<Link href="/settings" />}>
+            Editar perfil
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {error ? (

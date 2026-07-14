@@ -35,15 +35,17 @@ import { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
  * be Next's generic crash page for every currently-logged-in user.
  *
  * The resolved `session` is passed down to `DashboardTopbar` (which needs
- * `session.email` for its avatar initial) as a prop rather than having it
- * call `requireSessionOrRedirect()` a second time — that would also make it an async
- * Server Component nested inside JSX, which React's client renderer (used
- * by `layout.test.tsx`'s `render()`) cannot reconcile. For the same reason,
- * this layout also resolves the session's full list of business
- * memberships via `repositories.business.listMembershipsForUser(session.userId)`
- * (Phase 7, `roles-multi-business`) and passes it down as `memberships`, so
- * `DashboardTopbar`'s `BusinessSwitcher` can render without doing any
- * fetching of its own.
+ * `session.email` for its `UserMenu` avatar initial) as a prop rather than
+ * having it call `requireSessionOrRedirect()` a second time — that would
+ * also make it an async Server Component nested inside JSX, which React's
+ * client renderer (used by `layout.test.tsx`'s `render()`) cannot
+ * reconcile. For the same reason, this layout also resolves the session's
+ * full list of business memberships via
+ * `repositories.business.listMembershipsForUser(session.userId)` (Phase 7,
+ * `roles-multi-business`) and passes it (plus `session.businessId` as
+ * `currentBusinessId`) down to `DashboardSidebar`, so its `BusinessSwitcher`
+ * (Fase 5 Lane 1 — moved from the topbar into the top of the sidebar) can
+ * render without doing any fetching of its own.
  *
  * `DashboardSidebar`'s collapse state (Fase 4 Lane C) is read here from the
  * `SIDEBAR_COLLAPSED_COOKIE` cookie (single-sourced in `nav-items.ts` —
@@ -78,7 +80,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-dvh flex-1 flex-col">
-      <DashboardTopbar session={session} memberships={memberships} />
+      <DashboardTopbar session={session} />
       <div className="flex min-w-0 flex-1">
         {/*
           `role` (a plain string, not a pre-filtered `NavItem[]`) is the only
@@ -93,9 +95,16 @@ export default async function DashboardLayout({
           authoritative check is each gated page's/route's own
           `requireCapabilityOrNotFound`/`requireCapability` call.
           `DashboardTopbar` renders `MobileNavSheet` internally (also
-          `role`-filtered) for the mobile drawer.
+          `role`-filtered) for the mobile drawer. `DashboardSidebar` also
+          takes `currentBusinessId`/`memberships` for its `BusinessSwitcher`
+          (Fase 5 Lane 1 — moved here from the topbar).
         */}
-        <DashboardSidebar role={session.role} defaultCollapsed={sidebarDefaultCollapsed} />
+        <DashboardSidebar
+          role={session.role}
+          currentBusinessId={session.businessId}
+          memberships={memberships}
+          defaultCollapsed={sidebarDefaultCollapsed}
+        />
         <main className="flex min-w-0 flex-1 flex-col">{children}</main>
       </div>
     </div>

@@ -21,13 +21,15 @@ const MULTIPLE: BusinessMembership[] = [
 ];
 
 /**
- * Mirrors `logout-button.test.tsx`'s fetch-mocking pattern (POST an auth
- * endpoint, assert the resulting side effect / error state).
+ * Fase 5 Lane 1: the switcher now ALWAYS renders as an interactive dropdown
+ * (avatar + business name trigger), even with a single/zero membership, so
+ * the "Configuración"/"Editar perfil" account links stay reachable
+ * regardless of how many businesses the user belongs to. The switch-business
+ * items (and the separator above the account links) only render when there
+ * is at least one OTHER business to switch to.
  *
- * The trigger is now a small round avatar (no visible business name), so
- * assertions target its accessible name/title (still the business name,
- * per accessibility requirement) and its `AvatarFallback` initial letter,
- * instead of visible label text.
+ * Mirrors `user-menu.test.tsx`'s fetch-mocking pattern (POST an auth
+ * endpoint, assert the resulting side effect / error state).
  */
 describe("BusinessSwitcher", () => {
   beforeEach(() => {
@@ -38,16 +40,40 @@ describe("BusinessSwitcher", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders a non-interactive avatar (no dropdown) showing the business initial when there is only 1 membership", () => {
+  it("renders an avatar + business name trigger even when there is only 1 membership", () => {
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={SINGLE} />);
 
-    const avatar = screen.getByTitle("Negocio Demo");
-    expect(avatar).toBeInTheDocument();
-    expect(within(avatar).getByText("N")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Negocio Demo" });
+    expect(trigger).toBeInTheDocument();
+    expect(within(trigger).getByText("N")).toBeInTheDocument();
+    expect(screen.getByText("Negocio Demo")).toBeInTheDocument();
   });
 
-  it("renders a dropdown avatar trigger (showing the business initial) listing the other businesses when there are 2+ memberships", async () => {
+  it("offers Configuración and Editar perfil links (both -> /settings) with only 1 membership, but no switch-business items", async () => {
+    const user = userEvent.setup();
+    render(<BusinessSwitcher currentBusinessId="biz-1" memberships={SINGLE} />);
+
+    await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
+
+    expect(await screen.findByRole("menuitem", { name: "Configuración" })).toHaveAttribute(
+      "href",
+      "/settings"
+    );
+    expect(screen.getByRole("menuitem", { name: "Editar perfil" })).toHaveAttribute(
+      "href",
+      "/settings"
+    );
+    expect(screen.queryByRole("menuitem", { name: "Negocio Demo 2" })).not.toBeInTheDocument();
+  });
+
+  it("hides the business name (avatar-only) when collapsed, but keeps the name as the accessible name", () => {
+    render(<BusinessSwitcher currentBusinessId="biz-1" memberships={SINGLE} collapsed />);
+
+    expect(screen.queryByText("Negocio Demo")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
+  });
+
+  it("renders a dropdown trigger listing the other businesses PLUS the account links when there are 2+ memberships", async () => {
     const user = userEvent.setup();
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} />);
 
@@ -58,6 +84,8 @@ describe("BusinessSwitcher", () => {
     await user.click(trigger);
 
     expect(await screen.findByRole("menuitem", { name: "Negocio Demo 2" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Configuración" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Editar perfil" })).toBeInTheDocument();
     // The currently active business is the trigger's accessible name, not a selectable item.
     expect(screen.queryByRole("menuitem", { name: "Negocio Demo" })).not.toBeInTheDocument();
   });
@@ -123,7 +151,7 @@ describe("BusinessSwitcher", () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("marks the trigger aria-disabled and updates its accessible name while the switch request is in flight, and ignores a second interaction until it settles", async () => {
+  it("disables the trigger and updates its accessible name while the switch request is in flight, and ignores a second interaction until it settles", async () => {
     const user = userEvent.setup();
 
     // A manually-controlled/deferred promise: `fetch` doesn't resolve until
@@ -143,12 +171,13 @@ describe("BusinessSwitcher", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Negocio Demo 2" }));
 
     // Pending state is now real and observable: the trigger's accessible
-    // name changes and it is marked `aria-disabled`, BEFORE the request has
-    // settled. (The trigger is a non-native element — a `<span>` via
-    // `Avatar` — so real HTML `disabled` never applies; `aria-disabled` is
-    // the correct signal here, not `toBeDisabled()`.)
+    // name changes and it is disabled, BEFORE the request has settled. (The
+    // trigger is a real `<button>` element composed via base-ui's
+    // polymorphic `render`, so the native `disabled` attribute applies
+    // directly here — unlike `user-menu.tsx`'s `Avatar`-as-trigger, which
+    // surfaces disabled state as `aria-disabled` instead.)
     const trigger = await screen.findByRole("button", { name: /cambiando/i });
-    expect(trigger).toHaveAttribute("aria-disabled", "true");
+    expect(trigger).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     // A second interaction attempt while pending: base-ui's click
@@ -170,7 +199,7 @@ describe("BusinessSwitcher", () => {
     // `router.refresh()` re-fetches Server Component data — so the trigger
     // reverts to its original accessible name once `isSwitching` clears.
     const settledTrigger = await screen.findByRole("button", { name: "Negocio Demo" });
-    expect(settledTrigger).not.toHaveAttribute("aria-disabled", "true");
+    expect(settledTrigger).not.toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(refreshMock).toHaveBeenCalled();
   });
@@ -180,17 +209,16 @@ describe("BusinessSwitcher", () => {
 
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={EMPTY_NAME} />);
 
-    const avatar = screen.getByTitle("");
-    expect(within(avatar).getByText("?")).toBeInTheDocument();
+    const trigger = screen.getByTitle("");
+    expect(within(trigger).getByText("?")).toBeInTheDocument();
   });
 
-  it("renders the generic fallback avatar with no dropdown when memberships is empty", () => {
+  it("renders the generic 'Negocio' fallback avatar + name when memberships is empty", () => {
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={[]} />);
 
-    const avatar = screen.getByTitle("Negocio");
-    expect(avatar).toBeInTheDocument();
-    expect(within(avatar).getByText("N")).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Negocio" });
+    expect(trigger).toBeInTheDocument();
+    expect(within(trigger).getByText("N")).toBeInTheDocument();
   });
 
   it("renders without crashing when currentBusinessId matches none of the memberships (data-inconsistency case)", async () => {

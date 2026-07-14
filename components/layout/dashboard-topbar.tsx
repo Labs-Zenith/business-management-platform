@@ -1,15 +1,18 @@
 /**
- * Slim top bar, visible at every breakpoint, so logout is always reachable
- * regardless of which nav (sidebar vs. mobile drawer) applies at the
- * current viewport. A plain (synchronous) Server Component — `session` and
- * `memberships` are both passed down from `app/(dashboard)/layout.tsx`,
- * which already resolves them via `requireSessionOrRedirect()` and
- * `repositories.business.listMembershipsForUser()`, rather than fetching
- * them again here (see that file's doc comment for why: an async component
- * nested in JSX can't be reconciled by React's client renderer, which
- * `layout.test.tsx` uses). `LogoutButton`, `BusinessSwitcher`, and
- * `MobileNavSheet` (all Client Components) remain the only interactive
- * pieces.
+ * Slim top bar, visible at every breakpoint, so the user menu (and logout,
+ * inside it) is always reachable regardless of which nav (sidebar vs.
+ * mobile drawer) applies at the current viewport. A plain (synchronous)
+ * Server Component — `session` is passed down from
+ * `app/(dashboard)/layout.tsx`, which already resolves it via
+ * `requireSessionOrRedirect()`, rather than fetching it again here (see
+ * that file's doc comment for why: an async component nested in JSX can't
+ * be reconciled by React's client renderer, which `layout.test.tsx` uses).
+ * `UserMenu` and `MobileNavSheet` (both Client Components) remain the only
+ * interactive pieces.
+ *
+ * `BusinessSwitcher` (Fase 5 Lane 1 — Vercel-style chrome) moved OUT of this
+ * topbar and into the TOP of `dashboard-sidebar.tsx`; this component no
+ * longer needs `memberships` at all.
  *
  * `MobileNavSheet` (Fase 4 Lane C — replaces the removed
  * `dashboard-bottom-nav.tsx`) needs `session.role` to filter its nav list
@@ -24,37 +27,18 @@
  * screens in this app.
  */
 
-import type { BusinessMembership, Session } from "@/lib/services/ports";
-import { avatarInitial } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import BusinessSwitcher from "./business-switcher";
-import LogoutButton from "./logout-button";
+import type { Session } from "@/lib/services/ports";
 import MobileNavSheet from "./mobile-nav-sheet";
+import UserMenu from "./user-menu";
 
-export default function DashboardTopbar({
-  session,
-  memberships,
-}: {
-  session: Session;
-  memberships: BusinessMembership[];
-}) {
-  const initial = avatarInitial(session.email);
-
+export default function DashboardTopbar({ session }: { session: Session }) {
   return (
     <header className="flex items-center justify-between border-b border-border bg-background px-4 py-3">
       <div className="flex items-center gap-2">
         <MobileNavSheet role={session.role} />
         <span className="text-sm font-semibold">Panel de negocio</span>
       </div>
-      <div className="flex items-center gap-3">
-        <BusinessSwitcher currentBusinessId={session.businessId} memberships={memberships} />
-        <Avatar size="sm">
-          <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-            {initial}
-          </AvatarFallback>
-        </Avatar>
-        <LogoutButton />
-      </div>
+      <UserMenu email={session.email} />
     </header>
   );
 }

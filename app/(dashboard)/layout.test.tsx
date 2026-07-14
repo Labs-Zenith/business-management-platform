@@ -37,7 +37,8 @@ vi.mock("@/lib/mock/cookie-persistence", () => ({
 
 // `repositories.business.listMembershipsForUser` is called directly by this
 // layout (Phase 7, `roles-multi-business`) to pass `memberships` down to
-// `DashboardTopbar`'s `BusinessSwitcher` — mocked here the same way
+// `DashboardSidebar`'s `BusinessSwitcher` (Fase 5 Lane 1 — moved from the
+// topbar into the top of the sidebar) — mocked here the same way
 // `requireSessionOrRedirect` is, since the real repository would otherwise
 // hit the mock store's cookie-hydration path.
 vi.mock("@/lib/services/repositories", () => ({
@@ -49,7 +50,7 @@ vi.mock("@/lib/services/repositories", () => ({
 }));
 
 import DashboardLayout from "./layout";
-import { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
+import { navItemsForRole, SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
 
 const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
@@ -86,7 +87,7 @@ describe("DashboardLayout (shared navigation shell)", () => {
     mockCookieGet.mockReturnValue(undefined);
   });
 
-  it("resolves the session, then renders links to every dashboard section, the page content, and a logout action", async () => {
+  it("resolves the session, then renders links to every dashboard section, the page content, the business switcher, and the user menu", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListMembershipsForUser.mockResolvedValue(SINGLE_MEMBERSHIP);
 
@@ -96,24 +97,36 @@ describe("DashboardLayout (shared navigation shell)", () => {
     expect(mockListMembershipsForUser).toHaveBeenCalledWith(SESSION.userId);
     expect(screen.getByText("Page content")).toBeInTheDocument();
 
-    const HREF_BY_LABEL: Record<string, string> = {
-      Dashboard: "/dashboard",
-      Clientes: "/customers",
-      Facturas: "/invoices",
-      Pagos: "/payments",
-      Nómina: "/nomina",
-      Negocio: "/settings",
-    };
-
-    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Nómina", "Negocio"]) {
-      const links = screen.getAllByRole("link", { name: label });
+    // Nav item labels/hrefs are derived from the live `navItemsForRole`
+    // (single source of truth in `nav-items.ts`, owned by another
+    // concurrent lane) rather than hardcoded here, so this test doesn't
+    // drift when that list changes (e.g. items added/removed/renamed).
+    for (const item of navItemsForRole(SESSION.role)) {
+      const links = screen.getAllByRole("link", { name: item.label });
       expect(links.length).toBeGreaterThan(0);
       for (const link of links) {
-        expect(link).toHaveAttribute("href", HREF_BY_LABEL[label]);
+        expect(link).toHaveAttribute("href", item.href);
       }
     }
 
-    expect(screen.getByRole("button", { name: /cerrar sesion/i })).toBeInTheDocument();
+    // Business switcher (Fase 5 Lane 1 — top of the sidebar) and the user
+    // menu avatar trigger (Fase 5 Lane 1 — topbar, replaces the previous
+    // directly-visible "Cerrar sesion" button) are both reachable.
+    expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: SESSION.email })).toBeInTheDocument();
+  });
+
+  it("exposes Cerrar sesion inside the opened user menu", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListMembershipsForUser.mockResolvedValue(SINGLE_MEMBERSHIP);
+
+    render(await DashboardLayout({ children: <div>Page content</div> }));
+
+    await user.click(screen.getByRole("button", { name: SESSION.email }));
+
+    expect(await screen.findByRole("menuitem", { name: /cerrar sesion/i })).toBeInTheDocument();
   });
 
   /**
@@ -124,16 +137,23 @@ describe("DashboardLayout (shared navigation shell)", () => {
    * `requireCapabilityOrNotFound` at the Nomina page itself (out of scope
    * for this layout, covered separately).
    */
-  it("hides the Nómina nav item for a worker session (lacks viewPayroll) in both the sidebar and bottom nav", async () => {
+  it("hides any capability-gated nav item an admin sees but a worker doesn't, in both the sidebar and mobile drawer", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(WORKER_SESSION);
     mockListMembershipsForUser.mockResolvedValue(WORKER_MEMBERSHIP);
 
     render(await DashboardLayout({ children: <div>Page content</div> }));
 
-    expect(screen.queryByRole("link", { name: "Nómina" })).not.toBeInTheDocument();
+    const workerItems = navItemsForRole(WORKER_SESSION.role);
+    const adminOnlyItems = navItemsForRole("admin").filter(
+      (item) => !workerItems.some((workerItem) => workerItem.href === item.href)
+    );
+
+    for (const item of adminOnlyItems) {
+      expect(screen.queryByRole("link", { name: item.label })).not.toBeInTheDocument();
+    }
     // Every other nav item is still present for a worker.
-    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Negocio"]) {
-      expect(screen.getAllByRole("link", { name: label }).length).toBeGreaterThan(0);
+    for (const item of workerItems) {
+      expect(screen.getAllByRole("link", { name: item.label }).length).toBeGreaterThan(0);
     }
   });
 
