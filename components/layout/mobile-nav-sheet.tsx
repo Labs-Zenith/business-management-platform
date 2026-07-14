@@ -3,44 +3,50 @@
 /**
  * Vercel-style mobile nav drawer (Fase 4 Lane C): a hamburger button
  * (visible only below `md`, mirroring `dashboard-sidebar.tsx`'s
- * `md:flex`/`md:hidden` breakpoint split) that opens the SAME
- * `navItemsForRole(role)` list as a left `Sheet`, REPLACING
- * `dashboard-bottom-nav.tsx` (removed — see `app/(dashboard)/layout.tsx`).
- * Item styling reuses `dashboard-sidebar.tsx`'s `--sidebar*` token classes
- * so the drawer reads as "the sidebar, temporarily overlaid" rather than a
- * new visual language.
+ * `md:flex`/`md:hidden` breakpoint split) that opens a left `Sheet`,
+ * REPLACING `dashboard-bottom-nav.tsx` (removed).
+ *
+ * Fase 5.1 Lane B: the drawer now renders the FULL `sidebar-content.tsx`
+ * composition (business switcher, nav list, bottom user row) — the exact
+ * same content `dashboard-sidebar.tsx` renders on desktop, so mobile and
+ * desktop chrome are identical apart from the collapse toggle (desktop-only)
+ * and the drawer wrapper itself. This means `MobileNavSheet` now needs
+ * `currentBusinessId`/`memberships`/`email` in addition to `role`.
  *
  * `open`/`onOpenChange` is a controlled `useState` (not the Sheet's own
- * uncontrolled default) so each nav `Link`'s `onClick` can close the
- * drawer immediately on navigation, per `components/ui/sheet.tsx`'s
- * `Dialog`-backed `Sheet` — a plain `next/link` click doesn't close a
- * base-ui `Dialog` on its own the way a `SheetClose`-wrapped trigger would.
+ * uncontrolled default) so `sidebar-content.tsx`'s `onNavigate` callback
+ * (passed to every `NavLink`) can close the drawer immediately on a nav
+ * click — a plain `next/link` click doesn't close a base-ui `Dialog` on its
+ * own the way a `SheetClose`-wrapped trigger would. `onNavigate` is
+ * deliberately NOT passed to `SidebarUserMenu`: closing the drawer during
+ * logout would unmount its pending fetch and swallow a failure error.
  *
- * Takes the plain `role` string (not a pre-filtered `NavItem[]`), same
- * rationale as `dashboard-sidebar.tsx`/`dashboard-bottom-nav.tsx`: a
- * `NavItem[]` carries `lucide-react` icon component references per entry,
- * which this Next.js build's stricter RSC serialization rejects as a
- * Server-to-Client Component prop. `navItemsForRole` runs here, client-side.
- *
- * Item rendering (review-fix pass) is delegated to the shared
- * `nav-link.tsx`'s `NavLink` — also used by `dashboard-sidebar.tsx` — so the
- * two surfaces never drift in markup/styling; `isActivePath` is likewise
- * single-sourced in `nav-items.ts`.
+ * The `SheetTitle` ("Negocio") stays for accessibility (base-ui's `Dialog`
+ * requires an accessible title) but is visually hidden (`sr-only`) since
+ * `sidebar-content.tsx`'s own `BusinessSwitcher` already shows the current
+ * business name at the top of the drawer — showing both would be visual
+ * duplication.
  */
 
 import { useState } from "react";
-import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { isActivePath, navItemsForRole } from "./nav-items";
-import { NavLink } from "./nav-link";
-import type { Role } from "@/lib/services/ports";
+import SidebarContent from "./sidebar-content";
+import type { BusinessMembership, Role } from "@/lib/services/ports";
 
-export default function MobileNavSheet({ role }: { role: Role }) {
-  const pathname = usePathname();
+export default function MobileNavSheet({
+  role,
+  currentBusinessId,
+  memberships,
+  email,
+}: {
+  role: Role;
+  currentBusinessId: string;
+  memberships: BusinessMembership[];
+  email: string;
+}) {
   const [open, setOpen] = useState(false);
-  const items = navItemsForRole(role);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -52,19 +58,19 @@ export default function MobileNavSheet({ role }: { role: Role }) {
         }
       />
       <SheetContent side="left" className="w-72 gap-0 bg-sidebar p-0 text-sidebar-foreground">
-        <SheetHeader>
+        <SheetHeader className="sr-only">
           <SheetTitle>Negocio</SheetTitle>
         </SheetHeader>
-        <nav className="flex flex-col gap-1 px-4 pb-4">
-          {items.map((item) => (
-            <NavLink
-              key={item.href}
-              item={item}
-              active={isActivePath(pathname, item.href)}
-              onNavigate={() => setOpen(false)}
-            />
-          ))}
-        </nav>
+        <div className="flex min-h-0 flex-1 flex-col px-2 pt-2 pb-4">
+          <SidebarContent
+            role={role}
+            currentBusinessId={currentBusinessId}
+            memberships={memberships}
+            email={email}
+            collapsed={false}
+            onNavigate={() => setOpen(false)}
+          />
+        </div>
       </SheetContent>
     </Sheet>
   );

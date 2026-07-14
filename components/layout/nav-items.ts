@@ -2,10 +2,15 @@
  * Shared nav link definitions for the `(dashboard)` route group's shell
  * (`app/(dashboard)/layout.tsx`), per `docs/ui-ux-flow.md`'s "Navegacion
  * principal" section: Dashboard, Clientes, Facturas, Pagos, Egresos, Nómina,
- * Inventario. Fase 5 Lane 4 removed the "Negocio" item (`/settings`) — the
- * sidebar's business switcher now provides Configuración/Editar perfil
- * access instead — and added "Egresos" (`/egresos`, a dedicated expense
- * management page) next to the other financial items.
+ * Inventario, Settings. Fase 5 Lane 4 removed the earlier "Negocio" item
+ * (`/settings`) — the sidebar's business switcher briefly provided
+ * Configuración/Editar perfil access instead — and added "Egresos"
+ * (`/egresos`, a dedicated expense management page) next to the other
+ * financial items. Fase 5.1 Lane B re-added `/settings` as a plain
+ * "Settings" nav entry at the END of the list: the business switcher
+ * (`business-switcher.tsx`) was rewritten into an inline "switch business"
+ * `Collapsible` and no longer surfaces account-level links itself, so
+ * Settings needs its own place in the nav like every other section.
  *
  * A single source of truth used by both the desktop sidebar and the mobile
  * nav drawer (`mobile-nav-sheet.tsx`, Fase 4 Lane C — replaces the removed
@@ -40,7 +45,7 @@
  * now single-sourced here alongside `NAV_ITEMS`/`navItemsForRole`.
  */
 
-import { Banknote, CreditCard, FileText, LayoutDashboard, Package, Receipt, Users, type LucideIcon } from "lucide-react";
+import { Banknote, CreditCard, FileText, LayoutDashboard, Package, Receipt, Settings, Users, type LucideIcon } from "lucide-react";
 import { can, type Capability } from "@/lib/services/permissions";
 import type { Role } from "@/lib/services/ports";
 
@@ -59,6 +64,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/egresos", label: "Egresos", icon: Receipt },
   { href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
   { href: "/inventario", label: "Inventario", icon: Package },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 /** Filters `NAV_ITEMS` down to those `role` may see (deny-by-default, via `can()`). */

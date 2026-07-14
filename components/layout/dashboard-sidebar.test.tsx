@@ -12,6 +12,7 @@ import DashboardSidebar from "./dashboard-sidebar";
 import { navItemsForRole, SIDEBAR_COLLAPSED_COOKIE } from "./nav-items";
 
 const CURRENT_BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
+const EMAIL = "demo@negociodemo.test";
 
 const SINGLE_MEMBERSHIP: BusinessMembership[] = [
   { businessId: CURRENT_BUSINESS_ID, businessName: "Negocio Demo", role: "admin" },
@@ -25,17 +26,19 @@ const MULTIPLE_MEMBERSHIPS: BusinessMembership[] = [
 /**
  * `role` prop (a plain string, per the "Server Component can't pass a
  * `NavItem[]` — it carries `lucide-react` icon component references —
- * across the client boundary" fix): `DashboardSidebar` filters `NAV_ITEMS`
- * internally via `navItemsForRole`, so `app/(dashboard)/layout.tsx` only
- * ever needs to pass `session.role`.
+ * across the client boundary" fix): `DashboardSidebar` delegates to
+ * `sidebar-content.tsx`, which filters `NAV_ITEMS` internally via
+ * `navItemsForRole`, so `app/(dashboard)/layout.tsx` only ever needs to
+ * pass `session.role`.
  *
- * `currentBusinessId`/`memberships` (Fase 5 Lane 1) are threaded to the
- * `BusinessSwitcher` now rendered at the TOP of this sidebar, replacing the
- * previous static "Negocio"+`Wallet` brand block.
+ * Fase 5.1 Lane B: this component now ONLY owns the `<aside>` shell +
+ * collapse state/cookie — the switcher, nav list, and bottom user row are
+ * all rendered by the shared `sidebar-content.tsx` (also used by
+ * `mobile-nav-sheet.tsx`'s drawer), which is why this needs an `email` prop
+ * now too (for its bottom `SidebarUserMenu`).
  *
- * `defaultCollapsed` (Fase 4 Lane C — desktop sidebar collapse toggle, now
- * relocated to the top of the sidebar alongside the switcher) is read
- * server-side from the `sidebar_collapsed` cookie by
+ * `defaultCollapsed` (Fase 4 Lane C — desktop sidebar collapse toggle) is
+ * read server-side from the `sidebar_collapsed` cookie by
  * `app/(dashboard)/layout.tsx` and passed down here as the initial React
  * state, avoiding a hydration flash; the toggle button then flips local
  * state AND writes the cookie via `document.cookie`, exercised below via
@@ -53,6 +56,7 @@ describe("DashboardSidebar", () => {
         role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
+        email={EMAIL}
       />
     );
 
@@ -67,6 +71,7 @@ describe("DashboardSidebar", () => {
         role="worker"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
+        email={EMAIL}
       />
     );
 
@@ -89,10 +94,24 @@ describe("DashboardSidebar", () => {
         role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MULTIPLE_MEMBERSHIPS}
+        email={EMAIL}
       />
     );
 
     expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
+  });
+
+  it("renders the user row at the bottom (avatar + email trigger)", () => {
+    render(
+      <DashboardSidebar
+        role="admin"
+        currentBusinessId={CURRENT_BUSINESS_ID}
+        memberships={SINGLE_MEMBERSHIP}
+        email={EMAIL}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: EMAIL })).toBeInTheDocument();
   });
 
   it("expands by default (labels visible, toggle offers to collapse) when defaultCollapsed is not passed", () => {
@@ -101,6 +120,7 @@ describe("DashboardSidebar", () => {
         role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
+        email={EMAIL}
       />
     );
 
@@ -115,6 +135,7 @@ describe("DashboardSidebar", () => {
         role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
+        email={EMAIL}
         defaultCollapsed
       />
     );
@@ -134,6 +155,7 @@ describe("DashboardSidebar", () => {
         role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
+        email={EMAIL}
       />
     );
 
@@ -152,6 +174,7 @@ describe("DashboardSidebar", () => {
         role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
+        email={EMAIL}
         defaultCollapsed
       />
     );

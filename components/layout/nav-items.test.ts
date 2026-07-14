@@ -42,4 +42,17 @@ describe("navItemsForRole", () => {
 
     expect(adminItems.length).toBe(workerItems.length + 1);
   });
+
+  /**
+   * Fase 5.1 Lane B: `business-switcher.tsx` was rewritten into an inline
+   * "switch business" `Collapsible` and no longer surfaces
+   * Configuración/Editar perfil links itself, so Settings gets its own
+   * plain (capability-less) `NAV_ITEMS` entry, visible to every role, at
+   * the end of the list.
+   */
+  it("includes a Settings nav item (/settings) at the end of NAV_ITEMS, visible to every role", () => {
+    expect(NAV_ITEMS.at(-1)).toMatchObject({ href: "/settings", label: "Settings" });
+    expect(navItemsForRole("worker").some((item) => item.href === "/settings")).toBe(true);
+    expect(navItemsForRole("admin").some((item) => item.href === "/settings")).toBe(true);
+  });
 });

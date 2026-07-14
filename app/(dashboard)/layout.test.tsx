@@ -37,10 +37,11 @@ vi.mock("@/lib/mock/cookie-persistence", () => ({
 
 // `repositories.business.listMembershipsForUser` is called directly by this
 // layout (Phase 7, `roles-multi-business`) to pass `memberships` down to
-// `DashboardSidebar`'s `BusinessSwitcher` (Fase 5 Lane 1 — moved from the
-// topbar into the top of the sidebar) — mocked here the same way
-// `requireSessionOrRedirect` is, since the real repository would otherwise
-// hit the mock store's cookie-hydration path.
+// BOTH `DashboardSidebar` and `DashboardTopbar` (Fase 5.1 Lane B — both
+// surfaces render the same `sidebar-content.tsx` composition, desktop
+// directly and mobile via `MobileNavSheet`'s drawer) — mocked here the
+// same way `requireSessionOrRedirect` is, since the real repository would
+// otherwise hit the mock store's cookie-hydration path.
 vi.mock("@/lib/services/repositories", () => ({
   repositories: {
     business: {
@@ -109,14 +110,14 @@ describe("DashboardLayout (shared navigation shell)", () => {
       }
     }
 
-    // Business switcher (Fase 5 Lane 1 — top of the sidebar) and the user
-    // menu avatar trigger (Fase 5 Lane 1 — topbar, replaces the previous
-    // directly-visible "Cerrar sesion" button) are both reachable.
+    // Business switcher and the bottom-of-sidebar user row (Fase 5.1 Lane B
+    // — both rendered by the shared `sidebar-content.tsx` inside
+    // `DashboardSidebar`'s desktop `<aside>`) are both reachable.
     expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: SESSION.email })).toBeInTheDocument();
   });
 
-  it("exposes Cerrar sesion inside the opened user menu", async () => {
+  it("exposes Cerrar sesion inside the opened bottom-of-sidebar user menu", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);

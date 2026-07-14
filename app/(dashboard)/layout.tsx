@@ -34,18 +34,21 @@ import { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
  * `error.tsx`/`global-error.tsx` boundary, so a thrown error would otherwise
  * be Next's generic crash page for every currently-logged-in user.
  *
- * The resolved `session` is passed down to `DashboardTopbar` (which needs
- * `session.email` for its `UserMenu` avatar initial) as a prop rather than
- * having it call `requireSessionOrRedirect()` a second time — that would
- * also make it an async Server Component nested inside JSX, which React's
- * client renderer (used by `layout.test.tsx`'s `render()`) cannot
- * reconcile. For the same reason, this layout also resolves the session's
- * full list of business memberships via
+ * The resolved `session` is passed down to `DashboardTopbar` as a prop
+ * rather than having it call `requireSessionOrRedirect()` a second time —
+ * that would also make it an async Server Component nested inside JSX,
+ * which React's client renderer (used by `layout.test.tsx`'s `render()`)
+ * cannot reconcile. For the same reason, this layout also resolves the
+ * session's full list of business memberships via
  * `repositories.business.listMembershipsForUser(session.userId)` (Phase 7,
  * `roles-multi-business`) and passes it (plus `session.businessId` as
- * `currentBusinessId`) down to `DashboardSidebar`, so its `BusinessSwitcher`
- * (Fase 5 Lane 1 — moved from the topbar into the top of the sidebar) can
- * render without doing any fetching of its own.
+ * `currentBusinessId`) down to BOTH `DashboardSidebar` (desktop) and
+ * `DashboardTopbar` (which threads it into `MobileNavSheet`'s drawer) —
+ * Fase 5.1 Lane B renders the SAME `sidebar-content.tsx` composition
+ * (business switcher, nav, bottom user row) on both surfaces, so both need
+ * the same data. `session.email` is threaded the same way, to each
+ * surface's `SidebarUserMenu` (the bottom-of-sidebar/drawer logout row that
+ * replaced the old topbar `UserMenu`).
  *
  * `DashboardSidebar`'s collapse state (Fase 4 Lane C) is read here from the
  * `SIDEBAR_COLLAPSED_COOKIE` cookie (single-sourced in `nav-items.ts` —
@@ -79,9 +82,9 @@ export default async function DashboardLayout({
     cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === "true";
 
   return (
-    <div className="flex min-h-dvh flex-1 flex-col">
-      <DashboardTopbar session={session} />
-      <div className="flex min-w-0 flex-1">
+    <div className="flex h-dvh flex-col overflow-hidden">
+      <DashboardTopbar session={session} memberships={memberships} />
+      <div className="flex min-w-0 flex-1 overflow-hidden">
         {/*
           `role` (a plain string, not a pre-filtered `NavItem[]`) is the only
           nav-shaping value threaded across the server/client boundary here.
@@ -103,9 +106,10 @@ export default async function DashboardLayout({
           role={session.role}
           currentBusinessId={session.businessId}
           memberships={memberships}
+          email={session.email}
           defaultCollapsed={sidebarDefaultCollapsed}
         />
-        <main className="flex min-w-0 flex-1 flex-col">{children}</main>
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">{children}</main>
       </div>
     </div>
   );

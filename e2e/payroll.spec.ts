@@ -68,8 +68,11 @@ test.describe("Nomina (payroll)", () => {
 
     await expect(page.getByRole("link", { name: "Nómina" }).first()).toBeVisible();
 
+    // Fase 5.1 Lane B: the switcher is a `Collapsible`, not a `DropdownMenu`
+    // — the other business is a plain `button` inside the expanded inline
+    // panel, not a `menuitem`.
     await page.getByRole("button", { name: "Negocio Demo" }).click();
-    await page.getByRole("menuitem", { name: "Negocio Demo 2" }).click();
+    await page.getByRole("button", { name: "Negocio Demo 2" }).click();
 
     await expect(page.getByRole("button", { name: "Negocio Demo 2" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Nómina" })).toHaveCount(0);

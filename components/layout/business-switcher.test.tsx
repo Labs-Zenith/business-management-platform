@@ -21,15 +21,14 @@ const MULTIPLE: BusinessMembership[] = [
 ];
 
 /**
- * Fase 5 Lane 1: the switcher now ALWAYS renders as an interactive dropdown
- * (avatar + business name trigger), even with a single/zero membership, so
- * the "Configuración"/"Editar perfil" account links stay reachable
- * regardless of how many businesses the user belongs to. The switch-business
- * items (and the separator above the account links) only render when there
- * is at least one OTHER business to switch to.
+ * Fase 5.1 Lane B: the switcher is now a `Collapsible`, not a `DropdownMenu`
+ * — clicking the trigger expands an INLINE panel below it (no more
+ * "Configuración"/"Editar perfil" links; those moved to a plain `Settings`
+ * nav item in `nav-items.ts`). The other businesses are rendered as plain
+ * `<button>`s (not `menuitem`s) inside that panel.
  *
- * Mirrors `user-menu.test.tsx`'s fetch-mocking pattern (POST an auth
- * endpoint, assert the resulting side effect / error state).
+ * Mirrors `sidebar-user-menu.test.tsx`'s fetch-mocking pattern (POST an
+ * auth endpoint, assert the resulting side effect / error state).
  */
 describe("BusinessSwitcher", () => {
   beforeEach(() => {
@@ -40,54 +39,49 @@ describe("BusinessSwitcher", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders an avatar + business name trigger even when there is only 1 membership", () => {
-    render(<BusinessSwitcher currentBusinessId="biz-1" memberships={SINGLE} />);
+  it("renders an avatar + business name trigger, with the other-businesses panel collapsed by default", () => {
+    render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} />);
 
     const trigger = screen.getByRole("button", { name: "Negocio Demo" });
     expect(trigger).toBeInTheDocument();
     expect(within(trigger).getByText("N")).toBeInTheDocument();
-    expect(screen.getByText("Negocio Demo")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Negocio Demo 2" })).not.toBeInTheDocument();
   });
 
-  it("offers Configuración and Editar perfil links (both -> /settings) with only 1 membership, but no switch-business items", async () => {
+  it("expands inline to list the other businesses to switch to when the trigger is clicked", async () => {
+    const user = userEvent.setup();
+    render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} />);
+
+    await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
+
+    expect(await screen.findByRole("button", { name: "Negocio Demo 2" })).toBeInTheDocument();
+  });
+
+  it("renders no other-business options when there is only 1 membership", async () => {
     const user = userEvent.setup();
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={SINGLE} />);
 
     await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
 
-    expect(await screen.findByRole("menuitem", { name: "Configuración" })).toHaveAttribute(
-      "href",
-      "/settings"
-    );
-    expect(screen.getByRole("menuitem", { name: "Editar perfil" })).toHaveAttribute(
-      "href",
-      "/settings"
-    );
-    expect(screen.queryByRole("menuitem", { name: "Negocio Demo 2" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /negocio demo \d/i })).not.toBeInTheDocument();
   });
 
-  it("hides the business name (avatar-only) when collapsed, but keeps the name as the accessible name", () => {
+  it("hides the business name and the chevron icon (avatar-only) when collapsed, but keeps the name as the accessible name", () => {
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={SINGLE} collapsed />);
 
     expect(screen.queryByText("Negocio Demo")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
   });
 
-  it("renders a dropdown trigger listing the other businesses PLUS the account links when there are 2+ memberships", async () => {
+  it("keeps the other-businesses panel closed in collapsed (rail) mode even when the avatar is clicked", async () => {
     const user = userEvent.setup();
-    render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} />);
+    render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} collapsed />);
 
-    const trigger = screen.getByRole("button", { name: "Negocio Demo" });
-    expect(trigger).toBeInTheDocument();
-    expect(within(trigger).getByText("N")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
 
-    await user.click(trigger);
-
-    expect(await screen.findByRole("menuitem", { name: "Negocio Demo 2" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Configuración" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Editar perfil" })).toBeInTheDocument();
-    // The currently active business is the trigger's accessible name, not a selectable item.
-    expect(screen.queryByRole("menuitem", { name: "Negocio Demo" })).not.toBeInTheDocument();
+    // In rail mode the panel is force-closed, so the crammed business names
+    // never render into the w-14 rail (regression fix).
+    expect(screen.queryByRole("button", { name: "Negocio Demo 2" })).not.toBeInTheDocument();
   });
 
   it("POSTs to /api/auth/switch-business and refreshes on success when a different business is selected", async () => {
@@ -103,7 +97,7 @@ describe("BusinessSwitcher", () => {
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} />);
 
     await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Negocio Demo 2" }));
+    await user.click(await screen.findByRole("button", { name: "Negocio Demo 2" }));
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/auth/switch-business",
@@ -130,7 +124,7 @@ describe("BusinessSwitcher", () => {
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} />);
 
     await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Negocio Demo 2" }));
+    await user.click(await screen.findByRole("button", { name: "Negocio Demo 2" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "You are not a member of this business."
@@ -145,13 +139,13 @@ describe("BusinessSwitcher", () => {
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} />);
 
     await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Negocio Demo 2" }));
+    await user.click(await screen.findByRole("button", { name: "Negocio Demo 2" }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("disables the trigger and updates its accessible name while the switch request is in flight, and ignores a second interaction until it settles", async () => {
+  it("disables the trigger and updates its accessible name while the switch request is in flight", async () => {
     const user = userEvent.setup();
 
     // A manually-controlled/deferred promise: `fetch` doesn't resolve until
@@ -168,23 +162,22 @@ describe("BusinessSwitcher", () => {
     render(<BusinessSwitcher currentBusinessId="biz-1" memberships={MULTIPLE} />);
 
     await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Negocio Demo 2" }));
+    await user.click(await screen.findByRole("button", { name: "Negocio Demo 2" }));
 
     // Pending state is now real and observable: the trigger's accessible
-    // name changes and it is disabled, BEFORE the request has settled. (The
-    // trigger is a real `<button>` element composed via base-ui's
-    // polymorphic `render`, so the native `disabled` attribute applies
-    // directly here — unlike `user-menu.tsx`'s `Avatar`-as-trigger, which
-    // surfaces disabled state as `aria-disabled` instead.)
+    // name changes and it is disabled, BEFORE the request has settled.
+    // GOTCHA: base-ui's `CollapsibleTrigger` calls `useButton` with
+    // `focusableWhenDisabled: true` internally, so a disabled trigger stays
+    // focusable and surfaces as `aria-disabled="true"` rather than the
+    // native HTML `disabled` attribute (unlike `sidebar-user-menu.tsx`'s
+    // `DropdownMenuTrigger`-composed trigger, which DOES get the real
+    // `disabled` attribute).
     const trigger = await screen.findByRole("button", { name: /cambiando/i });
-    expect(trigger).toBeDisabled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    // A second interaction attempt while pending: base-ui's click
-    // interaction is disabled while `disabled` is true, so clicking the
-    // trigger again must not open a new dropdown or fire a second fetch.
-    await user.click(trigger);
-    expect(screen.queryByRole("menuitem", { name: "Negocio Demo 2" })).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-disabled", "true");
+    // The panel's per-business buttons (a real native `disabled`, unlike the
+    // trigger's `aria-disabled`) are also disabled while a switch is in
+    // flight, so a user can't click a second business mid-switch.
+    expect(screen.getByRole("button", { name: "Negocio Demo 2" })).toBeDisabled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     resolveFetch({
@@ -199,7 +192,7 @@ describe("BusinessSwitcher", () => {
     // `router.refresh()` re-fetches Server Component data — so the trigger
     // reverts to its original accessible name once `isSwitching` clears.
     const settledTrigger = await screen.findByRole("button", { name: "Negocio Demo" });
-    expect(settledTrigger).not.toBeDisabled();
+    expect(settledTrigger).not.toHaveAttribute("aria-disabled", "true");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(refreshMock).toHaveBeenCalled();
   });
@@ -235,7 +228,7 @@ describe("BusinessSwitcher", () => {
 
     await user.click(trigger);
 
-    expect(await screen.findByRole("menuitem", { name: "Negocio Demo" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Negocio Demo 2" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Negocio Demo 2" })).toBeInTheDocument();
   });
 });
