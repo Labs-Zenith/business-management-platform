@@ -82,11 +82,12 @@ describe("DashboardPage (Ingresos/Egresos tabs)", () => {
     expect(screen.getByTestId("egresos-kpi")).toBeInTheDocument();
   });
 
-  it("offers the Crear cliente and Crear factura quick actions, unchanged", () => {
+  it("is view-only: no Crear cliente/Crear factura/Crear gasto quick actions remain", () => {
     render(<DashboardPage />);
 
-    expect(screen.getByRole("button", { name: "Crear cliente" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Crear factura" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Crear cliente" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Crear factura" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Crear gasto" })).not.toBeInTheDocument();
   });
 
   it("offers a single Exportar trigger for the full dashboard export (format picked from its dropdown)", () => {

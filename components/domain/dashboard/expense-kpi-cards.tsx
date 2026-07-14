@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MoneyAmount } from "@/components/domain/money-amount";
 
 /**
- * Egresos KPI section ("gastos del mes"), mirroring
+ * Egresos KPI section ("egresos del mes"), mirroring
  * `components/domain/dashboard/kpi-cards.tsx`'s shape. A standalone async
  * Server Component so it streams independently inside the Egresos
  * `TabsPanel` — see `kpi-cards.tsx` for the shared Suspense rationale.
@@ -20,7 +20,7 @@ export async function ExpenseKpiCards() {
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <Card>
         <CardHeader>
-          <CardDescription>Gastos del mes</CardDescription>
+          <CardDescription>Egresos del mes</CardDescription>
           <CardTitle>
             <MoneyAmount cents={totalThisMonth} size="lg" />
           </CardTitle>

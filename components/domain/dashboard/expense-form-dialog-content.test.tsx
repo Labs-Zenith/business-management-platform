@@ -120,7 +120,7 @@ describe("ExpenseFormDialog", () => {
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No se pudo crear el gasto. Verifica los datos e intenta de nuevo.",
+      "No se pudo registrar el egreso. Verifica los datos e intenta de nuevo.",
     );
     expect(refreshMock).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -147,7 +147,7 @@ describe("ExpenseFormDialog", () => {
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No se pudo crear el gasto. Verifica los datos e intenta de nuevo.",
+      "No se pudo registrar el egreso. Verifica los datos e intenta de nuevo.",
     );
     expect(refreshMock).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();

@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * "Gastos recientes" Egresos section, mirroring
+ * "Egresos recientes" Egresos section, mirroring
  * `components/domain/dashboard/recent-payments.tsx`'s shape (including the
  * empty-state row). Its own independently-streamed Suspense section — see
  * `kpi-cards.tsx` for the shared rationale.
@@ -20,7 +20,7 @@ export async function RecentExpenses() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Gastos recientes</CardTitle>
+        <CardTitle>Egresos recientes</CardTitle>
       </CardHeader>
       <CardContent>
         <Table className="min-w-[640px]">
@@ -36,7 +36,7 @@ export async function RecentExpenses() {
             {expenses.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  Sin gastos registrados.
+                  Sin egresos registrados.
                 </TableCell>
               </TableRow>
             ) : (

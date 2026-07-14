@@ -2,7 +2,7 @@
 
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ExpensesByCategoryDatum, ExpensesByMonthDatum } from "@/lib/services/expense-dashboard-service";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartFrame, ChartTooltip, EmptyChart } from "./chart-primitives";
 
 /**
@@ -32,11 +32,12 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
     <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Gastos por categoría</CardTitle>
+          <CardTitle>Egresos por categoría</CardTitle>
+          <CardDescription>En qué se va el dinero, por tipo de egreso.</CardDescription>
         </CardHeader>
         <CardContent>
           {!hasCategoryTotals ? (
-            <EmptyChart label="Sin gastos para graficar." />
+            <EmptyChart label="Sin egresos para graficar." />
           ) : (
             <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -62,11 +63,12 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
 
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>Gastos por mes</CardTitle>
+          <CardTitle>Egresos por mes</CardTitle>
+          <CardDescription>Total de egresos de cada mes.</CardDescription>
         </CardHeader>
         <CardContent>
           {!hasMonthlyAmounts ? (
-            <EmptyChart label="Sin gastos en los ultimos meses." />
+            <EmptyChart label="Sin egresos en los ultimos meses." />
           ) : (
             <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">

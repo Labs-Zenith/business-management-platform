@@ -49,7 +49,7 @@ import { todayIsoDate } from "@/lib/dates";
 import { pesosToCents } from "@/lib/money";
 import { expenseFormSchema, type ExpenseFormValues } from "./expense-form-schema";
 
-const GENERIC_ERROR_MESSAGE = "No se pudo crear el gasto. Verifica los datos e intenta de nuevo.";
+const GENERIC_ERROR_MESSAGE = "No se pudo registrar el egreso. Verifica los datos e intenta de nuevo.";
 
 function defaultValues(): ExpenseFormValues {
   return { category: "otro", description: "", amount: "", expenseDate: todayIsoDate(), notes: "" };
@@ -119,8 +119,8 @@ export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
       <DialogTrigger render={trigger} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Crear gasto</DialogTitle>
-          <DialogDescription>Registra un nuevo gasto para tu negocio.</DialogDescription>
+          <DialogTitle>Registrar egreso</DialogTitle>
+          <DialogDescription>Registra un nuevo egreso para tu negocio.</DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-1.5">

@@ -45,7 +45,7 @@ describe("ExpenseKpiCards", () => {
 
     render(await ExpenseKpiCards());
 
-    expect(screen.getByText("Gastos del mes")).toBeInTheDocument();
+    expect(screen.getByText("Egresos del mes")).toBeInTheDocument();
     expect(screen.getByText(normalizeMoney(formatCOP(1_250_000)))).toBeInTheDocument();
   });
 

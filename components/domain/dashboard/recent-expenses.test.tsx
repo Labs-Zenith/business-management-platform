@@ -70,12 +70,12 @@ describe("RecentExpenses", () => {
     mockRequireSession.mockResolvedValue(SESSION);
   });
 
-  it('renders the empty state ("Sin gastos registrados.") when there are no expenses', async () => {
+  it('renders the empty state ("Sin egresos registrados.") when there are no expenses', async () => {
     mockGetRecentExpenses.mockResolvedValue([]);
 
     render(await RecentExpenses());
 
-    expect(screen.getByText("Sin gastos registrados.")).toBeInTheDocument();
+    expect(screen.getByText("Sin egresos registrados.")).toBeInTheDocument();
   });
 
   it("renders a populated table with the exact accented category label and formatted money", async () => {

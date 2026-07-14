@@ -26,7 +26,7 @@ describe("MobileNavSheet", () => {
     await user.click(screen.getByRole("button", { name: /abrir menú/i }));
 
     const dialog = await screen.findByRole("dialog");
-    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Nómina", "Inventario", "Negocio"]) {
+    for (const label of ["Dashboard", "Clientes", "Facturas", "Pagos", "Egresos", "Nómina", "Inventario"]) {
       expect(within(dialog).getByRole("link", { name: label })).toBeInTheDocument();
     }
   });

@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { Suspense } from "react";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { DashboardExportMenu } from "@/components/domain/dashboard/dashboard-export-menu";
 import { KpiCards, KpiCardsSkeleton } from "@/components/domain/dashboard/kpi-cards";
@@ -11,13 +9,11 @@ import { DashboardCharts, DashboardChartsSkeleton } from "@/components/domain/da
 import { ExpenseKpiCards, ExpenseKpiCardsSkeleton } from "@/components/domain/dashboard/expense-kpi-cards";
 import { ExpenseCharts, ExpenseChartsSkeleton } from "@/components/domain/dashboard/expense-charts";
 import { RecentExpenses, RecentExpensesSkeleton } from "@/components/domain/dashboard/recent-expenses";
-import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog";
 
 /**
  * Dashboard screen, per `docs/ui-ux-flow.md`'s "Dashboard" section
  * ("Total pendiente por cobrar", "Pagos del mes", "Facturas vencidas",
- * "Pagos recientes", "Clientes con mayor saldo", plus "Crear cliente"/
- * "Crear factura" quick actions) and
+ * "Pagos recientes", "Clientes con mayor saldo") and
  * `openspec/changes/expenses-dashboard-split/specs/dashboard/spec.md`'s
  * "Dashboard Screen Content and Actions" requirement, which splits the
  * screen into an **Ingresos** tab (unchanged content below) and an
@@ -40,13 +36,11 @@ import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog
  * directly (never a single combined summary fetch, which would defeat
  * independent streaming).
  *
- * "Crear cliente" links to the dedicated `/customers/new` page (Fase 4 Lane
- * D converted the customer create dialog into a page, matching
- * `app/(dashboard)/invoices/new/page.tsx`'s pattern); "Crear factura" links
- * to the dedicated `/invoices/new` page (a full line-item form, not a
- * dialog). Both stay in the page header as global/Ingresos-oriented actions;
- * "Crear gasto" (Egresos quick action) is tab-local — it lives inside the
- * Egresos `TabsPanel` (see design.md section 6), not the shared page header.
+ * Fase 5 Lane 4 made this screen view-only: the "Crear cliente"/"Crear
+ * factura" quick actions (previously in the header) and the Egresos tab's
+ * "Crear gasto" trigger are gone — creating customers, invoices, and
+ * expenses now happens on their own dedicated pages (`/customers/new`,
+ * `/invoices/new`, `/egresos`). The header keeps ONLY the "Exportar" action.
  *
  * "Exportar" exports the FULL dashboard (both tabs, all sections, no
  * filters), per `openspec/changes/dashboard-excel-export/design.md`. It is a
@@ -70,17 +64,6 @@ export default function DashboardPage() {
         </div>
         <div className="grid grid-cols-1 gap-2 sm:flex">
           <DashboardExportMenu />
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            nativeButton={false}
-            render={<Link href="/customers/new" />}
-          >
-            Crear cliente
-          </Button>
-          <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/invoices/new" />}>
-            Crear factura
-          </Button>
         </div>
       </div>
 
@@ -120,10 +103,6 @@ export default function DashboardPage() {
             `false`, which would unmount this panel's server-streamed
             subtree (and re-fetch it) whenever the Ingresos tab is active. */}
         <TabsPanel value="egresos" keepMounted>
-          <div className="flex items-center justify-end">
-            <ExpenseFormDialog trigger={<Button>Crear gasto</Button>} />
-          </div>
-
           <Suspense fallback={<ExpenseKpiCardsSkeleton />}>
             <ExpenseKpiCards />
           </Suspense>

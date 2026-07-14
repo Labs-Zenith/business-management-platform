@@ -1,7 +1,11 @@
 /**
  * Shared nav link definitions for the `(dashboard)` route group's shell
  * (`app/(dashboard)/layout.tsx`), per `docs/ui-ux-flow.md`'s "Navegacion
- * principal" section: Dashboard, Clientes, Facturas, Pagos, Nómina, Negocio.
+ * principal" section: Dashboard, Clientes, Facturas, Pagos, Egresos, Nómina,
+ * Inventario. Fase 5 Lane 4 removed the "Negocio" item (`/settings`) — the
+ * sidebar's business switcher now provides Configuración/Editar perfil
+ * access instead — and added "Egresos" (`/egresos`, a dedicated expense
+ * management page) next to the other financial items.
  *
  * A single source of truth used by both the desktop sidebar and the mobile
  * nav drawer (`mobile-nav-sheet.tsx`, Fase 4 Lane C — replaces the removed
@@ -36,7 +40,7 @@
  * now single-sourced here alongside `NAV_ITEMS`/`navItemsForRole`.
  */
 
-import { Banknote, CreditCard, FileText, LayoutDashboard, Package, Settings, Users, type LucideIcon } from "lucide-react";
+import { Banknote, CreditCard, FileText, LayoutDashboard, Package, Receipt, Users, type LucideIcon } from "lucide-react";
 import { can, type Capability } from "@/lib/services/permissions";
 import type { Role } from "@/lib/services/ports";
 
@@ -52,9 +56,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/customers", label: "Clientes", icon: Users },
   { href: "/invoices", label: "Facturas", icon: FileText },
   { href: "/payments", label: "Pagos", icon: CreditCard },
+  { href: "/egresos", label: "Egresos", icon: Receipt },
   { href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
   { href: "/inventario", label: "Inventario", icon: Package },
-  { href: "/settings", label: "Negocio", icon: Settings },
 ];
 
 /** Filters `NAV_ITEMS` down to those `role` may see (deny-by-default, via `can()`). */
