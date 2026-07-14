@@ -74,3 +74,57 @@ describe("db businessRepo.listMembershipsForUser", () => {
     expect(memberships).toEqual([]);
   });
 });
+
+describe("db businessRepo.update", () => {
+  beforeEach(() => {
+    mockSql.mockReset();
+  });
+
+  const EXISTING_ROW = {
+    id: BUSINESS_ID,
+    name: "Negocio Demo",
+    email: "contacto@negociodemo.test",
+    phone: "3000000000",
+    address: "Calle 10 # 20-30, Bogota",
+    currency: "COP",
+    created_at: "2024-01-01T00:00:00.000Z",
+    updated_at: "2024-01-01T00:00:00.000Z",
+  };
+
+  const UPDATED_ROW = {
+    ...EXISTING_ROW,
+    name: "Negocio Renombrado",
+    updated_at: "2024-06-01T00:00:00.000Z",
+  };
+
+  it("issues an UPDATE ... WHERE id = ... RETURNING * and maps the returned row", async () => {
+    mockSql.mockResolvedValueOnce([UPDATED_ROW]); // UPDATE ... RETURNING *
+
+    const updated = await businessRepo.update(BUSINESS_ID, { name: "Negocio Renombrado" });
+
+    expect(updated).toEqual({
+      id: BUSINESS_ID,
+      name: "Negocio Renombrado",
+      email: "contacto@negociodemo.test",
+      phone: "3000000000",
+      address: "Calle 10 # 20-30, Bogota",
+      currency: "COP",
+      createdAt: "2024-01-01T00:00:00.000Z",
+      updatedAt: "2024-06-01T00:00:00.000Z",
+    });
+
+    const [strings] = mockSql.mock.calls[0]!;
+    const queryText = Array.from(strings as unknown as string[]).join("");
+    expect(queryText).toContain("UPDATE businesses");
+    expect(queryText).toContain("WHERE id =");
+    expect(queryText).toContain("RETURNING *");
+  });
+
+  it("returns null when the UPDATE affects no row (id not found)", async () => {
+    mockSql.mockResolvedValueOnce([]); // UPDATE ... RETURNING * -> no matching row
+
+    const updated = await businessRepo.update("10000000-0000-4000-8000-00000000dead", { name: "No existe" });
+
+    expect(updated).toBeNull();
+  });
+});

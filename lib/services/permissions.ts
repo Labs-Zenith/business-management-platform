@@ -8,12 +8,17 @@ import type { Role } from "./ports";
  * is a WIDGET-level gate at the call site (plain `can()`), NOT a page-level
  * `requireCapabilityOrNotFound` guard like `viewPayroll`'s Nomina page: the
  * invoice detail page itself must stay reachable for workers.
+ * `editBusinessProfile` gates `PATCH /api/business` (business name/contact/
+ * currency editing) — the security review found this mutation had NO role
+ * gate, letting any member (including `worker`) edit it; this closes that
+ * gap the same way `viewAuditLog` closed the movements-panel gap.
  */
-export type Capability = "viewPayroll" | "viewAuditLog";
+export type Capability = "viewPayroll" | "viewAuditLog" | "editBusinessProfile";
 
 const CAPABILITY_ROLES: Record<Capability, readonly Role[]> = {
   viewPayroll: ["admin"],
   viewAuditLog: ["admin"],
+  editBusinessProfile: ["admin"],
 };
 
 /** Deny-by-default: any capability not present in `CAPABILITY_ROLES` returns `false`. */
@@ -27,4 +32,8 @@ export function canViewPayroll(role: Role): boolean {
 
 export function canViewAuditLog(role: Role): boolean {
   return can(role, "viewAuditLog");
+}
+
+export function canEditBusinessProfile(role: Role): boolean {
+  return can(role, "editBusinessProfile");
 }

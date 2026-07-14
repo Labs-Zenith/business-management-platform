@@ -1,4 +1,4 @@
-import type { Business, BusinessMembership, BusinessRepository, Role } from "@/lib/services/ports";
+import type { Business, BusinessMembership, BusinessRepository, BusinessUpdate, Role } from "@/lib/services/ports";
 import { sql } from "./client";
 
 type BusinessRow = {
@@ -62,5 +62,30 @@ export const businessRepo: BusinessRepository = {
       ORDER BY p.created_at ASC
     `) as unknown as MembershipRow[];
     return rows.map(toMembership);
+  },
+
+  /**
+   * Single `UPDATE ... WHERE id = ... RETURNING *` statement — unlike
+   * `customer-repo.ts#update` (which fetches first to verify the customer's
+   * `business_id` matches the caller's, since a customer id could belong to
+   * a different business), a business's own `id` IS the scoping value
+   * itself: there is no separate ownership check to make.
+   * `COALESCE(${...}, column)` leaves any field the caller didn't include
+   * (`undefined` -> `null` param binding is never sent for those; instead we
+   * pass the existing sentinel `null` through COALESCE) untouched.
+   */
+  async update(businessId: string, data: BusinessUpdate): Promise<Business | null> {
+    const rows = (await sql`
+      UPDATE businesses SET
+        name = COALESCE(${data.name ?? null}, name),
+        phone = COALESCE(${data.phone ?? null}, phone),
+        email = COALESCE(${data.email ?? null}, email),
+        address = COALESCE(${data.address ?? null}, address),
+        currency = COALESCE(${data.currency ?? null}, currency),
+        updated_at = now()
+      WHERE id = ${businessId}
+      RETURNING *
+    `) as unknown as BusinessRow[];
+    return rows[0] ? toBusiness(rows[0]) : null;
   },
 };

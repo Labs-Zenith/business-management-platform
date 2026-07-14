@@ -74,10 +74,20 @@ export type BusinessMembership = {
   role: Role;
 };
 
+export type BusinessUpdate = {
+  name?: string;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  currency?: string;
+};
+
 export interface BusinessRepository {
   getById(businessId: string): Promise<Business | null>;
   /** Memberships for a user, ordered by profile `created_at` ASC (index 0 = default business). */
   listMembershipsForUser(userId: string): Promise<BusinessMembership[]>;
+  /** Scoped by `businessId`; returns `null` if missing (never leaked, matches `CustomerRepository.update`). */
+  update(businessId: string, data: BusinessUpdate): Promise<Business | null>;
 }
 
 // ---------------------------------------------------------------------------

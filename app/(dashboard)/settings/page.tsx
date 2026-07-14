@@ -1,6 +1,7 @@
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getBusinessProfile } from "@/lib/services/business-service";
+import { canEditBusinessProfile } from "@/lib/services/permissions";
 import {
   Card,
   CardContent,
@@ -8,47 +9,49 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import BusinessProfileForm from "@/components/domain/settings/business-profile-form";
 
 /**
- * Negocio / ajustes screen, per `docs/ui-ux-flow.md` and
- * `openspec/changes/mocked-mvp-scaffold/specs/business-profile/spec.md`.
+ * Negocio / ajustes screen, per `docs/ui-ux-flow.md`,
+ * `openspec/specs/business-profile/spec.md`, and
+ * `docs/business-rules.md`'s "Negocios (Perfil y Cambio de Negocio)" section.
  *
- * Read-only for this change: no form, no PATCH endpoint exists — editing is
- * explicitly deferred. `requireSessionOrRedirect()` runs before any data fetch
- * (defense in depth alongside `middleware.ts`'s route guard on `/settings`);
- * an unauthenticated request never reaches `getBusinessProfile`.
+ * Editable (Fase 5 Lane 2 — was read-only), now admin-only (security review
+ * found `PATCH /api/business` had no role gate): this Server Component still
+ * fetches the current profile server-side via `getBusinessProfile` (same
+ * scoping as before), then hands it to the client `BusinessProfileForm`
+ * along with `canEdit`, computed from `canEditBusinessProfile(session.role)`.
+ * The form PATCHes `/api/business` on submit for admins; non-admins get a
+ * read-only rendering (the authoritative gate is
+ * `updateBusinessProfile`'s server-side check — this is UX, not security).
+ * `requireSessionOrRedirect()` runs before any data fetch (defense in depth
+ * alongside `middleware.ts`'s route guard on `/settings`); an unauthenticated
+ * request never reaches `getBusinessProfile`.
  */
 export default async function SettingsPage() {
   await loadStoreFromCookie();
   const session = await requireSessionOrRedirect();
   const business = await getBusinessProfile(session);
-
-  const fields = [
-    { label: "Nombre", value: business.name },
-    { label: "Telefono", value: business.phone ?? "-" },
-    { label: "Email", value: business.email ?? "-" },
-    { label: "Direccion", value: business.address ?? "-" },
-    { label: "Moneda", value: business.currency },
-  ];
+  const canEdit = canEditBusinessProfile(session.role);
 
   return (
     <div className="flex flex-1 flex-col p-4">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Negocio</CardTitle>
-          <CardDescription>
-            Datos basicos de tu negocio. Esta version es de solo lectura.
-          </CardDescription>
+          <CardDescription>Datos basicos de tu negocio.</CardDescription>
         </CardHeader>
         <CardContent>
-          <dl className="flex flex-col gap-4">
-            {fields.map((field) => (
-              <div key={field.label} className="flex flex-col gap-1">
-                <dt className="text-sm text-muted-foreground">{field.label}</dt>
-                <dd className="text-sm font-medium">{field.value}</dd>
-              </div>
-            ))}
-          </dl>
+          <BusinessProfileForm
+            business={{
+              name: business.name,
+              phone: business.phone,
+              email: business.email,
+              address: business.address,
+              currency: business.currency,
+            }}
+            canEdit={canEdit}
+          />
         </CardContent>
       </Card>
     </div>

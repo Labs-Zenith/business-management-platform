@@ -43,12 +43,12 @@ Las convenciones técnicas transversales (dinero en centavos enteros, fechas en 
 
 ## 4. Negocios (Perfil y Cambio de Negocio)
 
-### Perfil del negocio (solo lectura)
+### Perfil del negocio (editable)
 
 - **4.1** La pantalla "Negocio" muestra únicamente el registro del negocio cuyo `id` coincide con el `business_id` de la sesión: nombre, teléfono, correo, dirección y moneda. Nunca se muestran datos de otro negocio.
-- **4.2** Cualquier intento de acceder al perfil de un negocio distinto al de la sesión responde como si el recurso no existiera (sin fuga de datos), sin importar el id solicitado.
-- **4.3** El perfil de negocio es de **solo lectura**: no existe `PATCH /api/business` ni formulario de edición. Ninguna ruta de cliente o servidor acepta una escritura sobre el perfil del negocio.
-- **4.4** La moneda inicial de un negocio es COP (peso colombiano).
+- **4.2** Cualquier intento de acceder o editar el perfil de un negocio distinto al de la sesión responde como si el recurso no existiera (sin fuga de datos), sin importar el id solicitado.
+- **4.3** El perfil de negocio es **editable** (nombre, teléfono, correo, dirección y moneda) vía `PATCH /api/business` y un formulario en la pantalla "Negocio". El `business_id` objetivo de la actualización siempre se resuelve desde la sesión — nunca desde el cliente. El esquema de validación (`lib/schemas/business.ts`) es estricto: rechaza cualquier campo no editable (`business_id`, `id`, campos de auditoría). La edición está restringida a la capacidad `editBusinessProfile`, que solo obtiene `admin` — `worker` ve el perfil en modo solo lectura y `PATCH /api/business` responde `403 FORBIDDEN` a una sesión sin la capacidad (control autoritativo en `updateBusinessProfile`, no solo en la UI).
+- **4.4** La moneda inicial de un negocio es COP (peso colombiano); es editable a cualquier código de 3 letras.
 - **4.5** La tabla `businesses` tiene una columna `enabled_features` (arreglo de claves de funcionalidad, por defecto vacío) para que cambios futuros decidan qué capacidades opcionales están habilitadas por negocio. Actualmente la columna existe pero ninguna capacidad la consulta todavía.
 - **4.6** Un negocio puede tener **múltiples miembros** (por ejemplo un `admin` y un `worker`). Todos ven el mismo registro de negocio, siempre resuelto por `session.businessId`.
 

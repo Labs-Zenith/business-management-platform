@@ -1,4 +1,4 @@
-import type { Business, BusinessMembership, BusinessRepository } from "@/lib/services/ports";
+import type { Business, BusinessMembership, BusinessRepository, BusinessUpdate } from "@/lib/services/ports";
 import { store as defaultStore, listProfilesForUser, type MockStore } from "./store";
 
 /**
@@ -33,6 +33,22 @@ export function createBusinessRepository(store: MockStore): BusinessRepository {
         memberships.push({ businessId: profile.businessId, businessName: business.name, role: profile.role });
       }
       return memberships;
+    },
+
+    async update(businessId: string, data: BusinessUpdate): Promise<Business | null> {
+      await simulateLatency();
+      const existing = store.businesses.get(businessId);
+      if (!existing) {
+        return null;
+      }
+
+      const updated: Business = {
+        ...existing,
+        ...data,
+        updatedAt: new Date().toISOString(),
+      };
+      store.businesses.set(businessId, updated);
+      return updated;
     },
   };
 }

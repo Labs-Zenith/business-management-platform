@@ -47,3 +47,38 @@ describe("businessRepo.listMembershipsForUser", () => {
     expect(memberships.some((m) => m.businessName === "")).toBe(false);
   });
 });
+
+describe("businessRepo.update", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("applies a partial descriptive update and bumps updatedAt", async () => {
+    const before = store.businesses.get(BUSINESS_ID);
+    const previousUpdatedAt = before?.updatedAt;
+
+    const updated = await businessRepo.update(BUSINESS_ID, { name: "Negocio Renombrado", phone: "3001234567" });
+
+    expect(updated).not.toBeNull();
+    expect(updated?.name).toBe("Negocio Renombrado");
+    expect(updated?.phone).toBe("3001234567");
+    // Unrelated fields are preserved.
+    expect(updated?.email).toBe(before?.email);
+    expect(updated?.address).toBe(before?.address);
+    expect(updated?.currency).toBe(before?.currency);
+    expect(updated?.updatedAt).not.toBe(previousUpdatedAt);
+  });
+
+  it("applies a currency-only update", async () => {
+    const updated = await businessRepo.update(BUSINESS_ID, { currency: "USD" });
+
+    expect(updated?.currency).toBe("USD");
+    expect(store.businesses.get(BUSINESS_ID)?.currency).toBe("USD");
+  });
+
+  it("returns null for an id with no matching business record (never throws, never fabricates)", async () => {
+    const updated = await businessRepo.update("10000000-0000-4000-8000-00000000dead", { name: "No existe" });
+
+    expect(updated).toBeNull();
+  });
+});

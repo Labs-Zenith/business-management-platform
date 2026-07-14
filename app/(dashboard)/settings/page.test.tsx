@@ -5,6 +5,10 @@ import type { Business, Session } from "@/lib/services/ports";
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockGetBusinessProfile = vi.fn<(session: Session) => Promise<Business>>();
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
 vi.mock("@/lib/mock/cookie-persistence", () => ({
   loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
   saveStoreToCookie: vi.fn(),
@@ -27,6 +31,11 @@ const SESSION: Session = {
   role: "admin",
 };
 
+const WORKER_SESSION: Session = {
+  ...SESSION,
+  role: "worker",
+};
+
 const BUSINESS: Business = {
   id: SESSION.businessId,
   name: "Negocio Demo",
@@ -38,34 +47,45 @@ const BUSINESS: Business = {
   updatedAt: "2024-01-01T00:00:00.000Z",
 };
 
-describe("SettingsPage (Negocio, read-only)", () => {
+describe("SettingsPage (Negocio, editable — Fase 5 Lane 2)", () => {
   beforeEach(() => {
     mockRequireSessionOrRedirect.mockReset();
     mockGetBusinessProfile.mockReset();
   });
 
-  it("resolves the session first, then renders that session's business profile", async () => {
+  it("resolves the session first, then renders an editable form pre-filled with that session's business profile for an admin", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
     render(await SettingsPage());
 
     expect(mockGetBusinessProfile).toHaveBeenCalledWith(SESSION);
-    expect(screen.getByText(BUSINESS.name)).toBeInTheDocument();
-    expect(screen.getByText(BUSINESS.phone!)).toBeInTheDocument();
-    expect(screen.getByText(BUSINESS.email!)).toBeInTheDocument();
-    expect(screen.getByText(BUSINESS.address!)).toBeInTheDocument();
-    expect(screen.getByText(BUSINESS.currency)).toBeInTheDocument();
+    expect(screen.getByLabelText(/nombre/i)).toHaveValue(BUSINESS.name);
+    expect(screen.getByLabelText(/telefono/i)).toHaveValue(BUSINESS.phone);
+    expect(screen.getByLabelText(/^email/i)).toHaveValue(BUSINESS.email);
+    expect(screen.getByLabelText(/direccion/i)).toHaveValue(BUSINESS.address);
+    expect(screen.getByLabelText(/moneda/i)).toHaveValue(BUSINESS.currency);
   });
 
-  it("renders no edit affordance (buttons/inputs) — display-only per the business-profile spec", async () => {
+  it("renders an editable form with a save button for an admin — editing is no longer deferred (was read-only)", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
     render(await SettingsPage());
 
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);
+  });
+
+  it("renders a read-only profile with no inputs and no Save button for a worker session (no role gate was the security gap)", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(WORKER_SESSION);
+    mockGetBusinessProfile.mockResolvedValue(BUSINESS);
+
+    render(await SettingsPage());
+
+    expect(screen.getByText(BUSINESS.name)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /guardar/i })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("textbox").length).toBe(0);
   });
 
   it("redirects to /login instead of ever calling the business-service when there is no valid session (defense in depth)", async () => {
