@@ -169,15 +169,14 @@ async function buildDetail(invoice: Invoice): Promise<InvoiceDetail> {
  *     Statements 2..N-1 replace the line items (a guarded DELETE + one
  *     guarded `INSERT ... SELECT ... WHERE EXISTS(...)` per item). Statement
  *     N — the LAST statement — is the FRESH "not fully paid AND new total not
- *     below what's already paid" guarded header UPDATE. ALL of this runs
- *     inside the SAME `sql.transaction([...])`, so an edit's header and its
- *     items are replaced atomically. Because the transaction is
- *     non-interactive (every statement runs regardless of the others'
- *     results), EACH item statement carries the SAME compound guard the
- *     header UPDATE uses — so an edit against a fully-paid invoice, an edit
- *     whose new total would drop below the amount already paid, or a
- *     cross-business edit, is a total no-op, never a header committed with
- *     mismatched items.
+ *     below what's already paid" guarded header UPDATE. ALL of this runs as
+ *     sequential awaits inside the SAME `runTransaction` callback, so an
+ *     edit's header and its items are replaced atomically. Every statement
+ *     still runs regardless of the others' results, so EACH item statement
+ *     carries the SAME compound guard the header UPDATE uses — so an edit
+ *     against a fully-paid invoice, an edit whose new total would drop below
+ *     the amount already paid, or a cross-business edit, is a total no-op,
+ *     never a header committed with mismatched items.
  *   - The guard is a compound predicate, not a single `NOT EXISTS`: (a) the
  *     invoice's CURRENT balance (`total - paid`) must be `> 0` (not fully
  *     paid), AND (b) the submitted NEW `total` must be `>= paid` (the edit
@@ -267,9 +266,8 @@ export const invoiceRepo: InvoiceRepository = {
     // EVERY statement (item DELETE, each item INSERT, header UPDATE) is
     // guarded by the SAME compound condition — "belongs to this business AND
     // NOT fully paid (balance > 0) AND the new total is not below what's
-    // already paid" — and runs in ONE `sql.transaction([...])`. Because the
-    // transaction is non-interactive (statement N+1 cannot be skipped based on
-    // statement N's result), guarding only the header would let a
+    // already paid" — and runs as sequential awaits inside ONE
+    // `runTransaction` callback. Guarding only the header would let a
     // fully-paid or below-paid edit still wipe/replace items — so the DELETE
     // and every INSERT carry the guard too and become no-ops when it fails.
     // Net effect: header + items are replaced atomically, or nothing is
@@ -287,17 +285,20 @@ export const invoiceRepo: InvoiceRepository = {
     // evaluates against the SAME pre-edit total, so the set is genuinely
     // all-or-nothing. See the file-level doc comment's "CRITICAL ORDERING"
     // note for the full data-corruption scenario this prevents.
-    const queries = [
+    const { lockRows, updatedRows } = await runTransaction(async (tx) => {
       // Statement 1: acquire and HOLD the invoice row lock for the whole
       // transaction. Empty result -> NOT_FOUND (missing/cross-business),
       // returned as `null`, without leaking cross-business existence.
-      sql`SELECT id FROM invoices WHERE id = ${id} AND business_id = ${businessId} FOR UPDATE`,
+      const lockRows = (await tx`
+        SELECT id FROM invoices WHERE id = ${id} AND business_id = ${businessId} FOR UPDATE
+      `) as unknown as { id: string }[];
+
       // Statement 2: guarded wholesale item DELETE — a no-op unless the
       // invoice still belongs to this business AND passes the
       // not-fully-paid + new-total-not-below-paid guard, evaluated against
       // the invoice's CURRENT (pre-edit) total, since the header UPDATE has
       // not run yet.
-      sql`
+      await tx`
         DELETE FROM invoice_items
         WHERE invoice_id = ${id}
           AND EXISTS (
@@ -306,14 +307,16 @@ export const invoiceRepo: InvoiceRepository = {
               AND (i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)) > 0
               AND ${data.total} >= COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)
           )
-      `,
+      `;
+
       // Statements 3..N-1: one guarded INSERT per item, written as
       // `INSERT ... SELECT ... WHERE EXISTS(guard)` so an insert is a no-op
       // (zero rows) whenever the guard is false — never a partial re-insert
       // against a fully-paid, below-paid, or cross-business invoice. Same
-      // pre-edit-total guard as the DELETE above.
-      ...data.items.map(
-        (item) => sql`
+      // pre-edit-total guard as the DELETE above. Sequential awaits in a
+      // plain loop preserve the exact per-item order.
+      for (const item of data.items) {
+        await tx`
           INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total)
           SELECT gen_random_uuid(), ${id}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}
           WHERE EXISTS (
@@ -322,16 +325,17 @@ export const invoiceRepo: InvoiceRepository = {
               AND (i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)) > 0
               AND ${data.total} >= COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)
           )
-        `,
-      ),
+        `;
+      }
+
       // Statement N (LAST): fresh-snapshot compound-guarded header UPDATE (no
       // `FOR UPDATE` — statement 1 is the sole lock holder). The guard is:
       // (a) current balance (total - paid) > 0 (not fully paid), AND
       // (b) the submitted new total >= paid (never shrink below collected
       // money). Runs LAST so its own guard — and every item guard above —
       // all evaluate against the SAME pre-edit `invoices.total`; see the
-      // "ORDER IS SAFETY-CRITICAL" comment above this array.
-      sql`
+      // "ORDER IS SAFETY-CRITICAL" comment above this callback.
+      const updatedRows = (await tx`
         UPDATE invoices SET
           customer_id = ${data.customerId},
           issue_date = ${data.issueDate},
@@ -345,15 +349,10 @@ export const invoiceRepo: InvoiceRepository = {
           AND (invoices.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = invoices.id), 0)) > 0
           AND ${data.total} >= COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = invoices.id), 0)
         RETURNING *
-      `,
-    ];
+      `) as unknown as InvoiceRow[];
 
-    const results = await runTransaction<unknown[]>(queries);
-    const lockRows = results[0] as { id: string }[];
-    // Header UPDATE is now the LAST statement in the transaction (see the
-    // "ORDER IS SAFETY-CRITICAL" comment above) — index it from the end, not
-    // a fixed offset, so it stays correct regardless of item count.
-    const updatedRows = results[results.length - 1] as InvoiceRow[];
+      return { lockRows, updatedRows };
+    });
 
     if (lockRows.length === 0) {
       // Missing or cross-business: `null`, never leaked — matches

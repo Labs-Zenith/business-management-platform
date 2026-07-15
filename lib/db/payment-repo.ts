@@ -94,12 +94,16 @@ export const paymentRepo: PaymentRepository = {
   async createForInvoice(businessId: string, invoiceId: string, data: PaymentInput): Promise<InvoiceDetail> {
     // Two statements, ONE real transaction (see `client.ts`'s canonical note
     // and this file's doc comment). Shares the invoice row lock with
-    // `invoice-repo.ts#update`'s edit guard.
-    const queries = [
+    // `invoice-repo.ts#update`'s edit guard. Sequential awaits inside the
+    // `runTransaction` callback preserve the exact statement order.
+    const { lockRows, inserted } = await runTransaction(async (tx) => {
       // Statement 1: acquire and HOLD the invoice row lock for the whole
       // transaction. Its result is used ONLY to distinguish NOT_FOUND
       // (missing/cross-business) from the overpay rejection below.
-      sql`SELECT id, customer_id FROM invoices WHERE id = ${invoiceId} AND business_id = ${businessId} FOR UPDATE`,
+      const lockRows = (await tx`
+        SELECT id, customer_id FROM invoices WHERE id = ${invoiceId} AND business_id = ${businessId} FOR UPDATE
+      `) as unknown as { id: string; customer_id: string }[];
+
       // Statement 2: fresh-snapshot balance guard + conditional insert. Runs
       // AFTER statement 1 already holds the lock, so a concurrent edit's own
       // lock-acquisition (invoice-repo.ts#update's statement 1) blocks until
@@ -108,7 +112,7 @@ export const paymentRepo: PaymentRepository = {
       // No `FOR UPDATE` needed here: statement 1 is the sole lock holder;
       // re-locking would only invite the EvalPlanQual stale-subquery hazard
       // the two-statement split avoids (see the doc comment above).
-      sql`
+      const inserted = (await tx`
         WITH bal AS (
           SELECT i.id, i.customer_id,
             i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0) AS balance
@@ -120,12 +124,10 @@ export const paymentRepo: PaymentRepository = {
         FROM bal
         WHERE ${data.amount} <= bal.balance
         RETURNING id
-      `,
-    ];
+      `) as unknown as { id: string }[];
 
-    const [lockRows, inserted] = await runTransaction<[{ id: string; customer_id: string }[], { id: string }[]]>(
-      queries,
-    );
+      return { lockRows, inserted };
+    });
 
     if (lockRows.length === 0) {
       throw new ApiError("NOT_FOUND", "Invoice not found");

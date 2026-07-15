@@ -46,7 +46,12 @@ registry.registerComponent("securitySchemes", "SessionCookie", {
   description:
     "httpOnly session cookie set by POST /api/auth/login (see lib/mock/auth-adapter.ts). " +
     "Every private endpoint resolves business_id from this session server-side " +
-    "(lib/session.ts#requireSession) — the client never sends business_id.",
+    "(lib/session.ts#requireSession) — the client never sends business_id. " +
+    "NOTE: when Supabase Auth is configured (see lib/supabase/config.ts / " +
+    "lib/supabase/auth-adapter.ts), the session is instead carried by " +
+    "Supabase's own auth cookies (managed by @supabase/ssr) plus a small " +
+    "httpOnly active_business_id cookie; the 'session' cookie name/shape " +
+    "documented here applies only to the mock adapter path.",
 });
 
 /** Applied to every private path's `registerPath({ security })`. */

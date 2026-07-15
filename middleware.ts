@@ -1,10 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { updateSession } from "@/lib/supabase/middleware";
 
 /**
  * Must match the cookie name set by `lib/mock/auth-adapter.ts`. Duplicated
  * here (rather than imported) so `middleware.ts` never imports anything
  * under `lib/mock/**` — see the ports-and-adapters boundary comment at the
- * top of `lib/services/ports.ts`.
+ * top of `lib/services/ports.ts`. Only used in mock mode (`isSupabaseConfigured`
+ * false); Supabase mode below never reads this constant, since Supabase's
+ * own auth cookies (managed by `@supabase/ssr`) are the source of truth
+ * there.
  */
 const SESSION_COOKIE_NAME = "session";
 
@@ -50,8 +55,23 @@ function isProtectedPath(pathname: string): boolean {
   );
 }
 
-export function middleware(request: NextRequest): NextResponse {
+export async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
+
+  if (isSupabaseConfigured) {
+    // Always refresh the Supabase auth cookie first (even on unprotected
+    // paths) — token refreshes must be written back on every request per
+    // the `@supabase/ssr` docs, or a refresh completed after the response
+    // is committed is lost.
+    const { response, user } = await updateSession(request);
+
+    if (isProtectedPath(pathname) && !user) {
+      const loginUrl = new URL("/login", request.url);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    return response;
+  }
 
   if (!isProtectedPath(pathname)) {
     return NextResponse.next();

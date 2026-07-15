@@ -11,26 +11,26 @@ function buildRequest(path: string, cookieValue?: string): NextRequest {
 }
 
 describe("middleware", () => {
-  it("redirects unauthenticated requests to a protected dashboard route to /login", () => {
-    const response = middleware(buildRequest("/dashboard"));
+  it("redirects unauthenticated requests to a protected dashboard route to /login", async () => {
+    const response = await middleware(buildRequest("/dashboard"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("redirects unauthenticated requests to a protected (print) invoice receipt route to /login", () => {
-    const response = middleware(buildRequest("/invoices/some-id/receipt"));
+  it("redirects unauthenticated requests to a protected (print) invoice receipt route to /login", async () => {
+    const response = await middleware(buildRequest("/invoices/some-id/receipt"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("redirects unauthenticated requests to a protected (print) payment receipt route to /login", () => {
-    const response = middleware(buildRequest("/payments/some-id/receipt"));
+  it("redirects unauthenticated requests to a protected (print) payment receipt route to /login", async () => {
+    const response = await middleware(buildRequest("/payments/some-id/receipt"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("redirects unauthenticated requests to /api/docs to /login", () => {
-    const response = middleware(buildRequest("/api/docs"));
+  it("redirects unauthenticated requests to /api/docs to /login", async () => {
+    const response = await middleware(buildRequest("/api/docs"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
@@ -42,27 +42,27 @@ describe("middleware", () => {
    * capability check lives at the page (`requireCapabilityOrNotFound`) and
    * route (`requireCapability`) layers.
    */
-  it("redirects unauthenticated requests to the gated /nomina page to /login", () => {
-    const response = middleware(buildRequest("/nomina"));
+  it("redirects unauthenticated requests to the gated /nomina page to /login", async () => {
+    const response = await middleware(buildRequest("/nomina"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("redirects unauthenticated requests to /api/employees to /login", () => {
-    const response = middleware(buildRequest("/api/employees"));
+  it("redirects unauthenticated requests to /api/employees to /login", async () => {
+    const response = await middleware(buildRequest("/api/employees"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("redirects unauthenticated requests to /api/payroll-payments to /login", () => {
-    const response = middleware(buildRequest("/api/payroll-payments"));
+  it("redirects unauthenticated requests to /api/payroll-payments to /login", async () => {
+    const response = await middleware(buildRequest("/api/payroll-payments"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("allows a request with a session cookie through to /nomina, /api/employees, and /api/payroll-payments (presence-only — role is never checked here)", () => {
+  it("allows a request with a session cookie through to /nomina, /api/employees, and /api/payroll-payments (presence-only — role is never checked here)", async () => {
     for (const path of ["/nomina", "/api/employees", "/api/payroll-payments"]) {
-      const response = middleware(buildRequest(path, "opaque-token-value"));
+      const response = await middleware(buildRequest(path, "opaque-token-value"));
       expect(response.headers.get("location")).toBeNull();
     }
   });
@@ -74,45 +74,45 @@ describe("middleware", () => {
    * check here OR at the page/route layer — any authenticated session may
    * proceed.
    */
-  it("redirects unauthenticated requests to the /inventario page to /login", () => {
-    const response = middleware(buildRequest("/inventario"));
+  it("redirects unauthenticated requests to the /inventario page to /login", async () => {
+    const response = await middleware(buildRequest("/inventario"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("redirects unauthenticated requests to /api/products to /login", () => {
-    const response = middleware(buildRequest("/api/products"));
+  it("redirects unauthenticated requests to /api/products to /login", async () => {
+    const response = await middleware(buildRequest("/api/products"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("redirects unauthenticated requests to /api/inventory-movements to /login", () => {
-    const response = middleware(buildRequest("/api/inventory-movements"));
+  it("redirects unauthenticated requests to /api/inventory-movements to /login", async () => {
+    const response = await middleware(buildRequest("/api/inventory-movements"));
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
 
-  it("allows a request with a session cookie through to /inventario, /api/products, and /api/inventory-movements", () => {
+  it("allows a request with a session cookie through to /inventario, /api/products, and /api/inventory-movements", async () => {
     for (const path of ["/inventario", "/api/products", "/api/inventory-movements"]) {
-      const response = middleware(buildRequest(path, "opaque-token-value"));
+      const response = await middleware(buildRequest(path, "opaque-token-value"));
       expect(response.headers.get("location")).toBeNull();
     }
   });
 
-  it("allows requests to a protected route through when a session cookie is present", () => {
-    const response = middleware(buildRequest("/dashboard", "opaque-token-value"));
+  it("allows requests to a protected route through when a session cookie is present", async () => {
+    const response = await middleware(buildRequest("/dashboard", "opaque-token-value"));
 
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("does not redirect requests to public paths like /login", () => {
-    const response = middleware(buildRequest("/login"));
+  it("does not redirect requests to public paths like /login", async () => {
+    const response = await middleware(buildRequest("/login"));
 
     expect(response.headers.get("location")).toBeNull();
   });
 
-  it("does not redirect requests to public auth API routes", () => {
-    const response = middleware(buildRequest("/api/auth/login"));
+  it("does not redirect requests to public auth API routes", async () => {
+    const response = await middleware(buildRequest("/api/auth/login"));
 
     expect(response.headers.get("location")).toBeNull();
   });

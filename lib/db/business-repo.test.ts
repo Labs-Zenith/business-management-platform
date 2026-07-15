@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * `lib/db/client.ts`'s exported `sql` is a Neon tagged-template function
- * (`neon(connectionString)`). Tagged-template syntax (`` sql`...${x}...` ``)
- * compiles to a plain function call `sql(stringsArray, x, ...)`, so mocking
- * `sql` as a `vi.fn()` and controlling its resolved value is sufficient —
- * no real Postgres connection is ever made. Mirrors the mock's own
+ * `lib/db/client.ts`'s exported `sql` is a postgres.js tagged-template
+ * function (`postgres(connectionString, { prepare: false })`). Tagged-
+ * template syntax (`` sql`...${x}...` ``) compiles to a plain function call
+ * `sql(stringsArray, x, ...)`, so mocking `sql` as a `vi.fn()` and
+ * controlling its resolved value is sufficient — no real Postgres connection
+ * is ever made. Mirrors the mock's own
  * `lib/mock/business-repo.test.ts` in scope (memberships shape, ordering,
  * empty-result case), adapted for the Postgres row shape
  * (`business_id`/`business_name`/`role`, per `MembershipRow` in

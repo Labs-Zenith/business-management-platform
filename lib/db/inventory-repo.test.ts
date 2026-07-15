@@ -2,31 +2,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Mirrors `lib/db/payroll-repo.test.ts`'s mock shape (a `vi.fn()` `sql` tag
- * PLUS a mocked `sql.transaction`), because `create` now runs a TWO-STATEMENT
- * `sql.transaction([...])` — statement 1 `SELECT … FOR UPDATE` locks the
+ * PLUS a mocked `runTransaction`), because `create` now runs a TWO-STATEMENT
+ * body inside `runTransaction(async (tx) => {...})` (postgres.js's
+ * interactive `sql.begin`) — statement 1 `SELECT … FOR UPDATE` locks the
  * product row, statement 2 is the SUM guard + conditional INSERT (see the
  * repo's file-level doc comment for why the single-statement CTE was
- * race-buggy). The critical assertions are that `create` (a) hands BOTH
- * statements to `sql.transaction([...])` in ONE call, in lock-then-insert
- * order, with the correct text and interpolated values for each, (b) surfaces
- * an empty statement-1 result as NOT_FOUND, and (c) surfaces a non-empty
+ * race-buggy). The critical assertions are that `create` (a) runs BOTH
+ * statements sequentially against the SAME `tx`, in lock-then-insert order,
+ * with the correct text and interpolated values for each, (b) surfaces an
+ * empty statement-1 result as NOT_FOUND, and (c) surfaces a non-empty
  * statement-1 result with an empty statement-2 `RETURNING` as the
  * floor-at-zero `VALIDATION_ERROR`, not a fabricated success.
  */
-const { mockSql } = vi.hoisted(() => {
-  const fn = vi.fn();
-  const withTransaction = fn as typeof fn & { transaction: ReturnType<typeof vi.fn> };
-  withTransaction.transaction = vi.fn();
-  return { mockSql: withTransaction };
+const { mockSql, mockTx, mockRunTransaction } = vi.hoisted(() => {
+  const sqlFn = vi.fn();
+  const txFn = vi.fn();
+  const runTransactionFn = vi.fn();
+  return { mockSql: sqlFn, mockTx: txFn, mockRunTransaction: runTransactionFn };
 });
 
 vi.mock("./client", () => ({
   sql: mockSql,
   isDbConfigured: true,
-  // Shared helper (Fix 6) delegates to the mocked `sql.transaction` so the
-  // existing `mockSql.transaction` assertions keep working unchanged.
-  runTransaction: (queries: unknown[]) =>
-    (mockSql.transaction as unknown as (q: unknown[]) => Promise<unknown[]>)(queries),
+  runTransaction: mockRunTransaction,
 }));
 
 const { inventoryRepo } = await import("./inventory-repo");
@@ -51,37 +49,36 @@ function movementRow(overrides: Partial<Record<string, unknown>> = {}) {
 describe("db inventoryRepo.create — floor-at-zero guard (safety-critical)", () => {
   beforeEach(() => {
     mockSql.mockReset();
-    mockSql.transaction.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
+    mockRunTransaction.mockImplementation((fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx));
   });
 
   it("throws NOT_FOUND when statement 1 (FOR UPDATE lock) matches no product row, and inserts nothing", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
     // Statement 1 empty (product not found for this business) => statement 2
     // also inserts nothing (its CTE is scoped to the same id + business_id).
-    mockSql.transaction.mockResolvedValueOnce([[], []]);
+    mockTx.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     await expect(
       inventoryRepo.create(BUSINESS_ID, { productId: PRODUCT_ID, type: "in", quantity: 5 }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
 
-    // The two statements are still handed to ONE transaction (the empty
-    // transaction commits with zero mutation); NOT_FOUND is decided from
-    // statement 1's empty result, not a separate pre-check round trip.
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
-    const [queriesArg] = mockSql.transaction.mock.calls[0]!;
-    expect(queriesArg).toEqual(["LOCK_QUERY", "INSERT_QUERY"]);
+    // Both statements are still run inside ONE transaction callback (the
+    // empty transaction commits with zero mutation); NOT_FOUND is decided
+    // from statement 1's empty result, not a separate pre-check round trip.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(2);
   });
 
-  it("hands BOTH statements to sql.transaction in one call — statement 1 SELECT … FOR UPDATE (lock) then statement 2 SUM guard + INSERT — with correct text and interpolated values", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[{ id: PRODUCT_ID }], [movementRow({ type: "out", quantity: 5 })]]);
+  it("runs BOTH statements sequentially inside ONE runTransaction callback — statement 1 SELECT … FOR UPDATE (lock) then statement 2 SUM guard + INSERT — with correct text and interpolated values", async () => {
+    mockTx.mockResolvedValueOnce([{ id: PRODUCT_ID }]).mockResolvedValueOnce([movementRow({ type: "out", quantity: 5 })]);
 
     const movement = await inventoryRepo.create(BUSINESS_ID, { productId: PRODUCT_ID, type: "out", quantity: 5 });
 
     expect(movement.id).toBe("a0000000-0000-4000-8000-000000000001");
 
     // Statement 1: locks the product row, scoped to id + business_id.
-    const [lockStrings, ...lockValues] = mockSql.mock.calls[0]!;
+    const [lockStrings, ...lockValues] = mockTx.mock.calls[0]!;
     const lockText = Array.from(lockStrings as unknown as string[]).join("");
     expect(lockText).toContain("SELECT id FROM products");
     expect(lockText).toContain("FOR UPDATE");
@@ -91,7 +88,7 @@ describe("db inventoryRepo.create — floor-at-zero guard (safety-critical)", ()
     // Statement 2: SUM guard + conditional INSERT, and — critically — it does
     // NOT re-take a `FOR UPDATE` (statement 1 is the sole lock holder; see the
     // repo doc comment on the EvalPlanQual stale-subquery hazard).
-    const [insStrings, ...insValues] = mockSql.mock.calls[1]!;
+    const [insStrings, ...insValues] = mockTx.mock.calls[1]!;
     const insText = Array.from(insStrings as unknown as string[]).join("");
     expect(insText).toContain("INSERT INTO inventory_movements");
     expect(insText).toContain("RETURNING");
@@ -104,19 +101,17 @@ describe("db inventoryRepo.create — floor-at-zero guard (safety-critical)", ()
     // again (floor-at-zero WHERE).
     expect(insValues).toEqual([PRODUCT_ID, BUSINESS_ID, BUSINESS_ID, "out", 5, null, "out", 5]);
 
-    // Exactly ONE transaction, containing exactly those two query objects in
-    // lock-then-insert order — proving both run in one atomic transaction, not
-    // as two separate un-transacted round trips.
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
-    const [queriesArg] = mockSql.transaction.mock.calls[0]!;
-    expect(queriesArg).toEqual(["LOCK_QUERY", "INSERT_QUERY"]);
+    // Exactly ONE transaction callback, running exactly those two statements
+    // in lock-then-insert order — proving both run in one atomic
+    // transaction, not as two separate un-transacted round trips.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(2);
   });
 
   it("throws VALIDATION_ERROR (not NOT_FOUND) when statement 1 found the product but statement 2's RETURNING is empty (floor-at-zero rejected the insert, zero mutation)", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
     // Product exists (statement 1 non-empty) but the out-movement doesn't fit:
     // statement 2's WHERE excluded the row -> empty RETURNING.
-    mockSql.transaction.mockResolvedValueOnce([[{ id: PRODUCT_ID }], []]);
+    mockTx.mockResolvedValueOnce([{ id: PRODUCT_ID }]).mockResolvedValueOnce([]);
 
     await expect(
       inventoryRepo.create(BUSINESS_ID, { productId: PRODUCT_ID, type: "out", quantity: 999 }),
@@ -124,12 +119,11 @@ describe("db inventoryRepo.create — floor-at-zero guard (safety-critical)", ()
 
     // Exactly ONE transaction — no stray extra write attempt after the empty
     // RETURNING, and no silent retry.
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
   });
 
   it("stores note as null when omitted", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[{ id: PRODUCT_ID }], [movementRow({ type: "in", note: null })]]);
+    mockTx.mockResolvedValueOnce([{ id: PRODUCT_ID }]).mockResolvedValueOnce([movementRow({ type: "in", note: null })]);
 
     const movement = await inventoryRepo.create(BUSINESS_ID, { productId: PRODUCT_ID, type: "in", quantity: 5 });
 
@@ -137,24 +131,22 @@ describe("db inventoryRepo.create — floor-at-zero guard (safety-critical)", ()
   });
 
   it("scopes the lock statement to businessId, rejecting a product from a different business as NOT_FOUND", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
     // AND business_id = businessId excludes the other-business row from BOTH
     // statements.
-    mockSql.transaction.mockResolvedValueOnce([[], []]);
+    mockTx.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     await expect(
       inventoryRepo.create(OTHER_BUSINESS_ID, { productId: PRODUCT_ID, type: "in", quantity: 1 }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
 
-    const [lockStrings, ...lockValues] = mockSql.mock.calls[0]!;
+    const [lockStrings, ...lockValues] = mockTx.mock.calls[0]!;
     const lockText = Array.from(lockStrings as unknown as string[]).join("");
     expect(lockText).toContain("business_id");
     expect(lockValues).toEqual([PRODUCT_ID, OTHER_BUSINESS_ID]);
   });
 
-  it("propagates the error and fabricates nothing when sql.transaction rejects", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
+  it("propagates the error and fabricates nothing when the transaction rejects", async () => {
+    mockRunTransaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
 
     await expect(
       inventoryRepo.create(BUSINESS_ID, { productId: PRODUCT_ID, type: "out", quantity: 5 }),
@@ -165,7 +157,8 @@ describe("db inventoryRepo.create — floor-at-zero guard (safety-critical)", ()
 describe("db inventoryRepo.getById/list — business_id scoping", () => {
   beforeEach(() => {
     mockSql.mockReset();
-    mockSql.transaction.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
   });
 
   it("returns the movement with the joined product name when it belongs to the requesting business", async () => {

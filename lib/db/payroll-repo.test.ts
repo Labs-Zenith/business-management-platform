@@ -2,29 +2,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Mirrors `lib/db/expense-repo.test.ts`'s mocking pattern, extended with a
- * mocked `sql.transaction` — the codebase's FIRST true multi-statement
- * transaction. The critical assertions here are that `create` (a) builds
- * the payroll_payments INSERT and the expenses INSERT with the correct text
- * and interpolated values (not two swapped/duplicated/wrong queries), (b)
- * hands BOTH of those exact query objects to `sql.transaction([...])`
- * together in ONE call — proving the two inserts are NOT executed as two
- * separate, un-transacted `sql` calls — and (c) propagates a rejected
- * transaction cleanly, with nothing fabricated or partially persisted.
+ * mocked `runTransaction` — the codebase's FIRST true multi-statement
+ * transaction, now postgres.js's interactive `sql.begin(async (tx) => {...})`
+ * via the shared `runTransaction` helper. The critical assertions here are
+ * that `create` (a) builds the payroll_payments INSERT and the expenses
+ * INSERT with the correct text and interpolated values (not two
+ * swapped/duplicated/wrong queries), (b) runs BOTH of those statements
+ * sequentially against the SAME `tx` inside ONE `runTransaction` callback —
+ * proving the two inserts are NOT executed as two separate, un-transacted
+ * `sql` calls — and (c) propagates a rejected transaction cleanly, with
+ * nothing fabricated or partially persisted.
  */
-const { mockSql } = vi.hoisted(() => {
-  const fn = vi.fn();
-  const withTransaction = fn as typeof fn & { transaction: ReturnType<typeof vi.fn> };
-  withTransaction.transaction = vi.fn();
-  return { mockSql: withTransaction };
+const { mockSql, mockTx, mockRunTransaction } = vi.hoisted(() => {
+  const sqlFn = vi.fn();
+  const txFn = vi.fn();
+  const runTransactionFn = vi.fn();
+  return { mockSql: sqlFn, mockTx: txFn, mockRunTransaction: runTransactionFn };
 });
 
 vi.mock("./client", () => ({
   sql: mockSql,
   isDbConfigured: true,
-  // Shared helper (Fix 6) delegates to the mocked `sql.transaction` so the
-  // existing `mockSql.transaction` assertions keep working unchanged.
-  runTransaction: (queries: unknown[]) =>
-    (mockSql.transaction as unknown as (q: unknown[]) => Promise<unknown[]>)(queries),
+  runTransaction: mockRunTransaction,
 }));
 
 const { payrollRepo } = await import("./payroll-repo");
@@ -48,22 +47,24 @@ function payrollRow(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
-describe("db payrollRepo.create — atomicity via sql.transaction", () => {
+describe("db payrollRepo.create — atomicity via runTransaction", () => {
   beforeEach(() => {
     mockSql.mockReset();
-    mockSql.transaction.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
+    mockRunTransaction.mockImplementation((fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx));
   });
 
-  it("calls sql.transaction ONCE with an array containing BOTH the payroll INSERT and the expense INSERT (not two separate un-transacted sql calls), and each query is built with the correct text and interpolated values", async () => {
-    // Configure the mocked `sql` tag to return a distinct, identifiable
+  it("calls runTransaction ONCE with a callback that runs BOTH the payroll INSERT and the expense INSERT sequentially against the SAME tx (not two separate un-transacted sql calls), and each query is built with the correct text and interpolated values", async () => {
+    // Configure the mocked `tx` tag to return a distinct, identifiable
     // sentinel per call — this lets us prove BOTH (a) each query's own text
     // and interpolated values are correct, AND (b) the exact same two query
-    // objects (not fabricated/duplicated/swapped ones) are what gets handed
-    // to `sql.transaction([...])`. Mirrors `lib/db/employee-repo.test.ts`'s
-    // `create` test pattern of capturing the tag function's own call
-    // arguments (strings + interpolated values).
-    mockSql.mockReturnValueOnce("PAYROLL_INSERT_QUERY").mockReturnValueOnce("EXPENSE_INSERT_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[payrollRow()], []]);
+    // calls (not fabricated/duplicated/swapped ones) happen in
+    // payroll-then-expense order within a single `runTransaction` callback.
+    // Mirrors `lib/db/employee-repo.test.ts`'s `create` test pattern of
+    // capturing the tag function's own call arguments (strings + interpolated
+    // values).
+    mockTx.mockResolvedValueOnce([payrollRow()]).mockResolvedValueOnce([]);
 
     const payment = await payrollRepo.create(
       BUSINESS_ID,
@@ -88,11 +89,11 @@ describe("db payrollRepo.create — atomicity via sql.transaction", () => {
     expect(payment.id).toBe("80000000-0000-4000-8000-000000000001");
     expect(payment.businessId).toBe(BUSINESS_ID);
 
-    // (a) The FIRST sql call must build the payroll_payments INSERT, with
+    // (a) The FIRST tx call must build the payroll_payments INSERT, with
     // the payroll payment's own businessId/employeeId/amount/period fields
     // bound as tagged-template substitution values — not a second expense
     // insert, not swapped values.
-    const [payrollStrings, ...payrollValues] = mockSql.mock.calls[0]!;
+    const [payrollStrings, ...payrollValues] = mockTx.mock.calls[0]!;
     const payrollQueryText = Array.from(payrollStrings as unknown as string[]).join("");
     expect(payrollQueryText).toContain("INSERT INTO payroll_payments");
     expect(payrollValues).toEqual([
@@ -106,10 +107,10 @@ describe("db payrollRepo.create — atomicity via sql.transaction", () => {
       null,
     ]);
 
-    // (b) The SECOND sql call must build the expenses INSERT, with
+    // (b) The SECOND tx call must build the expenses INSERT, with
     // `category: 'nomina'` and the linked expense's own amount/business_id
     // bound — not a duplicate payroll insert, not swapped values.
-    const [expenseStrings, ...expenseValues] = mockSql.mock.calls[1]!;
+    const [expenseStrings, ...expenseValues] = mockTx.mock.calls[1]!;
     const expenseQueryText = Array.from(expenseStrings as unknown as string[]).join("");
     expect(expenseQueryText).toContain("INSERT INTO expenses");
     expect(expenseValues).toEqual([
@@ -121,20 +122,16 @@ describe("db payrollRepo.create — atomicity via sql.transaction", () => {
       null,
     ]);
 
-    // (c) ONE call to sql.transaction, containing EXACTLY those same two
-    // query objects (identified by their sentinel return values above), in a
-    // single array argument, in payroll-then-expense order — proving both
-    // inserts are handed to `sql.transaction([...])` together, in one atomic
-    // call, NOT as two separate `await sql\`...\`` round-trips, and not some
-    // other pair of queries.
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
-    const [queriesArg] = mockSql.transaction.mock.calls[0]!;
-    expect(queriesArg).toEqual(["PAYROLL_INSERT_QUERY", "EXPENSE_INSERT_QUERY"]);
+    // (c) ONE call to runTransaction, whose callback ran EXACTLY those two
+    // statements against `tx`, in payroll-then-expense order — proving both
+    // inserts run together, in one atomic call, NOT as two separate
+    // `await sql\`...\`` round-trips, and not some other pair of queries.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(2);
   });
 
-  it("propagates the error and returns nothing fabricated when sql.transaction rejects (the failure mode this atomic design exists to guard against)", async () => {
-    mockSql.mockReturnValueOnce("PAYROLL_INSERT_QUERY").mockReturnValueOnce("EXPENSE_INSERT_QUERY");
-    mockSql.transaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
+  it("propagates the error and returns nothing fabricated when the transaction rejects (the failure mode this atomic design exists to guard against)", async () => {
+    mockRunTransaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
 
     await expect(
       payrollRepo.create(
@@ -160,10 +157,11 @@ describe("db payrollRepo.create — atomicity via sql.transaction", () => {
   });
 
   it("maps the returned payroll row correctly", async () => {
-    mockSql.transaction.mockResolvedValueOnce([
-      [payrollRow({ amount: 2200000, period_type: "mensual", period_start: "2026-05-01", period_end: "2026-05-31" })],
-      [],
-    ]);
+    mockTx
+      .mockResolvedValueOnce([
+        payrollRow({ amount: 2200000, period_type: "mensual", period_start: "2026-05-01", period_end: "2026-05-31" }),
+      ])
+      .mockResolvedValueOnce([]);
 
     const payment = await payrollRepo.create(
       BUSINESS_ID,
@@ -195,7 +193,8 @@ describe("db payrollRepo.create — atomicity via sql.transaction", () => {
 describe("db payrollRepo.getById — business_id scoping", () => {
   beforeEach(() => {
     mockSql.mockReset();
-    mockSql.transaction.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
   });
 
   it("returns the payment with the joined employee name when it belongs to the requesting business", async () => {
@@ -221,7 +220,8 @@ describe("db payrollRepo.getById — business_id scoping", () => {
 describe("db payrollRepo.list", () => {
   beforeEach(() => {
     mockSql.mockReset();
-    mockSql.transaction.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
   });
 
   it("filters by employeeId after a single business-scoped fetch", async () => {

@@ -2,27 +2,33 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Mirrors `lib/db/inventory-repo.test.ts`'s / `lib/db/invoice-repo.test.ts`'s
- * mock shape: `createForInvoice` now runs a TWO-STATEMENT `sql.transaction`
- * ([statement 1] `SELECT ... FOR UPDATE` locks the invoice row, [statement 2]
- * the existing balance-CTE `INSERT`) — see the repo's file-level doc comment
- * for the full empirical methodology proving why a bare `FOR UPDATE` added
- * only to the single CTE is insufficient once invoice EDITING exists as a
- * concurrent writer on the same row (`invoice-repo.ts#update`).
+ * mock shape: `createForInvoice` now calls `runTransaction(async (tx) => {...})`
+ * (postgres.js's interactive `sql.begin`) with a TWO-STATEMENT body ([1]
+ * `SELECT ... FOR UPDATE` locks the invoice row, [2] the existing balance-CTE
+ * `INSERT`), run as sequential awaits on the callback's `tx` — see the repo's
+ * file-level doc comment for the full empirical methodology proving why a
+ * bare `FOR UPDATE` added only to the single CTE is insufficient once invoice
+ * EDITING exists as a concurrent writer on the same row
+ * (`invoice-repo.ts#update`).
+ *
+ * The mock: `runTransaction` is a `vi.fn()` whose default implementation
+ * invokes the real callback with a mock `tx` tagged-template fn (`mockTx`),
+ * so `mockTx.mock.calls` records each statement in order — mirroring how the
+ * old suite read `mockSql.mock.calls[0]` / `[1]` for statement 1/2 text and
+ * values. Per-test overrides (`mockRejectedValueOnce`) still let us simulate
+ * the whole transaction rejecting without invoking the callback at all.
  */
-const { mockSql } = vi.hoisted(() => {
-  const fn = vi.fn();
-  const withTransaction = fn as typeof fn & { transaction: ReturnType<typeof vi.fn> };
-  withTransaction.transaction = vi.fn();
-  return { mockSql: withTransaction };
+const { mockSql, mockTx, mockRunTransaction } = vi.hoisted(() => {
+  const sqlFn = vi.fn();
+  const txFn = vi.fn();
+  const runTransactionFn = vi.fn();
+  return { mockSql: sqlFn, mockTx: txFn, mockRunTransaction: runTransactionFn };
 });
 
 vi.mock("./client", () => ({
   sql: mockSql,
   isDbConfigured: true,
-  // Shared helper (Fix 6) delegates to the mocked `sql.transaction` so the
-  // existing `mockSql.transaction` assertions keep working unchanged.
-  runTransaction: (queries: unknown[]) =>
-    (mockSql.transaction as unknown as (q: unknown[]) => Promise<unknown[]>)(queries),
+  runTransaction: mockRunTransaction,
 }));
 
 vi.mock("./invoice-repo", () => ({
@@ -51,42 +57,44 @@ function paymentInput(overrides: Partial<Record<string, unknown>> = {}) {
 describe("db paymentRepo.createForInvoice — overpay guard against a concurrent edit (safety-critical)", () => {
   beforeEach(() => {
     mockSql.mockReset();
-    mockSql.transaction.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
+    mockRunTransaction.mockImplementation((fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx));
     vi.mocked(invoiceRepo.getById).mockReset();
   });
 
   it("throws NOT_FOUND when statement 1 (FOR UPDATE lock) matches no invoice row for this business, and inserts nothing", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[], []]);
+    mockTx.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     await expect(paymentRepo.createForInvoice(BUSINESS_ID, INVOICE_ID, paymentInput())).rejects.toMatchObject({
       code: "NOT_FOUND",
     });
 
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
-    const [queriesArg] = mockSql.transaction.mock.calls[0]!;
-    expect(queriesArg).toEqual(["LOCK_QUERY", "INSERT_QUERY"]);
+    // Both statements still run sequentially inside the same transaction
+    // (statement 2's own SQL guard is what prevents the insert — nothing
+    // short-circuits before it, same as the original non-interactive
+    // transaction sent both queries upfront).
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(2);
     expect(invoiceRepo.getById).not.toHaveBeenCalled();
   });
 
   it("throws VALIDATION_ERROR (not NOT_FOUND) when statement 1 found the invoice but statement 2's balance guard excluded the insert — zero mutation", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[{ id: INVOICE_ID, customer_id: CUSTOMER_ID }], []]);
+    mockTx.mockResolvedValueOnce([{ id: INVOICE_ID, customer_id: CUSTOMER_ID }]).mockResolvedValueOnce([]);
 
     await expect(
       paymentRepo.createForInvoice(BUSINESS_ID, INVOICE_ID, paymentInput({ amount: 999999 })),
     ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
 
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(2);
     expect(invoiceRepo.getById).not.toHaveBeenCalled();
   });
 
-  it("hands BOTH statements to sql.transaction in one call — statement 1 SELECT ... FOR UPDATE (lock) then statement 2 the balance-CTE INSERT — with correct text, and does NOT re-take FOR UPDATE in statement 2", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([
-      [{ id: INVOICE_ID, customer_id: CUSTOMER_ID }],
-      [{ id: "70000000-0000-4000-8000-000000000001" }],
-    ]);
+  it("runs BOTH statements sequentially inside ONE runTransaction callback — statement 1 SELECT ... FOR UPDATE (lock) then statement 2 the balance-CTE INSERT — with correct text, and does NOT re-take FOR UPDATE in statement 2", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID, customer_id: CUSTOMER_ID }])
+      .mockResolvedValueOnce([{ id: "70000000-0000-4000-8000-000000000001" }]);
     vi.mocked(invoiceRepo.getById).mockResolvedValueOnce({ id: INVOICE_ID } as never);
 
     const detail = await paymentRepo.createForInvoice(BUSINESS_ID, INVOICE_ID, paymentInput());
@@ -94,7 +102,7 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
     expect(detail).toEqual({ id: INVOICE_ID });
 
     // Statement 1: locks the invoice row, scoped to id + business_id.
-    const [lockStrings, ...lockValues] = mockSql.mock.calls[0]!;
+    const [lockStrings, ...lockValues] = mockTx.mock.calls[0]!;
     const lockText = Array.from(lockStrings as unknown as string[]).join("");
     expect(lockText).toContain("SELECT id, customer_id FROM invoices");
     expect(lockText).toContain("FOR UPDATE");
@@ -104,7 +112,7 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
     // Statement 2: balance CTE + conditional INSERT — does NOT re-take a FOR
     // UPDATE (statement 1 is the sole lock holder; see the repo doc comment
     // on the EvalPlanQual stale-subquery hazard this avoids).
-    const [insStrings, ...insValues] = mockSql.mock.calls[1]!;
+    const [insStrings, ...insValues] = mockTx.mock.calls[1]!;
     const insText = Array.from(insStrings as unknown as string[]).join("");
     expect(insText).toContain("INSERT INTO payments");
     expect(insText).toContain("RETURNING");
@@ -129,9 +137,8 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
       input.amount, // WHERE ${amount} <= bal.balance
     ]);
 
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
-    const [queriesArg] = mockSql.transaction.mock.calls[0]!;
-    expect(queriesArg).toEqual(["LOCK_QUERY", "INSERT_QUERY"]);
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(2);
 
     expect(invoiceRepo.getById).toHaveBeenCalledWith(BUSINESS_ID, INVOICE_ID);
   });
@@ -143,11 +150,9 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
     // This proves the boundary is `<=`, not an accidental `<` that would
     // reject a full/exact payment.
     const EXACT_BALANCE = 60000;
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([
-      [{ id: INVOICE_ID, customer_id: CUSTOMER_ID }],
-      [{ id: "70000000-0000-4000-8000-000000000002" }],
-    ]);
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID, customer_id: CUSTOMER_ID }])
+      .mockResolvedValueOnce([{ id: "70000000-0000-4000-8000-000000000002" }]);
     vi.mocked(invoiceRepo.getById).mockResolvedValueOnce({ id: INVOICE_ID } as never);
 
     const detail = await paymentRepo.createForInvoice(
@@ -157,7 +162,7 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
     );
 
     expect(detail).toEqual({ id: INVOICE_ID });
-    const [insStrings, ...insValues] = mockSql.mock.calls[1]!;
+    const [insStrings, ...insValues] = mockTx.mock.calls[1]!;
     expect(Array.from(insStrings as unknown as string[]).join("")).toContain("<= bal.balance");
     // The exact amount is interpolated both in the SELECT and in the guard.
     expect(insValues[4]).toBe(EXACT_BALANCE);
@@ -165,11 +170,9 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
   });
 
   it("throws NOT_FOUND if the post-insert detail lookup somehow resolves null (defensive, should not normally happen)", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([
-      [{ id: INVOICE_ID, customer_id: CUSTOMER_ID }],
-      [{ id: "70000000-0000-4000-8000-000000000001" }],
-    ]);
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID, customer_id: CUSTOMER_ID }])
+      .mockResolvedValueOnce([{ id: "70000000-0000-4000-8000-000000000001" }]);
     vi.mocked(invoiceRepo.getById).mockResolvedValueOnce(null);
 
     await expect(paymentRepo.createForInvoice(BUSINESS_ID, INVOICE_ID, paymentInput())).rejects.toMatchObject({
@@ -177,9 +180,8 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
     });
   });
 
-  it("propagates the error and fabricates nothing when sql.transaction rejects", async () => {
-    mockSql.mockReturnValueOnce("LOCK_QUERY").mockReturnValueOnce("INSERT_QUERY");
-    mockSql.transaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
+  it("propagates the error and fabricates nothing when the transaction rejects", async () => {
+    mockRunTransaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
 
     await expect(paymentRepo.createForInvoice(BUSINESS_ID, INVOICE_ID, paymentInput())).rejects.toThrow(
       "simulated transaction failure",

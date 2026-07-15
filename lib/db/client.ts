@@ -1,11 +1,11 @@
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 
 /**
- * Real Postgres (Neon, via Vercel Storage integration) data backend —
- * replaces the ephemeral in-memory/cookie-based mock store for deployed
- * environments. Vercel injects `POSTGRES_URL` automatically once a Neon
- * database is attached to the project; `DATABASE_URL` is accepted too for
- * local/manual setups (`vercel env pull`).
+ * Real Postgres data backend (postgres.js, TCP protocol) — replaces the
+ * ephemeral in-memory/cookie-based mock store for deployed environments.
+ * Vercel injects `POSTGRES_URL` automatically once a database is attached to
+ * the project; `DATABASE_URL` is accepted too for local/manual setups
+ * (`vercel env pull`).
  *
  * `lib/services/repositories.ts` picks these repos over `lib/mock/*` only
  * when `isDbConfigured` is true, so local dev without a database keeps
@@ -19,10 +19,16 @@ const connectionString =
 
 export const isDbConfigured = Boolean(connectionString);
 
-export const sql = connectionString ? neon(connectionString) : (null as unknown as ReturnType<typeof neon>);
+// `prepare: false` is REQUIRED: Supabase's connection pooler (pgbouncer, in
+// transaction mode) does not support prepared statements, which postgres.js
+// otherwise uses by default for every tagged-template query.
+export const sql = connectionString
+  ? postgres(connectionString, { prepare: false })
+  : (null as unknown as ReturnType<typeof postgres>);
 
 /**
- * Shared wrapper for Neon's non-interactive `sql.transaction([...])`.
+ * Shared wrapper for postgres.js's INTERACTIVE `sql.begin(async (tx) => {...})`
+ * transaction.
  *
  * ---------------------------------------------------------------------------
  * CANONICAL NOTE — the two-statement `FOR UPDATE` guard pattern (read this
@@ -34,7 +40,8 @@ export const sql = connectionString ? neon(connectionString) : (null as unknown 
  * must enforce a check-then-write invariant against a concurrent writer on the
  * SAME row (stock floor-at-zero, payment overpay guard, invoice edit-lock).
  * The correct, empirically-verified shape is TWO statements inside ONE
- * `sql.transaction([...])`:
+ * transaction (now `sql.begin(async (tx) => {...})`, run as sequential
+ * `await`s in that callback):
  *
  *   Statement 1: `SELECT … FOR UPDATE` — acquires and HOLDS the row lock for
  *                the whole transaction, reading NOTHING it will later guard on.
@@ -58,16 +65,11 @@ export const sql = connectionString ? neon(connectionString) : (null as unknown 
  * WHY THE SPLIT WORKS: statement 1 blocks a concurrent writer's OWN statement 1
  * on the row lock until this transaction commits; only then does the other
  * side's statement 2 run and take a snapshot that already reflects what this
- * transaction committed. `sql.transaction` is non-interactive (all queries
- * submitted upfront, no query's text can depend on another's returned data),
- * which is fine because statement 2's SQL depends only on RUNNING AFTER
- * statement 1 within the same lock-holding transaction, not on its result.
- *
- * The cast: each tagged-template call infers a slightly different
- * `NeonQueryPromise` result shape that the driver's homogeneous-array
- * `transaction()` signature can't unify — this is a purely-TS ergonomics cast,
- * not a behavior change; the queries still run as one real transaction.
+ * transaction committed. The `begin` callback runs its statements as
+ * sequential `await`s in program order, so statement 2 always executes AFTER
+ * statement 1 has already acquired and is holding the lock within the same
+ * transaction.
  */
-export function runTransaction<T extends unknown[]>(queries: unknown[]): Promise<T> {
-  return (sql.transaction as (q: unknown[]) => Promise<unknown[]>)(queries) as Promise<T>;
+export function runTransaction<T>(fn: (tx: postgres.TransactionSql) => Promise<T>): Promise<T> {
+  return sql.begin(fn) as Promise<T>;
 }

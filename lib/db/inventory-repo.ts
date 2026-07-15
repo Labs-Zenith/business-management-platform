@@ -91,17 +91,21 @@ export const inventoryRepo: InventoryMovementRepository = {
   },
 
   async create(businessId: string, data: InventoryMovementCreate): Promise<InventoryMovement> {
-    // Two statements, ONE real transaction (see `client.ts`'s canonical note):
-    const queries = [
+    // Two statements, ONE real transaction (see `client.ts`'s canonical
+    // note), run as sequential awaits inside the `runTransaction` callback:
+    const { lockRows, inserted } = await runTransaction(async (tx) => {
       // Statement 1: acquire and HOLD the product row lock for the whole
       // transaction. Its result set distinguishes NOT_FOUND from a
       // floor-at-zero rejection without leaking cross-business existence.
-      sql`SELECT id FROM products WHERE id = ${data.productId} AND business_id = ${businessId} FOR UPDATE`,
+      const lockRows = (await tx`
+        SELECT id FROM products WHERE id = ${data.productId} AND business_id = ${businessId} FOR UPDATE
+      `) as unknown as { id: string }[];
+
       // Statement 2: fresh-snapshot SUM guard + conditional insert, run AFTER
       // statement 1 holds the lock (no `FOR UPDATE` here — it is the sole lock
       // holder; re-locking would reintroduce the EvalPlanQual stale-subquery
       // hazard the split avoids).
-      sql`
+      const inserted = (await tx`
         WITH bal AS (
           SELECT p.id,
             COALESCE((SELECT SUM(CASE WHEN m.type = 'in' THEN m.quantity ELSE -m.quantity END)
@@ -114,10 +118,10 @@ export const inventoryRepo: InventoryMovementRepository = {
         FROM bal
         WHERE ${data.type} = 'in' OR ${data.quantity} <= bal.current_qty
         RETURNING *
-      `,
-    ];
+      `) as unknown as MovementRow[];
 
-    const [lockRows, inserted] = await runTransaction<[{ id: string }[], MovementRow[]]>(queries);
+      return { lockRows, inserted };
+    });
 
     if (lockRows.length === 0) {
       // Statement 1 matched no product row for this business.

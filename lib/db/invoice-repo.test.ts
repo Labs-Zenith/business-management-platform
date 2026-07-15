@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Mirrors `lib/db/inventory-repo.test.ts`'s mock shape (a `vi.fn()` `sql` tag
- * PLUS a mocked `sql.transaction`), because `update` now runs a SINGLE
- * `sql.transaction([...])` containing EVERY mutating statement:
+ * PLUS a mocked `runTransaction`), because `update` now runs a SINGLE
+ * `runTransaction(async (tx) => {...})` callback (postgres.js's interactive
+ * `sql.begin`) containing EVERY mutating statement, run as sequential awaits
+ * against the SAME `tx`:
  *   [0] `SELECT ... FOR UPDATE` locks the invoice row,
  *   [1] a guarded wholesale item `DELETE`,
  *   [2..N-1] one guarded `INSERT ... SELECT ... WHERE EXISTS(...)` per item,
@@ -29,33 +31,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * INSERT failed left a persisted invoice whose totals didn't match its items).
  * Every statement carries the SAME "business_id matches AND (balance > 0 AND
  * new total >= paid)" guard so a fully-paid, below-paid, or cross-business
- * edit mutates NOTHING even though a non-interactive transaction runs all
- * statements.
+ * edit mutates NOTHING even though every statement still runs.
  *
- * Critical assertions: `update` (a) hands ALL statements to
- * `sql.transaction([...])` in ONE call, lock-then-delete-then-insert-then-
- * update (header LAST) order, (b) interpolates the correct VALUES (not just
- * text) into every statement, (c) surfaces an empty statement-1 (lock) result
- * as `null` (missing/cross-business), (d) surfaces a non-empty lock result
- * with an empty LAST-statement (header) `RETURNING` as the edit-lock
- * `CONFLICT` (fully paid, or new total below the amount already paid), (e)
- * the statement order itself is asserted directly, so a regression that
- * reverts the header-last fix is caught even without Docker/a real Postgres.
+ * Critical assertions: `update` (a) runs ALL statements sequentially against
+ * the SAME `tx` inside ONE `runTransaction` callback, lock-then-delete-then-
+ * insert-then-update (header LAST) order, (b) interpolates the correct
+ * VALUES (not just text) into every statement, (c) surfaces an empty
+ * statement-1 (lock) result as `null` (missing/cross-business), (d) surfaces
+ * a non-empty lock result with an empty LAST-statement (header) `RETURNING`
+ * as the edit-lock `CONFLICT` (fully paid, or new total below the amount
+ * already paid), (e) the statement order itself is asserted directly, so a
+ * regression that reverts the header-last fix is caught even without
+ * Docker/a real Postgres.
  */
-const { mockSql } = vi.hoisted(() => {
-  const fn = vi.fn();
-  const withTransaction = fn as typeof fn & { transaction: ReturnType<typeof vi.fn> };
-  withTransaction.transaction = vi.fn();
-  return { mockSql: withTransaction };
+const { mockSql, mockTx, mockRunTransaction } = vi.hoisted(() => {
+  const sqlFn = vi.fn();
+  const txFn = vi.fn();
+  const runTransactionFn = vi.fn();
+  return { mockSql: sqlFn, mockTx: txFn, mockRunTransaction: runTransactionFn };
 });
 
 vi.mock("./client", () => ({
   sql: mockSql,
   isDbConfigured: true,
-  // Shared helper (Fix 6) delegates to the mocked `sql.transaction` so the
-  // existing `mockSql.transaction` assertions keep working unchanged.
-  runTransaction: (queries: unknown[]) =>
-    (mockSql.transaction as unknown as (q: unknown[]) => Promise<unknown[]>)(queries),
+  runTransaction: mockRunTransaction,
 }));
 
 const { invoiceRepo } = await import("./invoice-repo");
@@ -116,41 +115,35 @@ function customerRow() {
 describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
   beforeEach(() => {
     mockSql.mockReset();
-    mockSql.transaction.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
+    mockRunTransaction.mockImplementation((fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx));
   });
 
   it("returns null (missing/cross-business, never leaked) when statement 1 (FOR UPDATE lock) matches no invoice row, and mutates nothing", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_QUERY")
-      .mockReturnValueOnce("UPDATE_QUERY");
-    // All 4 statements run in the non-interactive transaction; the guards make
-    // the DELETE/INSERT/UPDATE no-ops when the invoice doesn't match.
-    mockSql.transaction.mockResolvedValueOnce([[], [], [], []]);
+    // All 4 statements run against `tx`; the guards make the
+    // DELETE/INSERT/UPDATE no-ops when the invoice doesn't match.
+    mockTx.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const result = await invoiceRepo.update(BUSINESS_ID, INVOICE_ID, buildPersist());
 
     expect(result).toBeNull();
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
-    const [queriesArg] = mockSql.transaction.mock.calls[0]!;
-    // Header UPDATE is the LAST statement — see file-level doc comment.
-    expect(queriesArg).toEqual(["LOCK_QUERY", "DELETE_QUERY", "INSERT_QUERY", "UPDATE_QUERY"]);
-    // Exactly the 4 transacted statements were built — no extra un-transacted
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    // Exactly the 4 transacted statements were run — no extra un-transacted
     // item round trip, and buildDetail is never reached on the null path.
-    expect(mockSql).toHaveBeenCalledTimes(4);
+    expect(mockTx).toHaveBeenCalledTimes(4);
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("throws CONFLICT (not NOT_FOUND, not a generic Error) when statement 1 found the invoice but the LAST (header UPDATE) statement's compound guard excluded the update (e.g. fully paid) — zero mutation", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_QUERY")
-      .mockReturnValueOnce("UPDATE_QUERY");
     // Invoice exists (statement 1 non-empty) but the invoice is fully paid ->
     // every guarded statement's compound guard excludes the row -> empty
     // result for delete/insert/update alike.
-    mockSql.transaction.mockResolvedValueOnce([[{ id: INVOICE_ID }], [], [], []]);
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const { ApiError } = await import("@/lib/server/api-error");
     const error: unknown = await invoiceRepo
@@ -163,37 +156,35 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
       "Invoice cannot be edited: it is fully paid, or the new total is below the amount already paid.",
     );
 
-    // No mutation beyond building the single transaction's statements; no
+    // No mutation beyond running the single transaction's statements; no
     // buildDetail reads on the reject path.
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
-    expect(mockSql).toHaveBeenCalledTimes(4);
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(4);
   });
 
   it("throws the SAME CONFLICT when the guard excludes the update because the new total is below the amount already paid (guard is opaque to the caller — same empty-result path)", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_QUERY")
-      .mockReturnValueOnce("UPDATE_QUERY");
     // Invoice exists and is NOT fully paid, but the submitted new total is
     // below the amount already paid -> the guard still excludes the row ->
     // empty result, exactly like the fully-paid case.
-    mockSql.transaction.mockResolvedValueOnce([[{ id: INVOICE_ID }], [], [], []]);
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     await expect(
       invoiceRepo.update(BUSINESS_ID, INVOICE_ID, buildPersist({ total: 1000 })),
     ).rejects.toMatchObject({ code: "CONFLICT" });
 
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
   });
 
   it("interpolates the submitted new total as its OWN guard parameter (not reusing the SET clause's total placeholder) in the item DELETE, item INSERT, and header UPDATE guards", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_QUERY")
-      .mockReturnValueOnce("UPDATE_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[{ id: INVOICE_ID }], [], [], [invoiceRow()]]);
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([invoiceRow()]);
     mockSql.mockResolvedValueOnce([customerRow()]);
     mockSql.mockResolvedValueOnce([]);
     mockSql.mockResolvedValueOnce([]);
@@ -201,28 +192,28 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     const persist = buildPersist();
     await invoiceRepo.update(BUSINESS_ID, INVOICE_ID, persist);
 
-    const [deleteStrings, ...deleteValues] = mockSql.mock.calls[1]!;
+    const [deleteStrings, ...deleteValues] = mockTx.mock.calls[1]!;
     expect(Array.from(deleteStrings as unknown as string[]).join("")).toContain(">=");
     expect(deleteValues[deleteValues.length - 1]).toBe(persist.total);
 
-    const [insertStrings, ...insertValues] = mockSql.mock.calls[2]!;
+    const [insertStrings, ...insertValues] = mockTx.mock.calls[2]!;
     expect(Array.from(insertStrings as unknown as string[]).join("")).toContain(">=");
     expect(insertValues[insertValues.length - 1]).toBe(persist.total);
 
-    const [updStrings, ...updValues] = mockSql.mock.calls[3]!;
+    const [updStrings, ...updValues] = mockTx.mock.calls[3]!;
     expect(Array.from(updStrings as unknown as string[]).join("")).toContain(">=");
     expect(updValues[updValues.length - 1]).toBe(persist.total);
   });
 
-  it("hands ALL statements to sql.transaction in one call — lock, guarded item DELETE, guarded item INSERT, guarded header UPDATE LAST — with correct text AND interpolated values", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_QUERY")
-      .mockReturnValueOnce("UPDATE_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[{ id: INVOICE_ID }], [], [], [invoiceRow()]]);
+  it("runs ALL statements sequentially against the SAME tx inside ONE runTransaction callback — lock, guarded item DELETE, guarded item INSERT, guarded header UPDATE LAST — with correct text AND interpolated values", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([invoiceRow()]);
     // buildDetail's Promise.all (customer, items, payments) reads AFTER the
-    // transaction resolves, to build the returned `InvoiceDetail`.
+    // transaction resolves, via the plain `sql` tag (not `tx`), to build the
+    // returned `InvoiceDetail`.
     mockSql.mockResolvedValueOnce([customerRow()]); // customerRows
     mockSql.mockResolvedValueOnce([
       {
@@ -244,7 +235,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     expect(updated!.total).toBe(60000);
 
     // --- Statement 1: locks the invoice row, scoped to id + business_id. ---
-    const [lockStrings, ...lockValues] = mockSql.mock.calls[0]!;
+    const [lockStrings, ...lockValues] = mockTx.mock.calls[0]!;
     const lockText = Array.from(lockStrings as unknown as string[]).join("");
     expect(lockText).toContain("SELECT id FROM invoices");
     expect(lockText).toContain("FOR UPDATE");
@@ -252,7 +243,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     expect(lockValues).toEqual([INVOICE_ID, BUSINESS_ID]);
 
     // --- Statement 2: guarded item DELETE, text AND interpolated values. ---
-    const [deleteStrings, ...deleteValues] = mockSql.mock.calls[1]!;
+    const [deleteStrings, ...deleteValues] = mockTx.mock.calls[1]!;
     const deleteText = Array.from(deleteStrings as unknown as string[]).join("");
     expect(deleteText).toContain("DELETE FROM invoice_items");
     expect(deleteText).toContain("EXISTS");
@@ -261,7 +252,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     expect(deleteValues).toEqual([INVOICE_ID, INVOICE_ID, BUSINESS_ID, persist.total]);
 
     // --- Statement 3: guarded item INSERT (one per item), text AND values. ---
-    const [insertStrings, ...insertValues] = mockSql.mock.calls[2]!;
+    const [insertStrings, ...insertValues] = mockTx.mock.calls[2]!;
     const insertText = Array.from(insertStrings as unknown as string[]).join("");
     expect(insertText).toContain("INSERT INTO invoice_items");
     // Guarded INSERT ... SELECT ... WHERE EXISTS, NOT a plain VALUES, so it is
@@ -282,7 +273,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     ]);
 
     // --- Statement 4 (LAST): guarded header UPDATE, text AND interpolated values. ---
-    const [updStrings, ...updValues] = mockSql.mock.calls[3]!;
+    const [updStrings, ...updValues] = mockTx.mock.calls[3]!;
     const updText = Array.from(updStrings as unknown as string[]).join("");
     expect(updText).toContain("UPDATE invoices SET");
     // Compound guard: not-fully-paid (balance > 0) AND new total not below paid.
@@ -308,20 +299,19 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
       persist.total, // guard: new total >= paid
     ]);
 
-    // ONE transaction call containing all four statements, header UPDATE LAST.
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
-    const [queriesArg] = mockSql.transaction.mock.calls[0]!;
-    expect(queriesArg).toEqual(["LOCK_QUERY", "DELETE_QUERY", "INSERT_QUERY", "UPDATE_QUERY"]);
+    // ONE transaction callback, running all four statements against `tx`,
+    // header UPDATE LAST.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(4);
   });
 
   it("REGRESSION GUARD: the statement order is EXACTLY [lock, DELETE, INSERT..., header UPDATE] — header UPDATE must be LAST, never before the item statements (data-corruption fix)", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_1")
-      .mockReturnValueOnce("INSERT_2")
-      .mockReturnValueOnce("UPDATE_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[{ id: INVOICE_ID }], [], [], [], [invoiceRow()]]);
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID }]) // lock
+      .mockResolvedValueOnce([]) // delete
+      .mockResolvedValueOnce([]) // insert item A
+      .mockResolvedValueOnce([]) // insert item B
+      .mockResolvedValueOnce([invoiceRow()]); // header update (LAST)
     mockSql.mockResolvedValueOnce([customerRow()]);
     mockSql.mockResolvedValueOnce([]);
     mockSql.mockResolvedValueOnce([]);
@@ -337,29 +327,32 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
 
     await invoiceRepo.update(BUSINESS_ID, INVOICE_ID, persist);
 
-    const [queriesArg] = mockSql.transaction.mock.calls[0]! as unknown[][];
-    const queries = queriesArg as string[];
+    // Exactly 5 statements: lock, delete, 2 item inserts, header update LAST.
+    expect(mockTx).toHaveBeenCalledTimes(5);
 
-    // The lock is always first.
-    expect(queries[0]).toBe("LOCK_QUERY");
-    // The header UPDATE is always the LAST element, whatever the item count.
-    expect(queries[queries.length - 1]).toBe("UPDATE_QUERY");
-    // Every item statement (DELETE + one INSERT per item) sits strictly
-    // BETWEEN the lock and the header UPDATE — never after it.
-    expect(queries.slice(1, queries.length - 1)).toEqual(["DELETE_QUERY", "INSERT_1", "INSERT_2"]);
-    // Full exact order, spelled out.
-    expect(queries).toEqual(["LOCK_QUERY", "DELETE_QUERY", "INSERT_1", "INSERT_2", "UPDATE_QUERY"]);
+    const callText = (i: number) => Array.from(mockTx.mock.calls[i]![0] as unknown as string[]).join("");
+    expect(callText(0)).toContain("FOR UPDATE"); // lock is always first
+    expect(callText(1)).toContain("DELETE FROM invoice_items");
+    expect(callText(2)).toContain("INSERT INTO invoice_items");
+    expect(callText(3)).toContain("INSERT INTO invoice_items");
+    // The header UPDATE is always the LAST call, whatever the item count.
+    expect(callText(4)).toContain("UPDATE invoices SET");
+
+    // The two item INSERTs carry each item's own description, in order —
+    // never after the header UPDATE.
+    expect(mockTx.mock.calls[2]![1]).toBe(INVOICE_ID);
+    expect(mockTx.mock.calls[2]![2]).toBe("A");
+    expect(mockTx.mock.calls[3]![2]).toBe("B");
   });
 
   it("builds one guarded INSERT statement per item, all inside the single transaction, with the header UPDATE still last", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_1")
-      .mockReturnValueOnce("INSERT_2")
-      .mockReturnValueOnce("INSERT_3")
-      .mockReturnValueOnce("UPDATE_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[{ id: INVOICE_ID }], [], [], [], [], [invoiceRow()]]);
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID }]) // lock
+      .mockResolvedValueOnce([]) // delete
+      .mockResolvedValueOnce([]) // insert item A
+      .mockResolvedValueOnce([]) // insert item B
+      .mockResolvedValueOnce([]) // insert item C
+      .mockResolvedValueOnce([invoiceRow()]); // header update (LAST)
     // buildDetail reads.
     mockSql.mockResolvedValueOnce([customerRow()]);
     mockSql.mockResolvedValueOnce([]);
@@ -377,36 +370,27 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
 
     await invoiceRepo.update(BUSINESS_ID, INVOICE_ID, persist);
 
-    const [queriesArg] = mockSql.transaction.mock.calls[0]!;
-    // lock + delete + 3 inserts + update = 6 statements, ONE transaction,
-    // header UPDATE still last.
-    expect(queriesArg).toEqual(["LOCK_QUERY", "DELETE_QUERY", "INSERT_1", "INSERT_2", "INSERT_3", "UPDATE_QUERY"]);
-    expect(mockSql.transaction).toHaveBeenCalledTimes(1);
+    // lock + delete + 3 inserts + update = 6 statements, ONE transaction
+    // callback, header UPDATE still last.
+    expect(mockTx).toHaveBeenCalledTimes(6);
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    const lastCallText = Array.from(mockTx.mock.calls[5]![0] as unknown as string[]).join("");
+    expect(lastCallText).toContain("UPDATE invoices SET");
   });
 
   it("scopes the lock statement to businessId, treating a different business's invoice id as missing (null)", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_QUERY")
-      .mockReturnValueOnce("UPDATE_QUERY");
-    mockSql.transaction.mockResolvedValueOnce([[], [], [], []]);
+    mockTx.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
     const result = await invoiceRepo.update(OTHER_BUSINESS_ID, INVOICE_ID, buildPersist());
 
     expect(result).toBeNull();
-    const [lockStrings, ...lockValues] = mockSql.mock.calls[0]!;
+    const [lockStrings, ...lockValues] = mockTx.mock.calls[0]!;
     expect(Array.from(lockStrings as unknown as string[]).join("")).toContain("business_id");
     expect(lockValues).toEqual([INVOICE_ID, OTHER_BUSINESS_ID]);
   });
 
-  it("propagates the error and fabricates nothing when sql.transaction rejects", async () => {
-    mockSql
-      .mockReturnValueOnce("LOCK_QUERY")
-      .mockReturnValueOnce("DELETE_QUERY")
-      .mockReturnValueOnce("INSERT_QUERY")
-      .mockReturnValueOnce("UPDATE_QUERY");
-    mockSql.transaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
+  it("propagates the error and fabricates nothing when the transaction rejects", async () => {
+    mockRunTransaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
 
     await expect(invoiceRepo.update(BUSINESS_ID, INVOICE_ID, buildPersist())).rejects.toThrow(
       "simulated transaction failure",

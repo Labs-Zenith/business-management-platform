@@ -11,12 +11,13 @@ import { runTransaction, sql } from "./client";
 
 /**
  * `create` is the codebase's FIRST true multi-statement transaction, via the
- * shared `runTransaction` helper (Neon's non-interactive `sql.transaction`;
- * see `client.ts` for the canonical mechanism note). The two INSERTs here are
- * data-independent (no FK between `expenses` and `payroll_payments`, neither
- * needs the other's generated id), so the non-interactive limitation does not
- * apply. NOTE: unlike `inventory`/`payment`/`invoice`, this is NOT a
- * `FOR UPDATE` concurrency guard — just an all-or-nothing atomic double insert.
+ * shared `runTransaction` helper (postgres.js's interactive
+ * `sql.begin(async (tx) => {...})`; see `client.ts` for the canonical
+ * mechanism note). The two INSERTs here are data-independent (no FK between
+ * `expenses` and `payroll_payments`, neither needs the other's generated id),
+ * run as sequential awaits inside the same `begin` callback. NOTE: unlike
+ * `inventory`/`payment`/`invoice`, this is NOT a `FOR UPDATE` concurrency
+ * guard — just an all-or-nothing atomic double insert.
  */
 
 type PayrollPaymentRow = {
@@ -91,18 +92,19 @@ export const payrollRepo: PayrollPaymentRepository = {
   },
 
   async create(businessId: string, data: PayrollPaymentPersist, expense: ExpenseInput): Promise<PayrollPayment> {
-    const queries = [
-      sql`INSERT INTO payroll_payments
+    const payrollRows = await runTransaction(async (tx) => {
+      const payrollRows = (await tx`INSERT INTO payroll_payments
             (id, business_id, employee_id, amount, period_type, period_start, period_end, payment_date, notes)
           VALUES (gen_random_uuid(), ${businessId}, ${data.employeeId}, ${data.amount}, ${data.periodType},
                   ${data.periodStart}, ${data.periodEnd}, ${data.paymentDate}, ${data.notes ?? null})
-          RETURNING *`,
-      sql`INSERT INTO expenses (id, business_id, category, expense_date, description, amount, notes)
-          VALUES (gen_random_uuid(), ${businessId}, ${expense.category}, ${expense.expenseDate}, ${expense.description},
-                  ${expense.amount}, ${expense.notes ?? null})`,
-    ];
+          RETURNING *`) as unknown as PayrollPaymentRow[];
 
-    const [payrollRows] = await runTransaction<[PayrollPaymentRow[], unknown]>(queries);
+      await tx`INSERT INTO expenses (id, business_id, category, expense_date, description, amount, notes)
+          VALUES (gen_random_uuid(), ${businessId}, ${expense.category}, ${expense.expenseDate}, ${expense.description},
+                  ${expense.amount}, ${expense.notes ?? null})`;
+
+      return payrollRows;
+    });
 
     return toPayrollPayment(payrollRows[0]!);
   },

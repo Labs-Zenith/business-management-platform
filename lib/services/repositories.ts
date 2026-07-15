@@ -10,12 +10,17 @@
  * (`isDbConfigured`, i.e. `POSTGRES_URL`/`DATABASE_URL` is set — Vercel
  * injects this automatically once a Neon database is attached), so local
  * dev without a database keeps using the zero-setup in-memory mock exactly
- * as before. `auth` always stays the mock adapter: it only depends on
- * fixed demo constants (see `lib/mock/fixtures/data.ts`), which are seeded
- * identically in both backends, so there's nothing to swap there.
+ * as before. `auth` is gated independently on `isSupabaseConfigured` (Fase 2
+ * of the Supabase migration, see `docs/db-driver-migration.md`): the real
+ * Supabase Auth adapter (`lib/supabase/auth-adapter.ts`) replaces the mock
+ * adapter once `NEXT_PUBLIC_SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are
+ * set, so local dev/tests without those env vars keep using the mock
+ * exactly as before.
  */
 
 import { authAdapter } from "@/lib/mock/auth-adapter";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { supabaseAuthAdapter } from "@/lib/supabase/auth-adapter";
 import { auditLogRepo as mockAuditLogRepo } from "@/lib/mock/audit-log-repo";
 import { businessRepo as mockBusinessRepo } from "@/lib/mock/business-repo";
 import { customerRepo as mockCustomerRepo } from "@/lib/mock/customer-repo";
@@ -40,7 +45,7 @@ import { payrollRepo as dbPayrollRepo } from "@/lib/db/payroll-repo";
 import { productRepo as dbProductRepo } from "@/lib/db/product-repo";
 
 export const repositories = {
-  auth: authAdapter,
+  auth: isSupabaseConfigured ? supabaseAuthAdapter : authAdapter,
   business: isDbConfigured ? dbBusinessRepo : mockBusinessRepo,
   customers: isDbConfigured ? dbCustomerRepo : mockCustomerRepo,
   invoices: isDbConfigured ? dbInvoiceRepo : mockInvoiceRepo,
