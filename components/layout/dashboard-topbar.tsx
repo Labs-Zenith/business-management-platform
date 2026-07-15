@@ -26,15 +26,17 @@
  * comment).
  */
 
-import type { BusinessMembership, Session } from "@/lib/services/ports";
+import type { BusinessMembership, SavedAccount, Session } from "@/lib/services/ports";
 import MobileNavSheet from "./mobile-nav-sheet";
 
 export default function DashboardTopbar({
   session,
   memberships,
+  savedAccounts,
 }: {
   session: Session;
   memberships: BusinessMembership[];
+  savedAccounts?: SavedAccount[];
 }) {
   return (
     <header className="flex shrink-0 items-center border-b border-border bg-background px-4 py-3 md:hidden">
@@ -42,6 +44,7 @@ export default function DashboardTopbar({
         role={session.role}
         currentBusinessId={session.businessId}
         memberships={memberships}
+        savedAccounts={savedAccounts}
         email={session.email}
       />
     </header>

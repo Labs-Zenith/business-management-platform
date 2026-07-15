@@ -33,17 +33,19 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import SidebarContent from "./sidebar-content";
-import type { BusinessMembership, Role } from "@/lib/services/ports";
+import type { BusinessMembership, Role, SavedAccount } from "@/lib/services/ports";
 
 export default function MobileNavSheet({
   role,
   currentBusinessId,
   memberships,
+  savedAccounts,
   email,
 }: {
   role: Role;
   currentBusinessId: string;
   memberships: BusinessMembership[];
+  savedAccounts?: SavedAccount[];
   email: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -66,6 +68,7 @@ export default function MobileNavSheet({
             role={role}
             currentBusinessId={currentBusinessId}
             memberships={memberships}
+            savedAccounts={savedAccounts}
             email={email}
             collapsed={false}
             onNavigate={() => setOpen(false)}

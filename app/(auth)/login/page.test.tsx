@@ -3,16 +3,31 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const pushMock = vi.fn();
+let mockNextParam = "";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
+  useSearchParams: () => new URLSearchParams(mockNextParam ? `next=${mockNextParam}` : ""),
 }));
 
 import LoginPage from "./page";
 
+async function submitValidLogin() {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) })
+  );
+  render(<LoginPage />);
+  await user.type(screen.getByLabelText(/email/i), "demo@negociodemo.test");
+  await user.type(screen.getByLabelText(/contrase/i), "demo1234");
+  await user.click(screen.getByRole("button", { name: /ingresar/i }));
+}
+
 describe("LoginPage", () => {
   beforeEach(() => {
     pushMock.mockReset();
+    mockNextParam = "";
   });
 
   afterEach(() => {
@@ -65,5 +80,22 @@ describe("LoginPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/invalid email or password/i);
     expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("honors a same-origin ?next= path on success (Agregar cuenta return-to)", async () => {
+    mockNextParam = encodeURIComponent("/invoices");
+    await submitValidLogin();
+    expect(pushMock).toHaveBeenCalledWith("/invoices");
+  });
+
+  it.each([
+    ["protocol-relative //evil.com", "//evil.com"],
+    ["backslash bypass /\\evil.com", "/\\evil.com"],
+    ["absolute https://evil.com", "https://evil.com"],
+  ])("rejects an open-redirect ?next= (%s) and falls back to /dashboard", async (_label, malicious) => {
+    mockNextParam = encodeURIComponent(malicious);
+    await submitValidLogin();
+    expect(pushMock).toHaveBeenCalledWith("/dashboard");
+    expect(pushMock).not.toHaveBeenCalledWith(malicious);
   });
 });

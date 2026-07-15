@@ -20,9 +20,35 @@ export type Session = {
   role: Role;
 };
 
+/**
+ * Non-secret view of an account saved on this device for INSTANT
+ * multi-account switching (Instagram-style — several different logins, no
+ * re-typed password to switch between them), distinct from
+ * `BusinessMembership`'s same-user multi-BUSINESS switching. Backed by an
+ * app-owned httpOnly `saved_accounts` cookie in both adapters — see
+ * `lib/supabase/auth-adapter.ts`'s module doc comment for the full
+ * refresh-token-rotation mechanism. `refreshToken`/any other secret is
+ * NEVER included here; this type is safe to serialize straight into an API
+ * response and render in the UI.
+ */
+export type SavedAccount = {
+  userId: string;
+  email: string;
+  label: string;
+  active: boolean;
+};
+
 export interface AuthPort {
   getSession(): Promise<Session | null>;
+  /** Extended (Wave 3): on success, also appends/updates this account's entry in the `saved_accounts` cookie — see `switchAccount`'s doc comment. */
   signIn(email: string, password: string): Promise<Session | null>;
+  /**
+   * Extended (Wave 3): removes the ACTIVE account from `saved_accounts`
+   * first. If other saved accounts remain, switches to the next one and
+   * returns with that account still logged in (does NOT end up
+   * unauthenticated) — only clears everything and truly signs out when no
+   * saved account remains.
+   */
   signOut(): Promise<void>;
   /**
    * Re-issues the session cookie for the already-authenticated user, active
@@ -44,6 +70,24 @@ export interface AuthPort {
    * backend-agnostic.
    */
   switchBusiness(businessId: string, role: Role): Promise<Session | null>;
+  /**
+   * Lists the accounts saved on this device (this browser's `saved_accounts`
+   * cookie), marking which one is currently active. Never exposes a
+   * refresh token or any other secret — see `SavedAccount`'s doc comment.
+   */
+  listSavedAccounts(): Promise<SavedAccount[]>;
+  /**
+   * Instantly activates a DIFFERENT saved account's session — no password
+   * re-entry. SECURITY CONTRACT: the caller (the ONLY sanctioned one is
+   * `app/api/auth/switch-account/route.ts`) MUST first verify `userId` is
+   * present in `listSavedAccounts()`'s result for THIS request's own
+   * cookies — the presence of a matching stored (server-side, httpOnly)
+   * refresh token IS the authorization; a client can never supply or forge
+   * one. Returns `null` if `userId` isn't a saved account, or if its stored
+   * token turns out to be stale/invalid (in which case the account is
+   * dropped from `saved_accounts`, requiring a fresh login for it).
+   */
+  switchAccount(userId: string): Promise<Session | null>;
 }
 
 export type Paged<T> = {

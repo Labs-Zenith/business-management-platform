@@ -5,8 +5,11 @@ import type { BusinessMembership } from "@/lib/services/ports";
 
 const refreshMock = vi.fn();
 
+const pushMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: refreshMock }),
+  useRouter: () => ({ push: pushMock, refresh: refreshMock }),
+  usePathname: () => "/dashboard",
 }));
 
 import BusinessSwitcher from "./business-switcher";
@@ -230,5 +233,60 @@ describe("BusinessSwitcher", () => {
 
     expect(await screen.findByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Negocio Demo 2" })).toBeInTheDocument();
+  });
+});
+
+describe("BusinessSwitcher — saved accounts (Wave 3)", () => {
+  beforeEach(() => {
+    refreshMock.mockReset();
+    pushMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const OTHER_ACCOUNT = {
+    userId: "user-2",
+    email: "otra@negocio.test",
+    label: "otra@negocio.test",
+    active: false,
+  };
+
+  it("lists other saved accounts and switches to one via POST /api/auth/switch-account + refresh", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <BusinessSwitcher
+        currentBusinessId="biz-1"
+        memberships={SINGLE}
+        savedAccounts={[
+          { userId: "u1", email: "demo@test.com", label: "demo@test.com", active: true },
+          OTHER_ACCOUNT,
+        ]}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
+    await user.click(await screen.findByRole("button", { name: /otra@negocio\.test/i }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/switch-account",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ userId: "user-2" }) })
+    );
+    expect(refreshMock).toHaveBeenCalled();
+  });
+
+  it("navigates to /login?next=<current path> when 'Agregar cuenta' is clicked", async () => {
+    const user = userEvent.setup();
+
+    render(<BusinessSwitcher currentBusinessId="biz-1" memberships={SINGLE} savedAccounts={[]} />);
+
+    await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
+    await user.click(await screen.findByRole("button", { name: /agregar cuenta/i }));
+
+    expect(pushMock).toHaveBeenCalledWith("/login?next=%2Fdashboard");
   });
 });

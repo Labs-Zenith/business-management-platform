@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import type { AuthPort, BusinessMembership, Role, Session } from "@/lib/services/ports";
+import type { AuthPort, BusinessMembership, Role, SavedAccount, Session } from "@/lib/services/ports";
 import { createServerSupabaseClient } from "./server";
 
 /**
@@ -24,9 +24,53 @@ import { createServerSupabaseClient } from "./server";
  * JSDoc in `lib/services/ports.ts`) — the sole sanctioned caller,
  * `app/api/auth/switch-business/route.ts`, has already verified membership
  * via `listMembershipsForUser` before calling this.
+ *
+ * ---------------------------------------------------------------------
+ * Wave 3 — Multi-account instant switching (Instagram-style)
+ * ---------------------------------------------------------------------
+ * Supabase (`@supabase/ssr`) keeps exactly ONE active session cookie family
+ * (`sb-<ref>-auth-token*`) at a time. To hold several DIFFERENT accounts
+ * (different logins — distinct from `switchBusiness`'s same-user
+ * multi-business switching), each account's own REFRESH TOKEN is stashed in
+ * a separate, app-owned httpOnly `saved_accounts` cookie: a JSON array of
+ * `{userId, email, label, refreshToken}` (never exposed outside this file —
+ * see `SavedAccount`, the public/non-secret projection returned by
+ * `listSavedAccounts`).
+ *
+ * The tricky invariant is refresh-token ROTATION: Supabase rotates a
+ * refresh token every time it's actually used (e.g. `refreshSession`, or
+ * `middleware.ts`'s `updateSession` refreshing the ACTIVE account's token
+ * over time). So:
+ *   1. `signIn` captures the PREVIOUSLY-active account's live refresh token
+ *      (if any, and if it's a different user) BEFORE calling
+ *      `signInWithPassword` — which immediately overwrites the `sb-*`
+ *      cookie family — so "add another account" never silently drops the
+ *      account being left behind. It then appends/updates the newly signed
+ *      in account's own entry with ITS fresh refresh token.
+ *   2. `switchAccount(userId)`: FIRST captures the CURRENTLY-active
+ *      account's live refresh token (so the account being left keeps a
+ *      fresh, valid token in `saved_accounts` — its own token doesn't
+ *      rotate again until it's used); THEN exchanges the target's stored
+ *      refresh token via `refreshSession` (which writes the new `sb-*`
+ *      cookie family via the server client's `setAll`); THEN re-saves the
+ *      target's entry with its NEW rotated refresh token; THEN resets
+ *      `active_business_id` to the target's first membership. A
+ *      stale/invalid stored token (refresh error) drops that account from
+ *      `saved_accounts` and returns `null` (the caller surfaces a clean
+ *      error; that account then requires a fresh login).
+ *   3. `signOut` removes the ACTIVE account from `saved_accounts`; if
+ *      others remain, switches to the next one instead of ending up fully
+ *      logged out (Instagram-style "close this account, land on another
+ *      one you already had open"); only clears everything and truly signs
+ *      out of Supabase when no saved account remains.
+ *
+ * Non-active accounts' tokens are simply unused (not rotated) while they
+ * sit in `saved_accounts`, so they stay valid until the moment they're
+ * switched to.
  */
 
 const ACTIVE_BUSINESS_COOKIE_NAME = "active_business_id";
+const SAVED_ACCOUNTS_COOKIE_NAME = "saved_accounts";
 
 async function setActiveBusinessCookie(businessId: string): Promise<void> {
   const cookieStore = await cookies();
@@ -49,6 +93,63 @@ async function readActiveBusinessCookie(): Promise<string | undefined> {
 }
 
 /**
+ * The FULL stored shape — includes the secret `refreshToken`. Never leaves
+ * this file; `SavedAccount` (in `ports.ts`) is the public projection.
+ */
+type StoredAccount = {
+  userId: string;
+  email: string;
+  label: string;
+  refreshToken: string;
+};
+
+function isStoredAccount(value: unknown): value is StoredAccount {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).userId === "string" &&
+    typeof (value as Record<string, unknown>).email === "string" &&
+    typeof (value as Record<string, unknown>).label === "string" &&
+    typeof (value as Record<string, unknown>).refreshToken === "string"
+  );
+}
+
+async function readSavedAccounts(): Promise<StoredAccount[]> {
+  const cookieStore = await cookies();
+  const raw = cookieStore.get(SAVED_ACCOUNTS_COOKIE_NAME)?.value;
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(isStoredAccount);
+  } catch {
+    // Malformed/tampered cookie — treat as no saved accounts rather than
+    // crashing (same fail-safe posture as `lib/mock/auth-adapter.ts`'s
+    // `decodeSession`).
+    return [];
+  }
+}
+
+async function writeSavedAccounts(accounts: StoredAccount[]): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set(SAVED_ACCOUNTS_COOKIE_NAME, JSON.stringify(accounts), {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+  });
+}
+
+/** Replaces any existing entry for `account.userId` (never duplicates a userId). */
+function upsertAccount(accounts: StoredAccount[], account: StoredAccount): StoredAccount[] {
+  return [...accounts.filter((existing) => existing.userId !== account.userId), account];
+}
+
+/**
  * Lazily imported at call time (never at module top-level) to avoid a
  * circular import: `lib/services/repositories.ts` imports this adapter, so
  * a static top-level `import { repositories } from "@/lib/services/repositories"`
@@ -59,6 +160,76 @@ async function readActiveBusinessCookie(): Promise<string | undefined> {
 async function listMembershipsForUser(userId: string): Promise<BusinessMembership[]> {
   const { repositories } = await import("@/lib/services/repositories");
   return repositories.business.listMembershipsForUser(userId);
+}
+
+/**
+ * Shared core of `switchAccount` — also called by `signOut` to fall back to
+ * the next saved account instead of ending up fully logged out. Assumes
+ * `userId` is ALREADY known to be present in `accounts` by the caller (both
+ * call sites re-read `saved_accounts` themselves beforehand); does its own
+ * lookup regardless as a defensive re-check.
+ */
+async function performSwitchAccount(userId: string): Promise<Session | null> {
+  const supabase = await createServerSupabaseClient();
+  let accounts = await readSavedAccounts();
+
+  const target = accounts.find((account) => account.userId === userId);
+  if (!target) {
+    return null;
+  }
+
+  // Step 1: capture the CURRENTLY-active account's live refresh token
+  // BEFORE `refreshSession` below overwrites the `sb-*` cookie family, so
+  // the account being left behind keeps a fresh, valid token.
+  const { data: currentSessionData } = await supabase.auth.getSession();
+  const currentSession = currentSessionData.session;
+  if (currentSession?.user && currentSession.refresh_token) {
+    accounts = upsertAccount(accounts, {
+      userId: currentSession.user.id,
+      email: currentSession.user.email!,
+      label:
+        accounts.find((account) => account.userId === currentSession.user!.id)?.label ??
+        currentSession.user.email!,
+      refreshToken: currentSession.refresh_token,
+    });
+  }
+
+  // Step 2: exchange the target's stored refresh token for a fresh session
+  // — `createServerSupabaseClient`'s `setAll` writes the new `sb-*` cookie
+  // family as a side effect of this call.
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: target.refreshToken });
+  if (error || !data.session || !data.user) {
+    // Stale/invalid stored token: drop this account. Still persist step 1's
+    // update for the account we stayed on.
+    await writeSavedAccounts(accounts.filter((account) => account.userId !== userId));
+    return null;
+  }
+
+  const memberships = await listMembershipsForUser(data.user.id);
+  if (memberships.length === 0) {
+    await writeSavedAccounts(accounts.filter((account) => account.userId !== userId));
+    return null;
+  }
+  const active = memberships[0]!;
+
+  // Step 3: re-save the target's entry with its NEW rotated refresh token.
+  accounts = upsertAccount(accounts, {
+    userId: data.user.id,
+    email: data.user.email!,
+    label: target.label,
+    refreshToken: data.session.refresh_token,
+  });
+  await writeSavedAccounts(accounts);
+
+  // Step 4: reset the active business to the switched-to account's first membership.
+  await setActiveBusinessCookie(active.businessId);
+
+  return {
+    userId: data.user.id,
+    businessId: active.businessId,
+    email: data.user.email!,
+    role: active.role,
+  };
 }
 
 export const supabaseAuthAdapter: AuthPort = {
@@ -87,8 +258,17 @@ export const supabaseAuthAdapter: AuthPort = {
 
   async signIn(email: string, password: string): Promise<Session | null> {
     const supabase = await createServerSupabaseClient();
+
+    // Capture the PREVIOUSLY-active account's live refresh token BEFORE
+    // `signInWithPassword` overwrites the `sb-*` cookie family below — this
+    // is what makes "add another account" (signing in as a NEW account
+    // while already logged in as an existing one) keep the previous
+    // account reachable in `saved_accounts` instead of silently losing it.
+    const { data: previousSessionData } = await supabase.auth.getSession();
+    const previousSession = previousSessionData.session;
+
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error || !data.user) {
+    if (error || !data.user || !data.session) {
       return null;
     }
 
@@ -107,6 +287,25 @@ export const supabaseAuthAdapter: AuthPort = {
     const active = memberships[0]!;
     await setActiveBusinessCookie(active.businessId);
 
+    let accounts = await readSavedAccounts();
+    if (previousSession?.user && previousSession.user.id !== userId && previousSession.refresh_token) {
+      accounts = upsertAccount(accounts, {
+        userId: previousSession.user.id,
+        email: previousSession.user.email!,
+        label:
+          accounts.find((account) => account.userId === previousSession.user!.id)?.label ??
+          previousSession.user.email!,
+        refreshToken: previousSession.refresh_token,
+      });
+    }
+    accounts = upsertAccount(accounts, {
+      userId,
+      email: data.user.email!,
+      label: data.user.email!,
+      refreshToken: data.session.refresh_token,
+    });
+    await writeSavedAccounts(accounts);
+
     return {
       userId,
       businessId: active.businessId,
@@ -117,8 +316,39 @@ export const supabaseAuthAdapter: AuthPort = {
 
   async signOut(): Promise<void> {
     const supabase = await createServerSupabaseClient();
-    await supabase.auth.signOut();
+    const { data } = await supabase.auth.getUser();
+    const activeUserId = data.user?.id;
+
+    const accounts = await readSavedAccounts();
+    const remaining = activeUserId ? accounts.filter((account) => account.userId !== activeUserId) : accounts;
+
+    // SECURITY: clear the departing account's local Supabase session FIRST,
+    // BEFORE any switch-to-next below. Otherwise `performSwitchAccount`'s
+    // "capture the currently-active token" step would read the still-present
+    // `sb-*` cookies (they still belong to the account being signed out) and
+    // silently re-`upsert` that account back into `saved_accounts` — leaving
+    // it re-activatable without a password on the device. "Cerrar sesión"
+    // must be a real removal boundary. `scope: "local"` clears only this
+    // device's session (does not revoke the account's refresh token on its
+    // OTHER devices).
+    await supabase.auth.signOut({ scope: "local" });
+
+    if (remaining.length > 0) {
+      // Persist the pruned list BEFORE switching — `performSwitchAccount`
+      // re-reads `saved_accounts` fresh and will further update the target's
+      // entry with its own rotated refresh token. With the departing session
+      // already cleared above, its "capture current token" step finds none,
+      // so the signed-out account stays removed.
+      await writeSavedAccounts(remaining);
+      const switched = await performSwitchAccount(remaining[0]!.userId);
+      if (switched) {
+        // Stayed logged in — as the next saved account.
+        return;
+      }
+    }
+
     await deleteActiveBusinessCookie();
+    await writeSavedAccounts([]);
   },
 
   /**
@@ -145,5 +375,23 @@ export const supabaseAuthAdapter: AuthPort = {
       email: data.user.email!,
       role,
     };
+  },
+
+  async listSavedAccounts(): Promise<SavedAccount[]> {
+    const supabase = await createServerSupabaseClient();
+    const { data } = await supabase.auth.getUser();
+    const activeUserId = data.user?.id;
+
+    const accounts = await readSavedAccounts();
+    return accounts.map((account) => ({
+      userId: account.userId,
+      email: account.email,
+      label: account.label,
+      active: account.userId === activeUserId,
+    }));
+  },
+
+  async switchAccount(userId: string): Promise<Session | null> {
+    return performSwitchAccount(userId);
   },
 };

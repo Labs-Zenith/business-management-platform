@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
-import { requireSessionOrRedirect } from "@/lib/session";
+import { requireSessionOrRedirect, getSavedAccounts } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { repositories } from "@/lib/services/repositories";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
@@ -77,13 +77,14 @@ export default async function DashboardLayout({
   // degradation (e.g. falling back to an empty `memberships` list) is a
   // possible future improvement, not implemented here.
   const memberships = await repositories.business.listMembershipsForUser(session.userId);
+  const savedAccounts = await getSavedAccounts();
   const cookieStore = await cookies();
   const sidebarDefaultCollapsed =
     cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === "true";
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <DashboardTopbar session={session} memberships={memberships} />
+      <DashboardTopbar session={session} memberships={memberships} savedAccounts={savedAccounts} />
       <div className="flex min-w-0 flex-1 overflow-hidden">
         {/*
           `role` (a plain string, not a pre-filtered `NavItem[]`) is the only
@@ -106,6 +107,7 @@ export default async function DashboardLayout({
           role={session.role}
           currentBusinessId={session.businessId}
           memberships={memberships}
+          savedAccounts={savedAccounts}
           email={session.email}
           defaultCollapsed={sidebarDefaultCollapsed}
         />

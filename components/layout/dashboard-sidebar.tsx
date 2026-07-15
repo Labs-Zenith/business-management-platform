@@ -37,7 +37,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_COLLAPSED_COOKIE } from "./nav-items";
 import SidebarContent from "./sidebar-content";
-import type { BusinessMembership, Role } from "@/lib/services/ports";
+import type { BusinessMembership, Role, SavedAccount } from "@/lib/services/ports";
 
 const COLLAPSED_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
@@ -50,12 +50,14 @@ export default function DashboardSidebar({
   role,
   currentBusinessId,
   memberships,
+  savedAccounts,
   email,
   defaultCollapsed = false,
 }: {
   role: Role;
   currentBusinessId: string;
   memberships: BusinessMembership[];
+  savedAccounts?: SavedAccount[];
   email: string;
   defaultCollapsed?: boolean;
 }) {
@@ -80,6 +82,7 @@ export default function DashboardSidebar({
         role={role}
         currentBusinessId={currentBusinessId}
         memberships={memberships}
+        savedAccounts={savedAccounts}
         email={email}
         collapsed={collapsed}
         showCollapseToggle

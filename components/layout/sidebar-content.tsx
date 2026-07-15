@@ -44,12 +44,13 @@ import { isActivePath, navItemsForRole } from "./nav-items";
 import { NavLink } from "./nav-link";
 import BusinessSwitcher from "./business-switcher";
 import SidebarUserMenu from "./sidebar-user-menu";
-import type { BusinessMembership, Role } from "@/lib/services/ports";
+import type { BusinessMembership, Role, SavedAccount } from "@/lib/services/ports";
 
 type SidebarContentProps = {
   role: Role;
   currentBusinessId: string;
   memberships: BusinessMembership[];
+  savedAccounts?: SavedAccount[];
   email: string;
   collapsed?: boolean;
   onNavigate?: () => void;
@@ -61,6 +62,7 @@ export default function SidebarContent({
   role,
   currentBusinessId,
   memberships,
+  savedAccounts = [],
   email,
   collapsed = false,
   onNavigate,
@@ -81,6 +83,7 @@ export default function SidebarContent({
         <BusinessSwitcher
           currentBusinessId={currentBusinessId}
           memberships={memberships}
+          savedAccounts={savedAccounts}
           collapsed={collapsed}
         />
         {showCollapseToggle && onToggleCollapse ? (

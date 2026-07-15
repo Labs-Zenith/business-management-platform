@@ -12,11 +12,21 @@ import { notFound, redirect } from "next/navigation";
 import { ApiError } from "@/lib/server/api-error";
 import { repositories } from "@/lib/services/repositories";
 import { can, type Capability } from "@/lib/services/permissions";
-import type { Session } from "@/lib/services/ports";
+import type { SavedAccount, Session } from "@/lib/services/ports";
 
 /** Returns the current session, or `null` if absent/invalid. Never throws. */
 export async function getSession(): Promise<Session | null> {
   return repositories.auth.getSession();
+}
+
+/**
+ * Returns the accounts saved on this device (Wave 3 multi-account), each with
+ * `active` flagging the currently-signed-in one. Never exposes refresh tokens
+ * (see `SavedAccount`). Used by the sidebar switcher to offer instant
+ * account switching.
+ */
+export async function getSavedAccounts(): Promise<SavedAccount[]> {
+  return repositories.auth.listSavedAccounts();
 }
 
 /**

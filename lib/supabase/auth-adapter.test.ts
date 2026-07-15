@@ -36,6 +36,14 @@ const { mockSupabaseAuth } = vi.hoisted(() => ({
     signInWithPassword: vi.fn(),
     getUser: vi.fn(),
     signOut: vi.fn(),
+    // Wave 3: signIn/switchAccount capture the current session's refresh token
+    // and exchange a saved one. Default to "no current session" / a fresh
+    // rotated token so existing signIn/getSession tests aren't affected.
+    getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+    refreshSession: vi.fn().mockResolvedValue({
+      data: { session: { refresh_token: "rotated-token", user: { id: "auth-user-1", email: "demo@negociodemo.test" } } },
+      error: null,
+    }),
   },
 }));
 
@@ -96,7 +104,10 @@ describe("supabaseAuthAdapter.signIn", () => {
 
   it("on success, resolves the session against the first membership and sets active_business_id", async () => {
     mockSupabaseAuth.signInWithPassword.mockResolvedValue({
-      data: { user: { id: USER_ID, email: EMAIL } },
+      data: {
+        user: { id: USER_ID, email: EMAIL },
+        session: { refresh_token: "token-a", user: { id: USER_ID, email: EMAIL } },
+      },
       error: null,
     });
     mockListMembershipsForUser.mockResolvedValue(membershipsFixture);
@@ -172,12 +183,50 @@ describe("supabaseAuthAdapter.signOut", () => {
 
   it("calls supabase.auth.signOut() and clears the active_business_id cookie", async () => {
     mockCookieJar.set("active_business_id", BUSINESS_A);
+    mockSupabaseAuth.getUser.mockResolvedValue({ data: { user: null } });
     mockSupabaseAuth.signOut.mockResolvedValue({ error: null });
 
     await supabaseAuthAdapter.signOut();
 
     expect(mockSupabaseAuth.signOut).toHaveBeenCalledTimes(1);
     expect(mockCookieJar.get("active_business_id")).toBeUndefined();
+  });
+
+  it("does NOT re-add the signed-out account when falling back to a next saved account (security regression guard)", async () => {
+    const A_ID = "user-a";
+    const B_ID = "user-b";
+    mockCookieJar.set(
+      "saved_accounts",
+      JSON.stringify([
+        { userId: A_ID, email: "a@x.test", label: "a@x.test", refreshToken: "tok-a" },
+        { userId: B_ID, email: "b@x.test", label: "b@x.test", refreshToken: "tok-b" },
+      ])
+    );
+    // A is the currently-active account being signed out.
+    mockSupabaseAuth.getUser.mockResolvedValue({ data: { user: { id: A_ID, email: "a@x.test" } } });
+    mockSupabaseAuth.signOut.mockResolvedValue({ error: null });
+    // After signOut, there is no active session to capture (this is the fix).
+    mockSupabaseAuth.getSession.mockResolvedValue({ data: { session: null } });
+    // Switching to B exchanges its stored token for a fresh session.
+    mockSupabaseAuth.refreshSession.mockResolvedValue({
+      data: {
+        user: { id: B_ID, email: "b@x.test" },
+        session: { refresh_token: "rot-b", user: { id: B_ID, email: "b@x.test" } },
+      },
+      error: null,
+    });
+    mockListMembershipsForUser.mockResolvedValue([
+      { businessId: BUSINESS_A, businessName: "Negocio B", role: "admin" },
+    ]);
+
+    await supabaseAuthAdapter.signOut();
+
+    const raw = mockCookieJar.get("saved_accounts")!.value;
+    const saved = JSON.parse(raw) as Array<{ userId: string }>;
+    const ids = saved.map((a) => a.userId);
+    expect(ids).not.toContain(A_ID); // the signed-out account is gone
+    expect(ids).toContain(B_ID); // and we stayed logged in as the next one
+    expect(mockSupabaseAuth.signOut).toHaveBeenCalledTimes(1);
   });
 });
 

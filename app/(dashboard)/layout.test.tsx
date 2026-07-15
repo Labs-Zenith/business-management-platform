@@ -7,6 +7,7 @@ const mockListMembershipsForUser = vi.fn<(userId: string) => Promise<BusinessMem
 
 vi.mock("@/lib/session", () => ({
   requireSessionOrRedirect: () => mockRequireSessionOrRedirect(),
+  getSavedAccounts: () => Promise.resolve([]),
 }));
 
 vi.mock("next/navigation", () => ({
