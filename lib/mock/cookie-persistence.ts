@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
+import { isDbConfigured } from "@/lib/db/client";
 import { store, serializeStore, hydrateStore, type SerializedStore } from "./store";
 import { seedMinimal } from "./fixtures";
 
@@ -16,12 +17,29 @@ import { seedMinimal } from "./fixtures";
  * created the data — doesn't fit the full ~8-customer/~12-invoice demo
  * fixture set (see `seedMinimal`), and a cookie has a hard ~4KB size
  * ceiling, so this is a mocked-demo convenience, not a real backend.
+ *
+ * GATED ON THE ACTIVE BACKEND: when a real Postgres DB is configured
+ * (`isDbConfigured`, i.e. a deployed Neon/Vercel setup), both functions are
+ * no-ops — the DB is the source of truth, `repositories.ts` already routes
+ * every read/write to the `lib/db/*` repos, and the mock store isn't used.
+ * Writing here anyway would serialize the entire seeded mock store into a
+ * single `app_data` cookie that BLOWS PAST the ~4KB per-cookie ceiling
+ * (~15KB for the full fixture set): the browser silently drops it, and a
+ * Set-Cookie header that large can make Vercel reject subsequent requests.
+ * Skipping both in DB mode is what keeps a production deploy clean.
  */
 const COOKIE_NAME = "app_data";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 1 week
 
-/** Reads `app_data`, hydrating the shared store from it, or seeds minimal data if absent/corrupt. */
+/**
+ * Reads `app_data`, hydrating the shared store from it, or seeds minimal
+ * data if absent/corrupt. No-op when a real DB backend is configured (the
+ * mock store is unused there — see the module comment).
+ */
 export async function loadStoreFromCookie(): Promise<void> {
+  if (isDbConfigured) {
+    return;
+  }
   const jar = await cookies();
   const raw = jar.get(COOKIE_NAME)?.value;
   if (raw) {
@@ -35,8 +53,16 @@ export async function loadStoreFromCookie(): Promise<void> {
   seedMinimal(store);
 }
 
-/** Serializes the current store state onto `response` as the `app_data` cookie. */
+/**
+ * Serializes the current store state onto `response` as the `app_data`
+ * cookie. No-op when a real DB backend is configured (the mock store is
+ * unused there, and this cookie would exceed the ~4KB ceiling — see the
+ * module comment).
+ */
 export function saveStoreToCookie(response: NextResponse): void {
+  if (isDbConfigured) {
+    return;
+  }
   response.cookies.set(COOKIE_NAME, JSON.stringify(serializeStore()), {
     httpOnly: true,
     sameSite: "lax",
