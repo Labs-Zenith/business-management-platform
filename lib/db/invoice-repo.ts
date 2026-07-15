@@ -18,6 +18,7 @@ type InvoiceRow = {
   id: string;
   business_id: string;
   customer_id: string;
+  invoice_type_id: string;
   number: string;
   issue_date: string;
   due_date: string | null;
@@ -46,6 +47,7 @@ type PaymentRow = {
   payment_date: string;
   amount: number;
   method: string | null;
+  method_id: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -106,6 +108,7 @@ function toPaymentWithRefs(payment: PaymentRow, customerName: string, invoiceNum
     paymentDate: toDateStr(payment.payment_date),
     amount: Number(payment.amount),
     method: payment.method,
+    methodId: payment.method_id,
     notes: payment.notes,
     createdAt: new Date(payment.created_at).toISOString(),
     updatedAt: new Date(payment.updated_at).toISOString(),
@@ -119,6 +122,7 @@ function toInvoice(row: InvoiceRow): Invoice {
     id: row.id,
     businessId: row.business_id,
     customerId: row.customer_id,
+    invoiceTypeId: row.invoice_type_id,
     number: row.number,
     issueDate: toDateStr(row.issue_date),
     dueDate: row.due_date ? toDateStr(row.due_date) : null,
@@ -232,33 +236,73 @@ export const invoiceRepo: InvoiceRepository = {
     return buildDetail(toInvoice(row));
   },
 
+  /**
+   * Atomic per-(business, invoice type) numbering AND persistence, all in
+   * ONE `runTransaction` callback — sequence bump + header INSERT + every
+   * item INSERT, run as sequential awaits against the SAME `tx` (mirrors
+   * `update`'s established single-transaction shape; see this file's
+   * top-of-file doc comment). Previously the sequence bump was a separate,
+   * un-transacted `sql` call before the header/items — a failing item INSERT
+   * could leave a bumped sequence number with NO invoice ever persisted for
+   * it (a silent numbering gap, not a correctness bug for THIS invoice, but a
+   * real one for the sequence's own "no gaps" invariant the mock's
+   * concurrency test asserts). Wrapping all of it in one transaction means a
+   * failing item INSERT rolls back the sequence bump and the header too —
+   * genuinely all-or-nothing.
+   *
+   * `invoiceTypeId` defaults to the `venta` catalog type when `data`
+   * doesn't supply one (no type-picking UI wires it yet — Wave 2;
+   * `invoice-service.ts#createInvoice` is the one caller today and always
+   * resolves this before calling `create`, but this repository defaults it
+   * too, as a second line of defense for any other/future caller). The
+   * type's `prefix` (e.g. "FAC") is resolved in the SAME statement as the
+   * sequence bump — one round trip, not two.
+   */
   async create(businessId: string, data: InvoicePersist): Promise<InvoiceDetail> {
-    // Atomic per-business numbering: a single UPSERT statement, race-free
-    // under Postgres's row-level locking, replacing the mock's in-process
-    // withLock(businessId) mutex (which can't protect across serverless
-    // instances).
-    const seqRows = (await sql`
-      INSERT INTO invoice_sequences (business_id, seq) VALUES (${businessId}, 1)
-      ON CONFLICT (business_id) DO UPDATE SET seq = invoice_sequences.seq + 1
-      RETURNING seq
-    `) as unknown as { seq: number }[];
-    const number = `FAC-${String(seqRows[0].seq).padStart(4, "0")}`;
+    const { invoiceRows } = await runTransaction(async (tx) => {
+      // Statement 1: resolve the invoice type (COALESCE to `venta` when not
+      // supplied) AND atomically bump ITS OWN per-(business,type) sequence,
+      // returning the bumped seq + the type's prefix together.
+      const seqRows = (await tx`
+        WITH resolved_type AS (
+          SELECT COALESCE(${data.invoiceTypeId ?? null}::uuid, (SELECT id FROM invoice_types WHERE code = 'venta')) AS id
+        ),
+        bumped AS (
+          INSERT INTO invoice_sequences (business_id, invoice_type_id, seq)
+          SELECT ${businessId}, resolved_type.id, 1 FROM resolved_type
+          ON CONFLICT (business_id, invoice_type_id) DO UPDATE SET seq = invoice_sequences.seq + 1
+          RETURNING business_id, invoice_type_id, seq
+        )
+        SELECT bumped.invoice_type_id, bumped.seq, it.prefix
+        FROM bumped
+        JOIN invoice_types it ON it.id = bumped.invoice_type_id
+      `) as unknown as { invoice_type_id: string; seq: number; prefix: string }[];
+      const { invoice_type_id: invoiceTypeId, seq, prefix } = seqRows[0]!;
+      const number = `${prefix}-${String(seq).padStart(4, "0")}`;
 
-    const invoiceRows = (await sql`
-      INSERT INTO invoices (id, business_id, customer_id, number, issue_date, due_date, subtotal, total, status, notes)
-      VALUES (gen_random_uuid(), ${businessId}, ${data.customerId}, ${number}, ${data.issueDate}, ${data.dueDate}, ${data.subtotal}, ${data.total}, ${data.status}, ${data.notes})
-      RETURNING *
-    `) as unknown as InvoiceRow[];
-    const invoice = toInvoice(invoiceRows[0]);
+      // Statement 2: header INSERT, using the resolved type + number.
+      const invoiceRows = (await tx`
+        INSERT INTO invoices (id, business_id, customer_id, invoice_type_id, number, issue_date, due_date, subtotal, total, status, notes)
+        VALUES (gen_random_uuid(), ${businessId}, ${data.customerId}, ${invoiceTypeId}, ${number}, ${data.issueDate}, ${data.dueDate}, ${data.subtotal}, ${data.total}, ${data.status}, ${data.notes})
+        RETURNING *
+      `) as unknown as InvoiceRow[];
+      const invoiceId = invoiceRows[0]!.id;
 
-    for (const item of data.items) {
-      await sql`
-        INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total)
-        VALUES (gen_random_uuid(), ${invoice.id}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal})
-      `;
-    }
+      // Statements 3..N: one INSERT per item, same transaction.
+      for (const item of data.items) {
+        await tx`
+          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total)
+          VALUES (gen_random_uuid(), ${invoiceId}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal})
+        `;
+      }
 
-    return buildDetail(invoice);
+      return { invoiceRows };
+    });
+
+    // Header + items already committed atomically above; re-read (via the
+    // plain `sql` tag, not `tx`) for the returned detail — mirrors `update`'s
+    // established post-transaction read pattern.
+    return buildDetail(toInvoice(invoiceRows[0]!));
   },
 
   async update(businessId: string, id: string, data: InvoicePersist): Promise<InvoiceDetail | null> {

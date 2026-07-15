@@ -5,6 +5,7 @@ type ExpenseRow = {
   id: string;
   business_id: string;
   category: string;
+  category_id: string;
   expense_date: string;
   description: string;
   amount: number;
@@ -23,6 +24,7 @@ function toExpense(row: ExpenseRow): Expense {
     id: row.id,
     businessId: row.business_id,
     category: row.category as Expense["category"],
+    categoryId: row.category_id,
     expenseDate: toDateStr(row.expense_date),
     description: row.description,
     amount: Number(row.amount),
@@ -62,9 +64,16 @@ export const expenseRepo: ExpenseRepository = {
   },
 
   async create(businessId: string, data: ExpenseInput): Promise<Expense> {
+    // `category_id` is resolved in the SAME statement (no extra round trip):
+    // the caller-supplied `data.categoryId` wins when present, otherwise it's
+    // looked up from `expense_categories` by `category`'s code — `category`
+    // is always populated (required, enum-checked), so this always resolves
+    // against the seeded catalog.
     const rows = (await sql`
-      INSERT INTO expenses (id, business_id, category, expense_date, description, amount, notes)
-      VALUES (gen_random_uuid(), ${businessId}, ${data.category}, ${data.expenseDate}, ${data.description}, ${data.amount}, ${data.notes ?? null})
+      INSERT INTO expenses (id, business_id, category, category_id, expense_date, description, amount, notes)
+      SELECT gen_random_uuid(), ${businessId}, ${data.category},
+        COALESCE(${data.categoryId ?? null}::uuid, (SELECT id FROM expense_categories WHERE code = ${data.category})),
+        ${data.expenseDate}, ${data.description}, ${data.amount}, ${data.notes ?? null}
       RETURNING *
     `) as unknown as ExpenseRow[];
     return toExpense(rows[0]!);

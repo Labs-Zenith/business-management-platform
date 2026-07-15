@@ -10,13 +10,15 @@ import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { PageHeader } from "@/components/domain/page-header";
+import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 
 /**
  * Clientes screen, per `docs/ui-ux-flow.md`'s "Clientes" section and
  * `openspec/changes/mocked-mvp-scaffold/specs/customers/spec.md`. Fetches
  * via `customer-service` directly (a Server Component call, not a
  * self-fetch of `/api/customers`) — the API route exists for the client-side
- * mutation dialog and any future non-page consumer.
+ * mutation dialogs (`CustomerFormDialog`, mirroring `EmployeeFormDialog`'s
+ * pattern in `nomina/page.tsx`).
  *
  * `requireSessionOrRedirect()` runs first (defense in depth alongside
  * `middleware.ts`'s `/customers` guard), matching the pattern established in
@@ -59,10 +61,15 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         title="Clientes"
         description="Gestiona tus clientes y consulta su saldo pendiente."
         actions={
-          <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/customers/new" />}>
-            <Plus className="size-4" />
-            Crear cliente
-          </Button>
+          <CustomerFormDialog
+            mode="create"
+            trigger={
+              <Button className="w-full sm:w-auto">
+                <Plus className="size-4" />
+                Crear cliente
+              </Button>
+            }
+          />
         }
       />
 
@@ -134,14 +141,15 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    nativeButton={false}
-                    render={<Link href={`/customers/${customer.id}/edit`} />}
-                  >
-                    Editar
-                  </Button>
+                  <CustomerFormDialog
+                    mode="edit"
+                    customer={customer}
+                    trigger={
+                      <Button variant="ghost" size="sm">
+                        Editar
+                      </Button>
+                    }
+                  />
                 </TableCell>
               </TableRow>
             ))

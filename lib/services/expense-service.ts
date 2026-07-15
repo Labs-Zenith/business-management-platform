@@ -16,10 +16,19 @@
  * `expenseCreateSchema` INTERNALLY, so a future direct caller (Nomina) that
  * bypasses `/api/expenses` entirely still gets the same amount/category/
  * length invariants enforced — never a route-dependent safety net.
+ *
+ * `categoryId` (optional FK to `expense_categories.id`) is validated to
+ * actually EXIST in the catalog — via `assertCatalogId` — before it is ever
+ * forwarded to `repositories.expenses.create`, so a well-formed but
+ * nonexistent id fails here with a clean `VALIDATION_ERROR` instead of
+ * reaching the mock (silent dangling FK) or the DB backend (raw FK-violation
+ * 500). When omitted, the repository still resolves it from `category`'s
+ * enum-validated code, exactly as before.
  */
 
 import { expenseCreateSchema } from "@/lib/schemas/expense";
 import { ApiError } from "@/lib/server/api-error";
+import { assertCatalogId } from "@/lib/services/catalog-service";
 import { repositories } from "@/lib/services/repositories";
 import type { Expense, ExpenseInput, ExpenseListQuery, Paged, Session } from "@/lib/services/ports";
 
@@ -29,6 +38,8 @@ export type ExpenseCreateInput = {
   description: string;
   amount: number;
   notes?: string | null;
+  /** Optional FK to `expense_categories.id` — see this file's module doc comment. */
+  categoryId?: string;
 };
 
 export async function listExpenses(session: Session, query: ExpenseListQuery): Promise<Paged<Expense>> {
@@ -64,9 +75,15 @@ export async function createExpense(session: Session, data: ExpenseCreateInput):
     description: data.description,
     amount: data.amount,
     notes: data.notes ?? undefined,
+    categoryId: data.categoryId,
   });
   if (!parsed.success) {
     throw new ApiError("VALIDATION_ERROR", "Invalid expense payload.", parsed.error.flatten());
+  }
+
+  if (parsed.data.categoryId) {
+    const categories = await repositories.catalog.listExpenseCategories();
+    assertCatalogId(categories, parsed.data.categoryId, "categoryId");
   }
 
   const persist: ExpenseInput = {
@@ -75,6 +92,7 @@ export async function createExpense(session: Session, data: ExpenseCreateInput):
     description: parsed.data.description,
     amount: parsed.data.amount,
     notes: parsed.data.notes ?? null,
+    categoryId: parsed.data.categoryId,
   };
   return repositories.expenses.create(session.businessId, persist);
 }

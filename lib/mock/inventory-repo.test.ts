@@ -19,9 +19,9 @@ beforeEach(() => {
   store = createEmptyStore();
 });
 
-async function seedProduct(businessId = BUSINESS_ID, unitCost = 1000, minStockThreshold = 0) {
+async function seedProduct(businessId = BUSINESS_ID, unitCost = 1000) {
   const productRepo = createProductRepository(store);
-  return productRepo.create(businessId, { name: "Producto de prueba", unitCost, minStockThreshold });
+  return productRepo.create(businessId, { name: "Producto de prueba", unitCost });
 }
 
 describe("createInventoryMovementRepository.create — append-only", () => {

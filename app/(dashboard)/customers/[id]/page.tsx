@@ -19,6 +19,7 @@ import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { PageHeader } from "@/components/domain/page-header";
 import { StatCard } from "@/components/domain/stat-card";
+import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 
 /**
  * Detalle de cliente screen, per `docs/ui-ux-flow.md`'s "Detalle de
@@ -66,14 +67,15 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
           </Badge>
         }
         actions={
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            nativeButton={false}
-            render={<Link href={`/customers/${customer.id}/edit`} />}
-          >
-            Editar
-          </Button>
+          <CustomerFormDialog
+            mode="edit"
+            customer={customer}
+            trigger={
+              <Button variant="outline" className="w-full sm:w-auto">
+                Editar
+              </Button>
+            }
+          />
         }
       />
 

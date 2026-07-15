@@ -212,6 +212,44 @@ describe("createPayrollPayment (payroll-service)", () => {
       createSpy.mockRestore();
     }
   });
+
+  it("accepts a well-formed periodTypeId that actually exists in the payroll_period_types catalog", async () => {
+    resetStore();
+    const employee = await createEmployee(SESSION, { name: "Laura Martinez", baseSalary: 2000000 });
+    const [existingPeriodType] = await repositories.catalog.listPayrollPeriodTypes();
+
+    const payment = await createPayrollPayment(SESSION, {
+      employeeId: employee.id,
+      amount: 1000000,
+      periodType: "quincenal",
+      referenceDate: "2026-07-05",
+      paymentDate: "2026-07-16",
+      periodTypeId: existingPeriodType!.id,
+    });
+
+    expect(payment.periodTypeId).toBe(existingPeriodType!.id);
+  });
+
+  it("rejects a well-formed but nonexistent periodTypeId with VALIDATION_ERROR, creating nothing", async () => {
+    resetStore();
+    const employee = await createEmployee(SESSION, { name: "Laura Martinez", baseSalary: 2000000 });
+    const paymentsBefore = store.payrollPayments.size;
+    const expensesBefore = store.expenses.size;
+
+    await expect(
+      createPayrollPayment(SESSION, {
+        employeeId: employee.id,
+        amount: 1000000,
+        periodType: "quincenal",
+        referenceDate: "2026-07-05",
+        paymentDate: "2026-07-16",
+        periodTypeId: "c5000000-0000-4000-8000-000000000099",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    expect(store.payrollPayments.size).toBe(paymentsBefore);
+    expect(store.expenses.size).toBe(expensesBefore);
+  });
 });
 
 describe("listPayrollPayments (payroll-service)", () => {

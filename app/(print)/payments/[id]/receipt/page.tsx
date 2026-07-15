@@ -81,6 +81,7 @@ async function getPaymentOrMock(session: Session, id: string): Promise<PaymentWi
         paymentDate: new Date().toISOString().slice(0, 10),
         amount: 0,
         method: "Mock",
+        methodId: null,
         notes: "Comprobante mock generado porque el pago no existe en el entorno de prueba.",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

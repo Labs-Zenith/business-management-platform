@@ -30,18 +30,19 @@ export async function createProduct(session: Session, data: ProductCreate): Prom
 }
 
 /**
- * Only name/sku/unitCost/minStockThreshold/active are ever forwarded to the
- * repository — defense in depth on top of `lib/schemas/product.ts`'s
- * `.strict()` schema: even if a caller somehow bypasses schema validation, a
- * forged `businessId`/computed field on `data` is stripped here before it
- * ever reaches the repository.
+ * Only name/sku/unitCost/active are ever forwarded to the repository —
+ * defense in depth on top of `lib/schemas/product.ts`'s `.strict()` schema:
+ * even if a caller somehow bypasses schema validation, a forged
+ * `businessId`/computed field on `data` is stripped here before it ever
+ * reaches the repository. `minStockThreshold` is gone (Wave 1A) — low-stock
+ * is now a fixed rule, not a per-product field (see `lib/services/
+ * inventory-stock.ts`).
  */
 export async function updateProduct(session: Session, id: string, data: ProductUpdate): Promise<Product> {
   const sanitized: ProductUpdate = {
     ...(data.name !== undefined && { name: data.name }),
     ...(data.sku !== undefined && { sku: data.sku }),
     ...(data.unitCost !== undefined && { unitCost: data.unitCost }),
-    ...(data.minStockThreshold !== undefined && { minStockThreshold: data.minStockThreshold }),
     ...(data.active !== undefined && { active: data.active }),
   };
 

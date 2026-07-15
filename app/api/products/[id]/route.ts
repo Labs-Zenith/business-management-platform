@@ -9,9 +9,9 @@ import { updateProduct } from "@/lib/services/product-service";
 /**
  * `PATCH /api/products/{id}`, per
  * `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s "Products
- * Are Business-Scoped and Editable" requirement (name/sku/unitCost/
- * minStockThreshold/active are editable; there is no delete, only the active
- * toggle — so there is no `DELETE` handler here). Mirrors
+ * Are Business-Scoped and Editable" requirement (name/sku/unitCost/active are
+ * editable; there is no delete, only the active toggle — so there is no
+ * `DELETE` handler here). Mirrors
  * `app/api/employees/[id]/route.ts`'s `PATCH`, EXCEPT there is no
  * `requireCapability` gate — per the spec's "No Role Gating on Inventory"
  * requirement, any authenticated session may update a product. Cross-business

@@ -81,12 +81,11 @@ const LOW_STOCK_PRODUCT: ProductWithStock = {
   name: "Tornillos 1/4",
   sku: "TOR-14",
   unitCost: 500,
-  minStockThreshold: 10,
   active: true,
   createdAt: "2024-01-01T00:00:00.000Z",
   updatedAt: "2024-01-01T00:00:00.000Z",
-  currentQuantity: 4,
-  totalValue: 2000,
+  currentQuantity: 2,
+  totalValue: 1000,
   isLowStock: true,
 };
 
@@ -96,7 +95,6 @@ const HEALTHY_PRODUCT: ProductWithStock = {
   name: "Martillos",
   sku: null,
   unitCost: 25_000,
-  minStockThreshold: 2,
   active: true,
   createdAt: "2024-01-01T00:00:00.000Z",
   updatedAt: "2024-01-01T00:00:00.000Z",
@@ -110,6 +108,7 @@ const MOVEMENT: InventoryMovementWithProduct = {
   businessId: SESSION.businessId,
   productId: LOW_STOCK_PRODUCT.id,
   type: "out",
+  typeId: "c4000000-0000-4000-8000-000000000002",
   quantity: 6,
   note: "Venta mostrador",
   createdAt: "2026-07-10T00:00:00.000Z",
@@ -144,7 +143,7 @@ describe("InventarioPage", () => {
     expect(screen.getByText("Venta mostrador")).toBeInTheDocument();
   });
 
-  it("flags a product below its own min_stock_threshold as low-stock, and does not flag a healthy one with a different threshold", async () => {
+  it("flags a product within the fixed 1-3 low-stock range, and does not flag a healthy one above that range", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT, HEALTHY_PRODUCT], page: 1, pageSize: 50, total: 2 });
     mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });

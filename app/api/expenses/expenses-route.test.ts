@@ -56,6 +56,7 @@ function seedOtherBusinessExpense(): Expense {
     id: "60000000-0000-4000-8000-000000000998",
     businessId: OTHER_BUSINESS_ID,
     category: "otro",
+    categoryId: "c2000000-0000-4000-8000-000000000002",
     expenseDate: "2026-07-01",
     description: "Gasto de otro negocio",
     amount: 999999,

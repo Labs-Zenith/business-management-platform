@@ -16,7 +16,6 @@ const EDIT_PRODUCT = {
   name: "Tornillos 1/4",
   sku: "TOR-14",
   unitCost: 500,
-  minStockThreshold: 10,
   active: true,
 };
 
@@ -29,7 +28,7 @@ describe("ProductFormDialog (create mode)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("POSTs the trimmed sku, unit cost converted to integer cents, and minStockThreshold to /api/products, closes, and refreshes on success", async () => {
+  it("POSTs the trimmed sku and unit cost converted to integer cents to /api/products, closes, and refreshes on success", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -44,15 +43,23 @@ describe("ProductFormDialog (create mode)", () => {
     await user.type(screen.getByLabelText(/sku/i), "  ABC-1  ");
     await user.clear(screen.getByLabelText(/costo unitario/i));
     await user.type(screen.getByLabelText(/costo unitario/i), "500");
-    await user.clear(screen.getByLabelText(/stock minimo/i));
-    await user.type(screen.getByLabelText(/stock minimo/i), "3");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     expect(fetchMock).toHaveBeenCalledWith("/api/products", expect.objectContaining({ method: "POST" }));
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
     const body = JSON.parse(options.body);
-    expect(body).toEqual({ name: "Nuevo producto", sku: "ABC-1", unitCost: 50_000, minStockThreshold: 3 });
+    expect(body).toEqual({ name: "Nuevo producto", sku: "ABC-1", unitCost: 50_000 });
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render a 'Stock minimo' field anymore (low-stock is a fixed rule, not a per-product value)", async () => {
+    const user = userEvent.setup();
+    render(<ProductFormDialog mode="create" trigger={<button type="button">Nuevo producto</button>} />);
+
+    await user.click(screen.getByRole("button", { name: /nuevo producto/i }));
+    await screen.findByLabelText(/nombre/i);
+
+    expect(screen.queryByLabelText(/stock minimo/i)).not.toBeInTheDocument();
   });
 
   it("converts a decimal unit cost (8,58 pesos, comma decimal) to 858 cents through the MoneyInput mask", async () => {
@@ -235,7 +242,6 @@ describe("ProductFormDialog (edit mode)", () => {
     expect(await screen.findByDisplayValue("Tornillos 1/4")).toBeInTheDocument();
     expect(screen.getByLabelText(/sku/i)).toHaveValue("TOR-14");
     expect(screen.getByLabelText(/costo unitario/i)).toHaveValue("5");
-    expect(screen.getByLabelText(/stock minimo/i)).toHaveValue("10");
   });
 
   it("renders the active switch in edit mode, defaulting to the product's current active state", async () => {
@@ -250,7 +256,7 @@ describe("ProductFormDialog (edit mode)", () => {
     expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
   });
 
-  it("PATCHes /api/products/{id} with name, sku, unitCost (cents), minStockThreshold, and active", async () => {
+  it("PATCHes /api/products/{id} with name, sku, unitCost (cents), and active", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -278,7 +284,6 @@ describe("ProductFormDialog (edit mode)", () => {
     expect(body.name).toBe("Tornillos actualizados");
     expect(body.sku).toBe("TOR-14");
     expect(body.unitCost).toBe(500);
-    expect(body.minStockThreshold).toBe(10);
     expect(body.active).toBe(false);
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });

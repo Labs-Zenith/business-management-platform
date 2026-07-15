@@ -74,7 +74,7 @@ describe("listProducts (product-service)", () => {
 });
 
 describe("updateProduct (product-service)", () => {
-  it("forwards only name/sku/unitCost/minStockThreshold/active to the repository, ignoring forged fields", async () => {
+  it("forwards only name/sku/unitCost/active to the repository, ignoring forged fields", async () => {
     resetStore();
     const created = await createProduct(SESSION, { name: "Original", unitCost: 1000 });
     const forgedData = {

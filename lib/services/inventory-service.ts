@@ -19,9 +19,18 @@
  * layer) is that `quantity` is a positive integer — defense in depth so a
  * caller that somehow bypasses schema validation still cannot reach the
  * repository with an invalid quantity.
+ *
+ * `typeId` (optional FK to `movement_types.id`) is ALSO validated to
+ * actually EXIST in the catalog — via `assertCatalogId` — before `data` is
+ * ever forwarded to `repositories.inventory.create`, so a well-formed but
+ * nonexistent id fails here with a clean `VALIDATION_ERROR` instead of
+ * reaching the mock (silent dangling FK) or the DB backend (raw
+ * FK-violation 500). When omitted, the repository still resolves it from
+ * `type`'s code, exactly as before.
  */
 
 import { ApiError } from "@/lib/server/api-error";
+import { assertCatalogId } from "@/lib/services/catalog-service";
 import { repositories } from "@/lib/services/repositories";
 import type { InventoryMovement, InventoryMovementCreate, InventoryMovementListQuery, InventoryMovementWithProduct, Paged, Session } from "@/lib/services/ports";
 
@@ -32,6 +41,11 @@ export async function listMovements(session: Session, query: InventoryMovementLi
 export async function recordMovement(session: Session, data: InventoryMovementCreate): Promise<InventoryMovement> {
   if (!Number.isInteger(data.quantity) || data.quantity <= 0) {
     throw new ApiError("VALIDATION_ERROR", "Movement quantity must be a positive integer.");
+  }
+
+  if (data.typeId) {
+    const types = await repositories.catalog.listMovementTypes();
+    assertCatalogId(types, data.typeId, "typeId");
   }
 
   // Atomic, floor-at-zero-safe, businessId-scoped registration happens

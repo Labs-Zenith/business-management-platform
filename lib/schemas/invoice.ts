@@ -11,6 +11,11 @@
  * "los schemas Zod deben ser estrictos para rechazar campos no permitidos".
  *
  * All amounts are integer minor units (COP cents) — see `lib/money.ts`.
+ *
+ * `invoiceTypeId` (optional FK to `invoice_types.id`, Wave 1A) is validated
+ * as a uuid when present — no type-picking UI wires it yet (Wave 2);
+ * `invoice-service.ts#createInvoice` defaults it to the `venta` catalog type
+ * when omitted.
  */
 
 import { z } from "zod";
@@ -39,6 +44,7 @@ export const invoiceCreateSchema = z
     dueDate: dateSchema.optional(),
     items: z.array(invoiceItemSchema).min(1),
     notes: z.string().trim().max(NOTES_MAX).optional(),
+    invoiceTypeId: z.string().trim().uuid().optional(),
   })
   .strict();
 

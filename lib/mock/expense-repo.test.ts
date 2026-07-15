@@ -56,6 +56,37 @@ describe("createExpenseRepository.create", () => {
 
     expect(expense.notes).toBeNull();
   });
+
+  it("resolves categoryId from the expense_categories catalog by category code when the caller omits it", async () => {
+    const repo = createExpenseRepository(store);
+
+    const nomina = await repo.create(BUSINESS_ID, buildInput({ category: "nomina" }));
+    const otro = await repo.create(BUSINESS_ID, buildInput({ category: "otro" }));
+
+    expect(nomina.categoryId).toBeTruthy();
+    expect(otro.categoryId).toBeTruthy();
+    expect(nomina.categoryId).not.toBe(otro.categoryId);
+  });
+
+  it("uses an explicitly-supplied categoryId over the catalog code resolution, when it actually exists in the catalog", async () => {
+    const repo = createExpenseRepository(store);
+    const [existingCategory] = [...store.expenseCategories.values()];
+
+    const expense = await repo.create(BUSINESS_ID, buildInput({ categoryId: existingCategory!.id }));
+
+    expect(expense.categoryId).toBe(existingCategory!.id);
+  });
+
+  it("rejects a well-formed but nonexistent explicit categoryId with VALIDATION_ERROR, persisting nothing (defense in depth for a direct caller bypassing expense-service.ts)", async () => {
+    const repo = createExpenseRepository(store);
+    const NONEXISTENT_ID = "c2000000-0000-4000-8000-000000000099";
+    const expenseCountBefore = store.expenses.size;
+
+    await expect(repo.create(BUSINESS_ID, buildInput({ categoryId: NONEXISTENT_ID }))).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(store.expenses.size).toBe(expenseCountBefore);
+  });
 });
 
 describe("createExpenseRepository.getById — business_id scoping", () => {

@@ -35,6 +35,7 @@ type MovementRow = {
   business_id: string;
   product_id: string;
   type: string;
+  type_id: string;
   quantity: number;
   note: string | null;
   created_at: string;
@@ -48,6 +49,7 @@ function toMovement(row: MovementRow): InventoryMovement {
     businessId: row.business_id,
     productId: row.product_id,
     type: row.type as InventoryMovement["type"],
+    typeId: row.type_id,
     quantity: Number(row.quantity),
     note: row.note,
     createdAt: new Date(row.created_at).toISOString(),
@@ -104,7 +106,11 @@ export const inventoryRepo: InventoryMovementRepository = {
       // Statement 2: fresh-snapshot SUM guard + conditional insert, run AFTER
       // statement 1 holds the lock (no `FOR UPDATE` here — it is the sole lock
       // holder; re-locking would reintroduce the EvalPlanQual stale-subquery
-      // hazard the split avoids).
+      // hazard the split avoids). `type_id` is resolved in this SAME
+      // statement (no extra round trip): the caller-supplied `data.typeId`
+      // wins when present, otherwise it's looked up from `movement_types` by
+      // `type`'s code — `type` is always populated (required, enum-checked),
+      // so this always resolves against the seeded catalog.
       const inserted = (await tx`
         WITH bal AS (
           SELECT p.id,
@@ -113,8 +119,10 @@ export const inventoryRepo: InventoryMovementRepository = {
           FROM products p
           WHERE p.id = ${data.productId} AND p.business_id = ${businessId}
         )
-        INSERT INTO inventory_movements (id, business_id, product_id, type, quantity, note)
-        SELECT gen_random_uuid(), ${businessId}, bal.id, ${data.type}, ${data.quantity}, ${data.note ?? null}
+        INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+        SELECT gen_random_uuid(), ${businessId}, bal.id, ${data.type},
+          COALESCE(${data.typeId ?? null}::uuid, (SELECT id FROM movement_types WHERE code = ${data.type})),
+          ${data.quantity}, ${data.note ?? null}
         FROM bal
         WHERE ${data.type} = 'in' OR ${data.quantity} <= bal.current_qty
         RETURNING *

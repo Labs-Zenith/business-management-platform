@@ -23,8 +23,11 @@
  * `unitCost` is entered as whole COP pesos (natural UX) and converted to
  * integer cents only at submit time via `lib/money.ts`'s `pesosToCents`,
  * matching `employee-form-dialog-content.tsx`'s money convention.
- * `minStockThreshold` is a PLAIN integer unit count — it never goes through
- * `pesosToCents`.
+ *
+ * `minStockThreshold` is REMOVED (Wave 1A): low-stock is now a FIXED business
+ * rule (`1 <= currentQuantity <= 3`, see `lib/services/inventory-stock.ts`),
+ * not a per-product configurable value — there is no "Stock mínimo" field on
+ * this form anymore.
  */
 
 import { useRouter } from "next/navigation";
@@ -41,7 +44,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MoneyInput, QuantityInput } from "@/components/ui/money-input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Switch } from "@/components/ui/switch";
 import { pesosToCents } from "@/lib/money";
 
@@ -53,8 +56,6 @@ export type ProductFormDialogProduct = {
   sku: string | null;
   /** Integer minor units (COP cents), per `lib/money.ts`'s convention. */
   unitCost: number;
-  /** Plain integer unit count — NOT money. */
-  minStockThreshold: number;
   active: boolean;
 };
 
@@ -63,8 +64,6 @@ type ProductFormValues = {
   sku: string;
   /** Whole COP pesos, as entered by the user (raw string) — converted at submit time. */
   unitCost: string;
-  /** Plain integer unit count (raw string) — NOT money. */
-  minStockThreshold: string;
   active: boolean;
 };
 
@@ -77,7 +76,6 @@ function toFormValues(product?: ProductFormDialogProduct): ProductFormValues {
     name: product?.name ?? "",
     sku: product?.sku ?? "",
     unitCost: product ? String(product.unitCost / 100) : "",
-    minStockThreshold: String(product?.minStockThreshold ?? ""),
     active: product?.active ?? true,
   };
 }
@@ -139,19 +137,16 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
       const url = isCreate ? "/api/products" : `/api/products/${product!.id}`;
       const trimmedSku = values.sku.trim();
       const unitCost = pesosToCents(Number(values.unitCost) || 0);
-      const minStockThreshold = Number(values.minStockThreshold) || 0;
       const payload = isCreate
         ? {
             name: values.name.trim(),
             ...(trimmedSku ? { sku: trimmedSku } : {}),
             unitCost,
-            minStockThreshold,
           }
         : {
             name: values.name.trim(),
             sku: trimmedSku || null,
             unitCost,
-            minStockThreshold,
             active: values.active,
           };
 
@@ -218,16 +213,6 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
               onChange={(value) => updateField("unitCost", value)}
             />
             {fieldErrors.unitCost ? <p className="text-xs text-destructive">{fieldErrors.unitCost}</p> : null}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="product-min-stock-threshold">Stock minimo</Label>
-            <QuantityInput
-              id="product-min-stock-threshold"
-              name="minStockThreshold"
-              required
-              value={values.minStockThreshold}
-              onChange={(value) => updateField("minStockThreshold", value)}
-            />
           </div>
           {mode === "edit" ? (
             <div className="flex items-center gap-2.5">

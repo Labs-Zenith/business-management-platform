@@ -10,9 +10,11 @@
  * to be a positive integer — `.int()` enforces the spec's "Zero or negative
  * quantity rejected" scenario (also covers non-integer quantities), capped
  * at the same Postgres `INTEGER` upper bound as `lib/schemas/product.ts`'s
- * `unitCost`/`minStockThreshold` (the `inventory_movements.quantity` column
- * is also `INTEGER`). `note` is optional, matching Expense/Payment/
- * PayrollPayment `notes`.
+ * `unitCost` (the `inventory_movements.quantity` column is also `INTEGER`).
+ * `note` is optional, matching Expense/Payment/PayrollPayment `notes`.
+ * `typeId` (optional FK to `movement_types.id`, Wave 1A) is validated as a
+ * uuid when present — the repository resolves it from `type`'s code when
+ * omitted (no dropdown UI wires it yet).
  */
 
 import { z } from "zod";
@@ -33,6 +35,7 @@ export const inventoryMovementCreateSchema = z
     type: z.enum(["in", "out"]),
     quantity: z.number().int().positive().max(MAX_MOVEMENT_QUANTITY),
     note: z.string().trim().max(NOTE_MAX).nullable().optional(),
+    typeId: z.string().trim().uuid().optional(),
   })
   .strict();
 

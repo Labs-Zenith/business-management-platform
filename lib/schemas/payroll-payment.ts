@@ -10,6 +10,10 @@
  * `.int()` enforcing the spec's "Non-integer amount rejected" scenario.
  * `employeeId` requires `.uuid()` so a malformed id is rejected here with a
  * clean 400 instead of surfacing as a raw Postgres cast error later.
+ *
+ * `periodTypeId` (optional FK to `payroll_period_types.id`, Wave 1A) is
+ * validated as a uuid when present — the repository resolves it from
+ * `periodType`'s code when omitted (no dropdown UI wires it yet).
  */
 
 import { z } from "zod";
@@ -31,6 +35,7 @@ export const payrollPaymentCreateSchema = z
     referenceDate: dateSchema,
     paymentDate: dateSchema,
     notes: z.string().trim().max(NOTES_MAX).optional(),
+    periodTypeId: z.string().trim().uuid().optional(),
   })
   .strict();
 

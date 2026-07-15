@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { formatCOP } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
 import type { CustomerDetail, Session } from "@/lib/services/ports";
@@ -100,5 +101,19 @@ describe("CustomerDetailPage", () => {
       CustomerDetailPage({ params: Promise.resolve({ id: CUSTOMER_ID }) }),
     ).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
     expect(mockGetCustomer).not.toHaveBeenCalled();
+  });
+
+  it("opens the edit dialog pre-filled with this customer's data when the header 'Editar' action is clicked (no navigation)", async () => {
+    const user = userEvent.setup();
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockGetCustomer.mockResolvedValue(CUSTOMER_DETAIL);
+
+    render(await CustomerDetailPage({ params: Promise.resolve({ id: CUSTOMER_ID }) }));
+
+    await user.click(await screen.findByRole("button", { name: /editar/i }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(CUSTOMER_DETAIL.name)).toBeInTheDocument();
+    expect(screen.getByDisplayValue(CUSTOMER_DETAIL.documentNumber ?? "")).toBeInTheDocument();
   });
 });

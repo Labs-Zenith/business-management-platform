@@ -124,7 +124,10 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
     // the SQL text (this closes the weak-assertion gap that masked a real bug
     // in `payroll-repo.test.ts` earlier). Interpolation order matches the SQL:
     // bal.WHERE(invoiceId, businessId), SELECT(businessId, paymentDate, amount,
-    // method, notes), then the `${amount} <= bal.balance` guard.
+    // method, methodId-COALESCE(explicit-id, code-subquery), notes), then the
+    // `${amount} <= bal.balance` guard. `methodId` is not supplied here, so
+    // the explicit-id slot is `null` and `method`'s code is interpolated a
+    // SECOND time for the subquery's `WHERE code = ...`.
     const input = paymentInput();
     expect(insValues).toEqual([
       INVOICE_ID, // bal AS ... WHERE i.id
@@ -133,6 +136,8 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
       input.paymentDate,
       input.amount,
       input.method,
+      null, // COALESCE(${methodId}::uuid, ...) — not supplied
+      input.method, // (SELECT id FROM payment_methods WHERE code = ${method})
       input.notes,
       input.amount, // WHERE ${amount} <= bal.balance
     ]);
@@ -166,7 +171,7 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
     expect(Array.from(insStrings as unknown as string[]).join("")).toContain("<= bal.balance");
     // The exact amount is interpolated both in the SELECT and in the guard.
     expect(insValues[4]).toBe(EXACT_BALANCE);
-    expect(insValues[7]).toBe(EXACT_BALANCE);
+    expect(insValues[9]).toBe(EXACT_BALANCE); // WHERE ${amount} <= bal.balance (shifted by the methodId-resolution params)
   });
 
   it("throws NOT_FOUND if the post-insert detail lookup somehow resolves null (defensive, should not normally happen)", async () => {

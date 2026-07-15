@@ -19,7 +19,6 @@ type ProductRow = {
   name: string;
   sku: string | null;
   unit_cost: number;
-  min_stock_threshold: number;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -39,7 +38,6 @@ function toProduct(row: ProductRow): Product {
     name: row.name,
     sku: row.sku,
     unitCost: Number(row.unit_cost),
-    minStockThreshold: Number(row.min_stock_threshold),
     active: row.active,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
@@ -89,9 +87,12 @@ export const productRepo: ProductRepository = {
   },
 
   async create(businessId: string, data: ProductCreate): Promise<Product> {
+    // `min_stock_threshold` is intentionally NEVER written by app code
+    // anymore (Wave 1A) — it keeps its DB `DEFAULT 0`, unused; low-stock is a
+    // fixed rule (`lib/services/inventory-stock.ts`), not a per-row column.
     const rows = (await sql`
-      INSERT INTO products (id, business_id, name, sku, unit_cost, min_stock_threshold, active)
-      VALUES (gen_random_uuid(), ${businessId}, ${data.name}, ${data.sku ?? null}, ${data.unitCost}, ${data.minStockThreshold ?? 0}, true)
+      INSERT INTO products (id, business_id, name, sku, unit_cost, active)
+      VALUES (gen_random_uuid(), ${businessId}, ${data.name}, ${data.sku ?? null}, ${data.unitCost}, true)
       RETURNING *
     `) as unknown as ProductRow[];
     return toProduct(rows[0]!);
@@ -108,7 +109,6 @@ export const productRepo: ProductRepository = {
         name = ${merged.name},
         sku = ${merged.sku},
         unit_cost = ${merged.unitCost},
-        min_stock_threshold = ${merged.minStockThreshold},
         active = ${merged.active},
         updated_at = now()
       WHERE id = ${id}

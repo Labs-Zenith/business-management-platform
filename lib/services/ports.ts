@@ -54,6 +54,26 @@ export type Paged<T> = {
 };
 
 // ---------------------------------------------------------------------------
+// Catalogs (global, business-agnostic reference data — Wave 1A foundation for
+// Wave 2's dropdowns; see `lib/services/catalog-service.ts` and
+// `lib/{db,mock}/catalog-repo.ts`)
+// ---------------------------------------------------------------------------
+
+/** Shared shape for every catalog table: a stable machine `code` (matches the
+ * existing enum/text column values already used across the app) plus a
+ * human-facing `label`, and an `active` flag for future soft-disabling. */
+export type CatalogItem = {
+  id: string;
+  code: string;
+  label: string;
+  active: boolean;
+};
+
+/** `invoice_types` additionally carries the numbering `prefix` (see
+ * `InvoiceRepository.create`'s per-(business,type) numbering). */
+export type InvoiceType = CatalogItem & { prefix: string };
+
+// ---------------------------------------------------------------------------
 // Business
 // ---------------------------------------------------------------------------
 
@@ -159,7 +179,14 @@ export type InvoiceItem = InvoiceItemInput & {
   lineTotal: number;
 };
 
-/** Server-computed payload the service layer hands to the repository. */
+/**
+ * Server-computed payload the service layer hands to the repository.
+ * `invoiceTypeId` is OPTIONAL here: no caller wires a type-picking UI yet
+ * (Wave 2), so `invoice-service.ts#createInvoice` defaults it to the `venta`
+ * catalog type when absent, and the repository itself defaults it too (as a
+ * second line of defense for any other/future caller) — see
+ * `InvoiceRepository.create`'s doc comment.
+ */
 export type InvoicePersist = {
   customerId: string;
   issueDate: string;
@@ -169,12 +196,15 @@ export type InvoicePersist = {
   total: number;
   status: InvoiceStatus;
   notes: string | null;
+  invoiceTypeId?: string;
 };
 
 export type Invoice = {
   id: string;
   businessId: string;
   customerId: string;
+  /** FK to `invoice_types.id` — always resolved server-side, defaulting to `venta` (see `InvoicePersist`). */
+  invoiceTypeId: string;
   number: string;
   issueDate: string;
   dueDate: string | null;
@@ -223,7 +253,12 @@ export type InvoiceUpdate = {
 export interface InvoiceRepository {
   list(businessId: string, query: InvoiceListQuery): Promise<Paged<InvoiceWithFinance>>;
   getById(businessId: string, id: string): Promise<InvoiceDetail | null>;
-  /** Atomic: generates the per-business `number` and persists invoice+items together. */
+  /**
+   * Atomic: generates the per-(business, invoice type) `number` — using the
+   * resolved `InvoiceType.prefix` (defaults to the `venta` type when
+   * `data.invoiceTypeId` is absent) — and persists invoice+items together in
+   * ONE transaction (sequence bump + header INSERT + item INSERTs).
+   */
   create(businessId: string, data: InvoicePersist): Promise<InvoiceDetail>;
   /**
    * Edit-lock defense in depth (see
@@ -247,6 +282,14 @@ export type PaymentInput = {
   paymentDate: string;
   amount: number;
   method?: string | null;
+  /**
+   * Optional FK to `payment_methods.id`. No caller supplies this yet (Wave
+   * 2 wires the dropdown) — the repository resolves it from `method`'s code
+   * when omitted. Left `undefined`/`null` when `method` itself is absent,
+   * matching `payments.method_id`'s deliberately-nullable column (see the
+   * catalogs migration's deviation note).
+   */
+  methodId?: string | null;
   notes?: string | null;
 };
 
@@ -258,6 +301,8 @@ export type Payment = {
   paymentDate: string;
   amount: number;
   method: string | null;
+  /** FK to `payment_methods.id`; nullable — mirrors `method`'s own nullability (see `PaymentInput.methodId`). */
+  methodId: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -308,12 +353,16 @@ export type ExpenseInput = {
   description: string;
   amount: number;
   notes?: string | null;
+  /** Optional FK to `expense_categories.id` — resolved from `category`'s code when omitted (see `ExpenseRepository.create`). */
+  categoryId?: string;
 };
 
 export type Expense = {
   id: string;
   businessId: string;
   category: ExpenseCategory;
+  /** FK to `expense_categories.id` — always resolved server-side (see `ExpenseInput.categoryId`). */
+  categoryId: string;
   expenseDate: string;
   description: string;
   amount: number;
@@ -387,6 +436,8 @@ export type PayrollPaymentInput = {
   referenceDate: string;
   paymentDate: string;
   notes?: string | null;
+  /** Optional FK to `payroll_period_types.id` — resolved from `periodType`'s code when omitted (see `PayrollPaymentPersist.periodTypeId`). */
+  periodTypeId?: string;
 };
 
 /** Server-computed payload the service layer hands to the repository (period already derived). */
@@ -398,6 +449,8 @@ export type PayrollPaymentPersist = {
   periodEnd: string;
   paymentDate: string;
   notes: string | null;
+  /** Optional FK to `payroll_period_types.id` — resolved from `periodType`'s code when omitted. */
+  periodTypeId?: string;
 };
 
 export type PayrollPayment = {
@@ -406,6 +459,8 @@ export type PayrollPayment = {
   employeeId: string;
   amount: number;
   periodType: PeriodType;
+  /** FK to `payroll_period_types.id` — always resolved server-side (see `PayrollPaymentPersist.periodTypeId`). */
+  periodTypeId: string;
   periodStart: string;
   periodEnd: string;
   paymentDate: string;
@@ -447,13 +502,18 @@ export type Product = {
   name: string;
   sku: string | null;
   unitCost: number;
-  minStockThreshold: number;
   active: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
-/** Computed view returned by `list`/`getById` — never persisted. */
+/**
+ * Computed view returned by `list`/`getById` — never persisted. `isLowStock`
+ * is a FIXED business rule (`currentQuantity` between 1 and 3 inclusive), not
+ * a per-product configurable threshold — see `lib/services/
+ * inventory-stock.ts#isLowStock`. The `products.min_stock_threshold` DB
+ * column still exists but is intentionally unused (no destructive migration).
+ */
 export type ProductWithStock = Product & {
   currentQuantity: number;
   totalValue: number;
@@ -464,7 +524,6 @@ export type ProductCreate = {
   name: string;
   sku?: string | null;
   unitCost: number;
-  minStockThreshold?: number;
 };
 
 export type ProductUpdate = Partial<ProductCreate> & { active?: boolean };
@@ -538,6 +597,8 @@ export type InventoryMovementCreate = {
   type: MovementType;
   quantity: number;
   note?: string | null;
+  /** Optional FK to `movement_types.id` — resolved from `type`'s code when omitted. */
+  typeId?: string;
 };
 
 export type InventoryMovement = {
@@ -545,6 +606,8 @@ export type InventoryMovement = {
   businessId: string;
   productId: string;
   type: MovementType;
+  /** FK to `movement_types.id` — always resolved server-side (see `InventoryMovementCreate.typeId`). */
+  typeId: string;
   quantity: number;
   note: string | null;
   createdAt: string;
@@ -573,4 +636,22 @@ export interface InventoryMovementRepository {
    * read-check-write in mock; single guarded CTE in Postgres).
    */
   create(businessId: string, data: InventoryMovementCreate): Promise<InventoryMovement>;
+}
+
+// ---------------------------------------------------------------------------
+// Catalog repository (global, business-agnostic — no businessId scoping)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read-only catalog lookups backing Wave 2's dropdowns
+ * (`lib/services/catalog-service.ts`). Every method is business-agnostic (no
+ * `businessId` argument) — these are global reference tables, not
+ * multi-tenant data.
+ */
+export interface CatalogRepository {
+  listInvoiceTypes(): Promise<InvoiceType[]>;
+  listExpenseCategories(): Promise<CatalogItem[]>;
+  listPaymentMethods(): Promise<CatalogItem[]>;
+  listMovementTypes(): Promise<CatalogItem[]>;
+  listPayrollPeriodTypes(): Promise<CatalogItem[]>;
 }

@@ -96,10 +96,17 @@ describe("db payrollRepo.create — atomicity via runTransaction", () => {
     const [payrollStrings, ...payrollValues] = mockTx.mock.calls[0]!;
     const payrollQueryText = Array.from(payrollStrings as unknown as string[]).join("");
     expect(payrollQueryText).toContain("INSERT INTO payroll_payments");
+    // `period_type_id` is resolved in the SAME statement via
+    // `COALESCE(${periodTypeId}::uuid, (SELECT id FROM payroll_period_types
+    // WHERE code = ${periodType}))` — periodTypeId isn't supplied here, so
+    // the explicit-id slot is `null` and `periodType`'s code is interpolated
+    // a SECOND time for the subquery's `WHERE code = ...`.
     expect(payrollValues).toEqual([
       BUSINESS_ID,
       "70000000-0000-4000-8000-000000000001",
       1000000,
+      "quincenal",
+      null,
       "quincenal",
       "2026-07-01",
       "2026-07-15",
@@ -110,11 +117,16 @@ describe("db payrollRepo.create — atomicity via runTransaction", () => {
     // (b) The SECOND tx call must build the expenses INSERT, with
     // `category: 'nomina'` and the linked expense's own amount/business_id
     // bound — not a duplicate payroll insert, not swapped values.
+    // `category_id` is resolved in the SAME statement (COALESCE explicit-id
+    // (not supplied -> null) then a code subquery — `category`'s code is
+    // interpolated a SECOND time for that subquery's WHERE).
     const [expenseStrings, ...expenseValues] = mockTx.mock.calls[1]!;
     const expenseQueryText = Array.from(expenseStrings as unknown as string[]).join("");
     expect(expenseQueryText).toContain("INSERT INTO expenses");
     expect(expenseValues).toEqual([
       BUSINESS_ID,
+      "nomina",
+      null,
       "nomina",
       "2026-07-16",
       "Nomina Laura Martinez (2026-07-01 - 2026-07-15)",

@@ -92,6 +92,7 @@ const PAYMENT: PayrollPaymentWithEmployee = {
   employeeId: EMPLOYEE.id,
   amount: 75_000_00,
   periodType: "quincenal",
+  periodTypeId: "c5000000-0000-4000-8000-000000000001",
   periodStart: "2026-07-01",
   periodEnd: "2026-07-15",
   paymentDate: "2026-07-20",

@@ -97,9 +97,10 @@ describe("db inventoryRepo.create — floor-at-zero guard (safety-critical)", ()
     expect(insText).toMatch(/=\s*'in'\s*OR/);
     expect(insText).not.toContain("FOR UPDATE");
     // Statement 2 values, in template order: productId+businessId (CTE WHERE),
-    // then businessId+type+quantity+note (INSERT…SELECT), then type+quantity
-    // again (floor-at-zero WHERE).
-    expect(insValues).toEqual([PRODUCT_ID, BUSINESS_ID, BUSINESS_ID, "out", 5, null, "out", 5]);
+    // then businessId+type+[typeId COALESCE: explicit-id(null)+code-subquery]
+    // +quantity+note (INSERT…SELECT), then type+quantity again (floor-at-zero
+    // WHERE).
+    expect(insValues).toEqual([PRODUCT_ID, BUSINESS_ID, BUSINESS_ID, "out", null, "out", 5, null, "out", 5]);
 
     // Exactly ONE transaction callback, running exactly those two statements
     // in lock-then-insert order — proving both run in one atomic

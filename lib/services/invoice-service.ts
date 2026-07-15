@@ -28,6 +28,7 @@
 
 import { formatCOP, lineTotal } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
+import { assertCatalogId } from "@/lib/services/catalog-service";
 import { recordAuditLog } from "@/lib/services/audit-log-service";
 import { repositories } from "@/lib/services/repositories";
 import { computeStatus } from "@/lib/services/status";
@@ -41,6 +42,33 @@ import type {
   Session,
 } from "@/lib/services/ports";
 
+/**
+ * Resolves the invoice type for a create: when the caller supplies an
+ * explicit `invoiceTypeId`, it is validated to actually EXIST in the catalog
+ * — via `assertCatalogId` — before it is ever forwarded to
+ * `repositories.invoices.create`, so a well-formed but nonexistent id fails
+ * here with a clean `VALIDATION_ERROR` instead of reaching the mock (silent
+ * dangling FK) or the DB backend (raw FK-violation 500). Otherwise it
+ * defaults to the `venta` catalog type (no type-picking UI wires an explicit
+ * choice yet — Wave 2). The repository ALSO defaults this internally (see
+ * `InvoiceRepository.create`'s doc comment) as a second line of defense for
+ * any other/future caller, but this service resolves it explicitly so the
+ * audit-logged/returned invoice's `invoiceTypeId` reflects the SAME
+ * resolution this function reasoned about.
+ */
+async function resolveInvoiceTypeId(invoiceTypeId?: string): Promise<string> {
+  const types = await repositories.catalog.listInvoiceTypes();
+  if (invoiceTypeId) {
+    assertCatalogId(types, invoiceTypeId, "invoiceTypeId");
+    return invoiceTypeId;
+  }
+  const venta = types.find((type) => type.code === "venta");
+  if (!venta) {
+    throw new Error("Catalog invariant violated: 'venta' invoice type is not seeded.");
+  }
+  return venta.id;
+}
+
 export type InvoiceItemCreateInput = {
   description: string;
   quantity: number;
@@ -53,6 +81,8 @@ export type InvoiceCreateInput = {
   dueDate?: string | null;
   items: InvoiceItemCreateInput[];
   notes?: string | null;
+  /** Optional FK to `invoice_types.id` — see `resolveInvoiceTypeId`'s doc comment. */
+  invoiceTypeId?: string;
 };
 
 export async function listInvoices(session: Session, query: InvoiceListQuery): Promise<Paged<InvoiceWithFinance>> {
@@ -115,6 +145,7 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
   const total = subtotal; // No taxes/discounts in the MVP.
   const dueDate = data.dueDate ?? null;
   const status = computeStatus(total, 0, dueDate);
+  const invoiceTypeId = await resolveInvoiceTypeId(data.invoiceTypeId);
 
   const persist: InvoicePersist = {
     customerId: data.customerId,
@@ -125,11 +156,14 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
     total,
     status,
     notes: data.notes ?? null,
+    invoiceTypeId,
   };
 
-  // Atomic per-business numbering + invoice+items insertion happens inside
-  // the repository under `withLock(businessId)` (PR1's
-  // `lib/mock/invoice-repo.ts`) — this service only ever hands it
+  // Atomic per-(business, invoice type) numbering + invoice+items insertion
+  // happens inside the repository, all in ONE transaction (real Postgres:
+  // `runTransaction` in `lib/db/invoice-repo.ts#create`; mock:
+  // `withLock(`${businessId}:${invoiceTypeId}`)` in
+  // `lib/mock/invoice-repo.ts#create`) — this service only ever hands it
   // server-computed data.
   const invoice = await repositories.invoices.create(session.businessId, persist);
 

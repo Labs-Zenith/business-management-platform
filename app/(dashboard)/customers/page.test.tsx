@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { CustomerListQuery, CustomerWithBalance, Paged, Session } from "@/lib/services/ports";
 
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
@@ -119,5 +120,19 @@ describe("CustomersPage", () => {
     render(await CustomersPage({ searchParams: Promise.resolve({}) }));
 
     expect(await screen.findByRole("button", { name: /crear cliente/i })).toBeInTheDocument();
+  });
+
+  it("opens the edit dialog pre-filled with the row's customer when 'Editar' is clicked (no navigation)", async () => {
+    const user = userEvent.setup();
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 1, pageSize: 20, total: 1 });
+
+    render(await CustomersPage({ searchParams: Promise.resolve({}) }));
+
+    await user.click(await screen.findByRole("button", { name: /editar/i }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Editar cliente" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue(CUSTOMER.name)).toBeInTheDocument();
   });
 });

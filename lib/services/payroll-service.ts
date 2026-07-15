@@ -15,10 +15,19 @@
  * HERE (server-side, via `employee.active`), not just by the Nomina page's
  * client-side dropdown pre-filter — a same-business authenticated user could
  * otherwise bypass the UI and POST an inactive employee's id directly.
+ *
+ * `periodTypeId` (optional FK to `payroll_period_types.id`) is validated to
+ * actually EXIST in the catalog — via `assertCatalogId` — before it is ever
+ * forwarded to `repositories.payroll.create`, so a well-formed but
+ * nonexistent id fails here with a clean `VALIDATION_ERROR` instead of
+ * reaching the mock (silent dangling FK) or the DB backend (raw
+ * FK-violation 500). When omitted, the repository still resolves it from
+ * `periodType`'s code, exactly as before.
  */
 
 import { expenseCreateSchema } from "@/lib/schemas/expense";
 import { ApiError } from "@/lib/server/api-error";
+import { assertCatalogId } from "@/lib/services/catalog-service";
 import { repositories } from "@/lib/services/repositories";
 import { computePeriod } from "@/lib/services/payroll-period";
 import type { Paged, PayrollPayment, PayrollPaymentInput, PayrollPaymentListQuery, PayrollPaymentWithEmployee, Session } from "@/lib/services/ports";
@@ -53,6 +62,11 @@ export async function createPayrollPayment(session: Session, input: PayrollPayme
     throw new ApiError("VALIDATION_ERROR", "Cannot record a payroll payment for an inactive employee.");
   }
 
+  if (input.periodTypeId) {
+    const periodTypes = await repositories.catalog.listPayrollPeriodTypes();
+    assertCatalogId(periodTypes, input.periodTypeId, "periodTypeId");
+  }
+
   const { periodStart, periodEnd } = computePeriod(input.periodType, input.referenceDate);
 
   const parsed = expenseCreateSchema.safeParse({
@@ -76,6 +90,7 @@ export async function createPayrollPayment(session: Session, input: PayrollPayme
       periodEnd,
       paymentDate: input.paymentDate,
       notes: input.notes ?? null,
+      periodTypeId: input.periodTypeId,
     },
     {
       category: "nomina",

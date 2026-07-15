@@ -468,7 +468,6 @@ export type ProductFixture = {
   name: string;
   sku: string | null;
   unitCost: number; // integer cents
-  minStockThreshold: number;
   active: boolean;
 };
 
@@ -478,15 +477,16 @@ function productId(n: number): string {
 
 /**
  * A handful of demo products mixing SKU-present/absent and varying stock
- * levels (including one below its own threshold) so the Inventario page has
- * real data to show out of the box — excluded from `seedMinimal` (matches
+ * levels (including one within the fixed low-stock range, see
+ * `lib/services/inventory-stock.ts`) so the Inventario page has real data to
+ * show out of the box — excluded from `seedMinimal` (matches
  * invoices/payments/expenses/employees — cookie-size reasons).
  */
 export const productFixtures: ProductFixture[] = [
-  { id: productId(1), name: "Shampoo Profesional 1L", sku: "SHP-001", unitCost: 25000, minStockThreshold: 10, active: true },
-  { id: productId(2), name: "Tijera de Corte", sku: "TIJ-002", unitCost: 80000, minStockThreshold: 3, active: true },
-  { id: productId(3), name: "Toallas Desechables", sku: null, unitCost: 5000, minStockThreshold: 20, active: true },
-  { id: productId(4), name: "Secador de Cabello", sku: "SEC-004", unitCost: 150000, minStockThreshold: 2, active: false },
+  { id: productId(1), name: "Shampoo Profesional 1L", sku: "SHP-001", unitCost: 25000, active: true },
+  { id: productId(2), name: "Tijera de Corte", sku: "TIJ-002", unitCost: 80000, active: true },
+  { id: productId(3), name: "Toallas Desechables", sku: null, unitCost: 5000, active: true },
+  { id: productId(4), name: "Secador de Cabello", sku: "SEC-004", unitCost: 150000, active: false },
 ];
 
 export type InventoryMovementFixture = {
@@ -503,11 +503,14 @@ function inventoryMovementId(n: number): string {
 }
 
 /**
- * Seed movement history. Product 1 (Shampoo): +30 -8 = 22 (above its
- * threshold of 10). Product 2 (Tijera): +5 -4 = 1 (BELOW its threshold of
- * 3 — the one deliberately low-stock demo product). Product 3 (Toallas):
- * +50 -10 = 40 (above its threshold of 20). Product 4 (inactive) has no
- * movements at all — computed quantity 0.
+ * Seed movement history. Low-stock is now a FIXED rule (`1 <= quantity <= 3`,
+ * see `lib/services/inventory-stock.ts`), not a per-product threshold.
+ * Product 1 (Shampoo): +30 -8 = 22 (well above the low-stock range).
+ * Product 2 (Tijera): +5 -4 = 1 (WITHIN the low-stock range — the one
+ * deliberately low-stock demo product). Product 3 (Toallas): +50 -10 = 40
+ * (above the low-stock range). Product 4 (inactive) has no movements at
+ * all — computed quantity 0 (out of stock, not "low-stock" under the fixed
+ * rule).
  */
 export const inventoryMovementFixtures: InventoryMovementFixture[] = [
   { id: inventoryMovementId(1), productId: productId(1), type: "in", quantity: 30, dayOffset: -20, note: "Compra inicial" },

@@ -19,11 +19,14 @@ const { expenseRepo } = await import("./expense-repo");
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_BUSINESS_ID = "10000000-0000-4000-8000-000000000099";
 
+const CATEGORY_ID = "c2000000-0000-4000-8000-000000000002";
+
 function row(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "60000000-0000-4000-8000-000000000001",
     business_id: BUSINESS_ID,
     category: "otro",
+    category_id: CATEGORY_ID,
     expense_date: "2026-07-01",
     description: "Papeleria",
     amount: 50000,
@@ -48,6 +51,7 @@ describe("db expenseRepo.getById", () => {
       id: "60000000-0000-4000-8000-000000000001",
       businessId: BUSINESS_ID,
       category: "otro",
+      categoryId: CATEGORY_ID,
       expenseDate: "2026-07-01",
       description: "Papeleria",
       amount: 50000,
@@ -186,6 +190,29 @@ describe("db expenseRepo.create", () => {
     // exact column order the query text implies — not string-concatenated
     // into the SQL text (which would make this test pass unchanged even if
     // a future regression introduced injection or reordered a column).
-    expect(values).toEqual([BUSINESS_ID, "otro", "2026-07-01", "Nuevo gasto", 75000, null]);
+    // `category_id` is resolved in the SAME statement via
+    // `COALESCE(${categoryId}::uuid, (SELECT id FROM expense_categories
+    // WHERE code = ${category}))` — categoryId is null (not supplied), so
+    // `category`'s code is interpolated twice (once for the `category`
+    // column, once for the subquery's WHERE).
+    expect(values).toEqual([BUSINESS_ID, "otro", null, "otro", "2026-07-01", "Nuevo gasto", 75000, null]);
+  });
+
+  it("uses an explicitly-supplied categoryId directly (COALESCE short-circuits before the subquery)", async () => {
+    const EXPLICIT_CATEGORY_ID = "c2000000-0000-4000-8000-000000000099";
+    mockSql.mockResolvedValueOnce([row({ category_id: EXPLICIT_CATEGORY_ID })]);
+
+    const expense = await expenseRepo.create(BUSINESS_ID, {
+      category: "otro",
+      categoryId: EXPLICIT_CATEGORY_ID,
+      expenseDate: "2026-07-01",
+      description: "Papeleria",
+      amount: 50000,
+      notes: null,
+    });
+
+    expect(expense.categoryId).toBe(EXPLICIT_CATEGORY_ID);
+    const [, ...values] = mockSql.mock.calls[0]!;
+    expect(values).toContain(EXPLICIT_CATEGORY_ID);
   });
 });

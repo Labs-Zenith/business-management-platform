@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
 import { resetStore, store } from "@/lib/mock/store";
+import { repositories } from "@/lib/services/repositories";
 import type { Session } from "@/lib/services/ports";
 import { createExpense, getExpense, listExpenses } from "./expense-service";
 
@@ -96,6 +97,39 @@ describe("createExpense (expense-service)", () => {
         amount: 10000,
       }),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("accepts a well-formed categoryId that actually exists in the expense_categories catalog", async () => {
+    resetStore();
+    const [existingCategory] = await repositories.catalog.listExpenseCategories();
+
+    const expense = await createExpense(SESSION, {
+      category: "otro",
+      expenseDate: "2026-07-01",
+      description: "Categoria valida",
+      amount: 10000,
+      categoryId: existingCategory!.id,
+    });
+
+    expect(expense.categoryId).toBe(existingCategory!.id);
+  });
+
+  it("rejects a well-formed but nonexistent categoryId with VALIDATION_ERROR, persisting nothing", async () => {
+    resetStore();
+    const before = await listExpenses(SESSION, { page: 1, pageSize: 20 });
+
+    await expect(
+      createExpense(SESSION, {
+        category: "otro",
+        expenseDate: "2026-07-01",
+        description: "Categoria inexistente",
+        amount: 10000,
+        categoryId: "c2000000-0000-4000-8000-000000000099",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    const after = await listExpenses(SESSION, { page: 1, pageSize: 20 });
+    expect(after.total).toBe(before.total);
   });
 });
 

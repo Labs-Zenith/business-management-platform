@@ -4,6 +4,7 @@ import { formatCOP, lineTotal } from "@/lib/money";
 import { invoiceRepo } from "@/lib/mock/invoice-repo";
 import { resetStore, store } from "@/lib/mock/store";
 import { customerFixtures } from "@/lib/mock/fixtures/data";
+import { repositories } from "@/lib/services/repositories";
 import type { InvoicePersist, Session } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
 import { createPayment, getPayment } from "./payment-service";
@@ -158,6 +159,38 @@ describe("createPayment (payment-service)", () => {
     await expect(
       createPayment(SESSION, invoice.id, { paymentDate: "2026-07-08", amount: 999999 }),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("accepts a well-formed methodId that actually exists in the payment_methods catalog", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(100000));
+    const [existingMethod] = await repositories.catalog.listPaymentMethods();
+
+    const result = await createPayment(SESSION, invoice.id, {
+      paymentDate: "2026-07-08",
+      amount: 50000,
+      methodId: existingMethod!.id,
+    });
+
+    const persisted = result.payments.find((payment) => payment.invoiceId === invoice.id);
+    expect(persisted!.methodId).toBe(existingMethod!.id);
+  });
+
+  it("rejects a well-formed but nonexistent methodId with VALIDATION_ERROR, leaving the invoice/payments unchanged", async () => {
+    resetStore();
+    const invoice = await invoiceRepo.create(BUSINESS_ID, buildInvoicePersist(100000));
+    const before = snapshotInvoiceState(invoice.id);
+
+    await expect(
+      createPayment(SESSION, invoice.id, {
+        paymentDate: "2026-07-08",
+        amount: 50000,
+        methodId: "c3000000-0000-4000-8000-000000000099",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    const after = snapshotInvoiceState(invoice.id);
+    expect(after).toEqual(before);
   });
 });
 

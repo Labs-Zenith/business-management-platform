@@ -34,6 +34,7 @@ type PaymentRow = {
   payment_date: string;
   amount: number;
   method: string | null;
+  method_id: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -57,6 +58,7 @@ async function toPaymentWithRefs(row: PaymentRow): Promise<PaymentWithRefs> {
     paymentDate: toDateStr(row.payment_date),
     amount: Number(row.amount),
     method: row.method,
+    methodId: row.method_id,
     notes: row.notes,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
@@ -112,6 +114,13 @@ export const paymentRepo: PaymentRepository = {
       // No `FOR UPDATE` needed here: statement 1 is the sole lock holder;
       // re-locking would only invite the EvalPlanQual stale-subquery hazard
       // the two-statement split avoids (see the doc comment above).
+      // `method_id` is resolved in the SAME statement (no extra round trip):
+      // the caller-supplied `data.methodId` wins when present, otherwise it's
+      // looked up from `payment_methods` by `method`'s code. When `method`
+      // itself is absent, both the explicit id and the subquery are `null`,
+      // so `method_id` ends up `null` too — mirroring `method`'s own
+      // nullability (see `PaymentInput.methodId`'s doc comment for why this
+      // column is deliberately NOT enforced NOT NULL).
       const inserted = (await tx`
         WITH bal AS (
           SELECT i.id, i.customer_id,
@@ -119,8 +128,10 @@ export const paymentRepo: PaymentRepository = {
           FROM invoices i
           WHERE i.id = ${invoiceId} AND i.business_id = ${businessId}
         )
-        INSERT INTO payments (id, business_id, invoice_id, customer_id, payment_date, amount, method, notes)
-        SELECT gen_random_uuid(), ${businessId}, bal.id, bal.customer_id, ${data.paymentDate}, ${data.amount}, ${data.method ?? null}, ${data.notes ?? null}
+        INSERT INTO payments (id, business_id, invoice_id, customer_id, payment_date, amount, method, method_id, notes)
+        SELECT gen_random_uuid(), ${businessId}, bal.id, bal.customer_id, ${data.paymentDate}, ${data.amount}, ${data.method ?? null},
+          COALESCE(${data.methodId ?? null}::uuid, (SELECT id FROM payment_methods WHERE code = ${data.method ?? null})),
+          ${data.notes ?? null}
         FROM bal
         WHERE ${data.amount} <= bal.balance
         RETURNING id

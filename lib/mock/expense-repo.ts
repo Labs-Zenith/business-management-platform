@@ -1,5 +1,5 @@
 import type { Expense, ExpenseInput, ExpenseListQuery, ExpenseRepository, Paged } from "@/lib/services/ports";
-import { generateId, store as defaultStore, type MockStore } from "./store";
+import { generateId, resolveCatalogId, store as defaultStore, type MockStore } from "./store";
 
 function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
   const start = (page - 1) * pageSize;
@@ -49,10 +49,20 @@ export function createExpenseRepository(store: MockStore): ExpenseRepository {
 
     async create(businessId: string, data: ExpenseInput): Promise<Expense> {
       const now = new Date().toISOString();
+      // `categoryId` is resolved from `category`'s catalog code when the
+      // caller doesn't supply one directly (no dropdown UI wires it yet —
+      // Wave 2). `category` is always populated (required, enum-checked), so
+      // this resolution always succeeds against the seeded catalog. An
+      // explicitly-supplied `categoryId` is verified to actually exist in
+      // the catalog first — defense in depth for any direct caller that
+      // bypasses `expense-service.ts#createExpense`'s own `assertCatalogId`
+      // guard (see `resolveCatalogId`'s doc comment).
+      const categoryId = resolveCatalogId(store.expenseCategories, data.categoryId, data.category, "categoryId");
       const expense: Expense = {
         id: generateId(),
         businessId, // ALWAYS from arg, never from data
         category: data.category,
+        categoryId,
         expenseDate: data.expenseDate,
         description: data.description,
         amount: data.amount,

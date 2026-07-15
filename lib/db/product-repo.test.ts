@@ -35,7 +35,6 @@ function productRow(overrides: Partial<Record<string, unknown>> = {}) {
     name: "Shampoo Profesional",
     sku: "SHP-001",
     unit_cost: 25000,
-    min_stock_threshold: 10,
     active: true,
     created_at: "2026-07-01T00:00:00.000Z",
     updated_at: "2026-07-01T00:00:00.000Z",
@@ -74,7 +73,7 @@ describe("db productRepo.getById", () => {
     expect(product).not.toBeNull();
     expect(product!.currentQuantity).toBe(12); // 10 + 5 + 3 - 4 - 2
     expect(product!.totalValue).toBe(12 * 25000);
-    expect(product!.isLowStock).toBe(false); // 12 >= threshold 10
+    expect(product!.isLowStock).toBe(false); // 12 is above the fixed 1-3 low-stock range
   });
 
   it("returns null (not a leaked record) when the row belongs to a different business", async () => {
@@ -118,16 +117,13 @@ describe("db productRepo.list", () => {
     expect(movementsValues).toEqual([BUSINESS_ID]);
   });
 
-  it("uses each product's OWN threshold independently when grouping the single business-wide movements fetch", async () => {
+  it("computes isLowStock from each product's OWN grouped movements independently (the fixed 1-3 rule) when grouping the single business-wide movements fetch", async () => {
     const PRODUCT_ID_B = "90000000-0000-4000-8000-000000000002";
     mockSql
+      .mockResolvedValueOnce([productRow({ name: "A" }), productRow({ id: PRODUCT_ID_B, name: "B" })])
       .mockResolvedValueOnce([
-        productRow({ name: "A", min_stock_threshold: 10 }),
-        productRow({ id: PRODUCT_ID_B, name: "B", min_stock_threshold: 5 }),
-      ])
-      .mockResolvedValueOnce([
-        movementRow({ product_id: PRODUCT_ID, type: "in", quantity: 8 }),
-        movementRow({ id: "a0000000-0000-4000-8000-000000000002", product_id: PRODUCT_ID_B, type: "in", quantity: 8 }),
+        movementRow({ product_id: PRODUCT_ID, type: "in", quantity: 2 }), // within 1-3 -> low
+        movementRow({ id: "a0000000-0000-4000-8000-000000000002", product_id: PRODUCT_ID_B, type: "in", quantity: 8 }), // above 3 -> not low
       ]);
 
     const result = await productRepo.list(BUSINESS_ID, { page: 1, pageSize: 20 });
@@ -145,7 +141,7 @@ describe("db productRepo.create", () => {
   });
 
   it("inserts via INSERT ... RETURNING * with active hardcoded true, and maps the returned row", async () => {
-    mockSql.mockResolvedValueOnce([productRow({ name: "Nuevo Producto", sku: null, unit_cost: 5000, min_stock_threshold: 0 })]);
+    mockSql.mockResolvedValueOnce([productRow({ name: "Nuevo Producto", sku: null, unit_cost: 5000 })]);
 
     const product = await productRepo.create(BUSINESS_ID, { name: "Nuevo Producto", unitCost: 5000 });
 
@@ -157,7 +153,7 @@ describe("db productRepo.create", () => {
     const queryText = Array.from(strings as unknown as string[]).join("");
     expect(queryText).toContain("INSERT INTO products");
     expect(queryText).toContain("RETURNING");
-    expect(values).toEqual([BUSINESS_ID, "Nuevo Producto", null, 5000, 0]);
+    expect(values).toEqual([BUSINESS_ID, "Nuevo Producto", null, 5000]);
   });
 });
 
@@ -166,7 +162,7 @@ describe("db productRepo.update", () => {
     mockSql.mockReset();
   });
 
-  it("applies name/sku/unitCost/minStockThreshold/active updates", async () => {
+  it("applies name/sku/unitCost/active updates", async () => {
     mockSql
       .mockResolvedValueOnce([productRow()])
       .mockResolvedValueOnce([productRow({ name: "Actualizado", unit_cost: 30000, active: false })]);

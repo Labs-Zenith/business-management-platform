@@ -101,6 +101,7 @@ function seedOtherBusinessInvoice(): Invoice {
     id: "50000000-0000-4000-8000-000000000998",
     businessId: OTHER_BUSINESS_ID,
     customerId: otherCustomerId,
+    invoiceTypeId: "c1000000-0000-4000-8000-000000000001",
     number: "FAC-OTHER-0001",
     issueDate: "2026-01-01",
     dueDate: null,
@@ -121,6 +122,7 @@ function seedStaleStatusInvoice(): Invoice {
     id: "50000000-0000-4000-8000-000000000997",
     businessId: BUSINESS_ID,
     customerId: CUSTOMER_ID,
+    invoiceTypeId: "c1000000-0000-4000-8000-000000000001",
     number: "FAC-STALE-0001",
     issueDate: "2020-01-01",
     dueDate: "2020-02-01", // long past due, balance > 0, no payments -> should compute "overdue"

@@ -13,7 +13,7 @@ import type {
   Product,
 } from "@/lib/services/ports";
 import type { MockStore, Profile } from "../store";
-import { generateId, nextInvoiceNumber } from "../store";
+import { findCatalogIdByCode, generateId, nextInvoiceNumber } from "../store";
 import {
   BUSINESS_ID,
   BUSINESS_ID_2,
@@ -116,12 +116,14 @@ export function seedFixtures(store: MockStore): void {
     const paidAmount = invoiceFixture.payments.reduce((sum, payment) => sum + payment.amount, 0);
     const status = computeStatus(total, paidAmount, dueDate, now);
 
-    const number = nextInvoiceNumber(store, BUSINESS_ID);
+    const invoiceTypeId = findCatalogIdByCode(store.invoiceTypes, "venta")!;
+    const number = nextInvoiceNumber(store, BUSINESS_ID, invoiceTypeId);
 
     const invoice: Invoice = {
       id: invoiceFixture.id,
       businessId: BUSINESS_ID,
       customerId: invoiceFixture.customerId,
+      invoiceTypeId,
       number,
       issueDate: daysFromNow(invoiceFixture.issueDayOffset),
       dueDate,
@@ -146,6 +148,7 @@ export function seedFixtures(store: MockStore): void {
         paymentDate: daysFromNow(paymentFixture.dayOffset),
         amount: paymentFixture.amount,
         method: paymentFixture.method,
+        methodId: findCatalogIdByCode(store.paymentMethods, paymentFixture.method) ?? null,
         notes: paymentFixture.notes,
         createdAt: nowIso,
         updatedAt: nowIso,
@@ -159,6 +162,7 @@ export function seedFixtures(store: MockStore): void {
       id: expenseFixture.id,
       businessId: BUSINESS_ID,
       category: expenseFixture.category,
+      categoryId: findCatalogIdByCode(store.expenseCategories, expenseFixture.category)!,
       expenseDate: daysFromNow(expenseFixture.dayOffset),
       description: expenseFixture.description,
       amount: expenseFixture.amountInCents,
@@ -189,6 +193,7 @@ export function seedFixtures(store: MockStore): void {
       employeeId: payrollPaymentFixture.employeeId,
       amount: payrollPaymentFixture.amount,
       periodType: payrollPaymentFixture.periodType,
+      periodTypeId: findCatalogIdByCode(store.payrollPeriodTypes, payrollPaymentFixture.periodType)!,
       periodStart: payrollPaymentFixture.periodStart,
       periodEnd: payrollPaymentFixture.periodEnd,
       paymentDate: daysFromNow(payrollPaymentFixture.paymentDayOffset),
@@ -205,7 +210,6 @@ export function seedFixtures(store: MockStore): void {
       name: productFixture.name,
       sku: productFixture.sku,
       unitCost: productFixture.unitCost,
-      minStockThreshold: productFixture.minStockThreshold,
       active: productFixture.active,
       createdAt: nowIso,
       updatedAt: nowIso,
@@ -219,6 +223,7 @@ export function seedFixtures(store: MockStore): void {
       businessId: BUSINESS_ID,
       productId: movementFixture.productId,
       type: movementFixture.type,
+      typeId: findCatalogIdByCode(store.movementTypes, movementFixture.type)!,
       quantity: movementFixture.quantity,
       note: movementFixture.note,
       createdAt: daysFromNow(movementFixture.dayOffset) + "T00:00:00.000Z",

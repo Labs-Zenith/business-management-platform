@@ -32,6 +32,10 @@ const mockInvoicesList = vi.fn<(businessId: string, query: InvoiceListQuery) => 
 const mockInvoicesGetById = vi.fn<(businessId: string, id: string) => Promise<InvoiceDetail | null>>();
 const mockInvoicesUpdate = vi.fn<(businessId: string, id: string, data: InvoicePersist) => Promise<InvoiceDetail | null>>();
 const mockAuditLogCreate = vi.fn<(businessId: string, data: AuditLogCreate) => Promise<AuditLogEntry>>();
+const VENTA_TYPE_ID = "c1000000-0000-4000-8000-000000000001";
+const mockListInvoiceTypes = vi.fn(async () => [
+  { id: VENTA_TYPE_ID, code: "venta", label: "Factura de venta", prefix: "FAC", active: true },
+]);
 
 vi.mock("@/lib/services/repositories", () => ({
   repositories: {
@@ -46,6 +50,9 @@ vi.mock("@/lib/services/repositories", () => ({
     },
     auditLog: {
       create: (businessId: string, data: AuditLogCreate) => mockAuditLogCreate(businessId, data),
+    },
+    catalog: {
+      listInvoiceTypes: () => mockListInvoiceTypes(),
     },
   },
 }));
@@ -98,6 +105,7 @@ function buildInvoiceDetail(overrides: Partial<Invoice> = {}): InvoiceDetail {
     id: "50000000-0000-4000-8000-000000000999",
     businessId: SESSION.businessId,
     customerId: CUSTOMER_ID,
+    invoiceTypeId: VENTA_TYPE_ID,
     number: "FAC-0099",
     issueDate: VALID_INPUT.issueDate,
     dueDate: VALID_INPUT.dueDate,
@@ -125,6 +133,7 @@ describe("createInvoice", () => {
     mockInvoicesCreate.mockReset();
     mockAuditLogCreate.mockReset();
     mockAuditLogCreate.mockResolvedValue({} as AuditLogEntry);
+    mockListInvoiceTypes.mockClear();
   });
 
   it("computes lineTotal/subtotal/total/status server-side and persists under session.businessId", async () => {
@@ -151,6 +160,46 @@ describe("createInvoice", () => {
         ],
       }),
     );
+  });
+
+  it("resolves invoiceTypeId to the 'venta' catalog type when the caller doesn't supply one (no type-picking UI yet)", async () => {
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    mockInvoicesCreate.mockResolvedValue(buildInvoiceDetail());
+
+    await createInvoice(SESSION, VALID_INPUT);
+
+    expect(mockListInvoiceTypes).toHaveBeenCalled();
+    expect(mockInvoicesCreate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      expect.objectContaining({ invoiceTypeId: VENTA_TYPE_ID }),
+    );
+  });
+
+  it("uses an explicitly-supplied invoiceTypeId over the 'venta' default, when it actually exists in the catalog", async () => {
+    const NOTA_CREDITO_ID = "c1000000-0000-4000-8000-000000000002";
+    mockListInvoiceTypes.mockResolvedValueOnce([
+      { id: VENTA_TYPE_ID, code: "venta", label: "Factura de venta", prefix: "FAC", active: true },
+      { id: NOTA_CREDITO_ID, code: "nota_credito", label: "Nota credito", prefix: "NC", active: true },
+    ]);
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    mockInvoicesCreate.mockResolvedValue(buildInvoiceDetail());
+
+    await createInvoice(SESSION, { ...VALID_INPUT, invoiceTypeId: NOTA_CREDITO_ID });
+
+    expect(mockInvoicesCreate).toHaveBeenCalledWith(
+      SESSION.businessId,
+      expect.objectContaining({ invoiceTypeId: NOTA_CREDITO_ID }),
+    );
+  });
+
+  it("rejects a well-formed but nonexistent invoiceTypeId with VALIDATION_ERROR, never calling repositories.invoices.create", async () => {
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+
+    await expect(
+      createInvoice(SESSION, { ...VALID_INPUT, invoiceTypeId: "c1000000-0000-4000-8000-000000000099" }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    expect(mockInvoicesCreate).not.toHaveBeenCalled();
   });
 
   it("ignores/overwrites forged number/status/total/business_id even when force-cast directly onto the input object (bypassing the Zod schema entirely)", async () => {

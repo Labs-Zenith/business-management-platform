@@ -14,7 +14,7 @@ import type {
   PaymentWithRefs,
 } from "@/lib/services/ports";
 import { withLock } from "./lock";
-import { generateId, reserveNextInvoiceNumber, store as defaultStore, type MockStore } from "./store";
+import { defaultInvoiceTypeId, generateId, reserveNextInvoiceNumber, store as defaultStore, type MockStore } from "./store";
 
 function paymentsForInvoice(store: MockStore, invoiceId: string): Payment[] {
   return [...store.payments.values()].filter((payment) => payment.invoiceId === invoiceId);
@@ -97,12 +97,30 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
     },
 
     async create(businessId: string, data: InvoicePersist): Promise<InvoiceDetail> {
-      // Atomic: numbering + invoice + items are all persisted under a single
-      // lock holder so concurrent creates for the same business can never
-      // observe or produce a duplicate `number`.
-      return withLock(businessId, async () => {
+      // `invoiceTypeId` defaults to the `venta` catalog type when the caller
+      // doesn't supply one (no type-picking UI wires it yet — Wave 2; see
+      // `invoice-service.ts#createInvoice`, which is the one caller today and
+      // always resolves this before calling `create`). Numbering is scoped
+      // per (business, type) — see `store.ts#nextInvoiceNumber`'s doc
+      // comment — so the lock key must include the type too, or two
+      // different types' concurrent creates for the SAME business would
+      // needlessly serialize against each other (harmless for correctness,
+      // but two independent per-type sequences don't need a shared lock).
+      //
+      // An explicitly-supplied `invoiceTypeId` is verified to actually exist
+      // in the catalog first — defense in depth for any direct caller that
+      // bypasses `invoice-service.ts#createInvoice`'s own `assertCatalogId`
+      // guard (mirrors `resolveCatalogId`'s doc comment in `store.ts`).
+      if (data.invoiceTypeId && !store.invoiceTypes.has(data.invoiceTypeId)) {
+        throw new ApiError("VALIDATION_ERROR", "Invalid invoiceTypeId: no matching catalog entry.", {
+          field: "invoiceTypeId",
+          id: data.invoiceTypeId,
+        });
+      }
+      const invoiceTypeId = data.invoiceTypeId ?? defaultInvoiceTypeId(store);
+      return withLock(`${businessId}:${invoiceTypeId}`, async () => {
         const id = generateId();
-        const number = await reserveNextInvoiceNumber(store, businessId);
+        const number = await reserveNextInvoiceNumber(store, businessId, invoiceTypeId);
         const now = new Date().toISOString();
 
         const items: InvoiceItem[] = data.items.map((item) => ({
@@ -118,6 +136,7 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           id,
           businessId,
           customerId: data.customerId,
+          invoiceTypeId,
           number,
           issueDate: data.issueDate,
           dueDate: data.dueDate,

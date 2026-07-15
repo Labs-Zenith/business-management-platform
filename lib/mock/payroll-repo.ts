@@ -8,7 +8,7 @@ import type {
   PayrollPaymentRepository,
   PayrollPaymentWithEmployee,
 } from "@/lib/services/ports";
-import { generateId, store as defaultStore, type MockStore } from "./store";
+import { generateId, resolveCatalogId, store as defaultStore, type MockStore } from "./store";
 
 function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
   const start = (page - 1) * pageSize;
@@ -71,22 +71,44 @@ export function createPayrollRepository(store: MockStore): PayrollPaymentReposit
 
     async create(businessId: string, data: PayrollPaymentPersist, expense: ExpenseInput): Promise<PayrollPayment> {
       const now = new Date().toISOString();
+      // `periodTypeId` resolved from `periodType`'s catalog code when the
+      // caller doesn't supply one directly (no dropdown UI wires it yet —
+      // Wave 2). `periodType` is always populated (required, enum-checked),
+      // so this resolution always succeeds against the seeded catalog. An
+      // explicitly-supplied `periodTypeId` is verified to actually exist in
+      // the catalog first — defense in depth for any direct caller that
+      // bypasses `payroll-service.ts#createPayrollPayment`'s own
+      // `assertCatalogId` guard (see `resolveCatalogId`'s doc comment).
+      const periodTypeId = resolveCatalogId(
+        store.payrollPeriodTypes,
+        data.periodTypeId,
+        data.periodType,
+        "periodTypeId",
+      );
       const payment: PayrollPayment = {
         id: generateId(),
         businessId,
         employeeId: data.employeeId,
         amount: data.amount,
         periodType: data.periodType,
+        periodTypeId,
         periodStart: data.periodStart,
         periodEnd: data.periodEnd,
         paymentDate: data.paymentDate,
         notes: data.notes ?? null,
         createdAt: now,
       };
+      const linkedExpenseCategoryId = resolveCatalogId(
+        store.expenseCategories,
+        expense.categoryId,
+        expense.category,
+        "categoryId",
+      );
       const linkedExpense: Expense = {
         id: generateId(),
         businessId,
         category: expense.category,
+        categoryId: linkedExpenseCategoryId,
         expenseDate: expense.expenseDate,
         description: expense.description,
         amount: expense.amount,

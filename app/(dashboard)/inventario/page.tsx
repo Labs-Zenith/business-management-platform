@@ -30,9 +30,9 @@ import MovementFormDialog from "@/components/domain/inventario/movement-form-dia
  * "Registrar movimiento" only offers ACTIVE products in its select (mirrors
  * Nomina's "Registrar pago" active-employees-only precedent exactly), computed
  * here via a plain filter over the already-fetched Productos list — no
- * second query. Each product row's low-stock flag compares its OWN computed
- * `currentQuantity` against its OWN `minStockThreshold` — never a shared/
- * global value.
+ * second query. Each product row's low-stock flag (`product.isLowStock`) is
+ * computed server-side from a FIXED rule (`1 <= currentQuantity <= 3`, see
+ * `lib/services/inventory-stock.ts`) — no per-product threshold anymore.
  */
 
 /**

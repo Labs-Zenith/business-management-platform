@@ -26,6 +26,7 @@ type PayrollPaymentRow = {
   employee_id: string;
   amount: number;
   period_type: string;
+  period_type_id: string;
   period_start: string;
   period_end: string;
   payment_date: string;
@@ -47,6 +48,7 @@ function toPayrollPayment(row: PayrollPaymentRow): PayrollPayment {
     employeeId: row.employee_id,
     amount: Number(row.amount),
     periodType: row.period_type as PayrollPayment["periodType"],
+    periodTypeId: row.period_type_id,
     periodStart: toDateStr(row.period_start),
     periodEnd: toDateStr(row.period_end),
     paymentDate: toDateStr(row.payment_date),
@@ -93,15 +95,27 @@ export const payrollRepo: PayrollPaymentRepository = {
 
   async create(businessId: string, data: PayrollPaymentPersist, expense: ExpenseInput): Promise<PayrollPayment> {
     const payrollRows = await runTransaction(async (tx) => {
+      // `period_type_id` is resolved in the SAME statement (no extra round
+      // trip, a scalar subquery is valid inside a `VALUES` list): the
+      // caller-supplied `data.periodTypeId` wins when present, otherwise
+      // it's looked up from `payroll_period_types` by `periodType`'s code —
+      // `periodType` is always populated (required, enum-checked), so this
+      // always resolves against the seeded catalog.
       const payrollRows = (await tx`INSERT INTO payroll_payments
-            (id, business_id, employee_id, amount, period_type, period_start, period_end, payment_date, notes)
+            (id, business_id, employee_id, amount, period_type, period_type_id, period_start, period_end, payment_date, notes)
           VALUES (gen_random_uuid(), ${businessId}, ${data.employeeId}, ${data.amount}, ${data.periodType},
+                  COALESCE(${data.periodTypeId ?? null}::uuid, (SELECT id FROM payroll_period_types WHERE code = ${data.periodType})),
                   ${data.periodStart}, ${data.periodEnd}, ${data.paymentDate}, ${data.notes ?? null})
           RETURNING *`) as unknown as PayrollPaymentRow[];
 
-      await tx`INSERT INTO expenses (id, business_id, category, expense_date, description, amount, notes)
-          VALUES (gen_random_uuid(), ${businessId}, ${expense.category}, ${expense.expenseDate}, ${expense.description},
-                  ${expense.amount}, ${expense.notes ?? null})`;
+      // `category_id` resolved the same way as `db/expense-repo.ts#create` —
+      // caller-supplied `expense.categoryId` wins, else resolved from
+      // `expense.category`'s code (always populated, enum-checked, so this
+      // always resolves against the seeded catalog).
+      await tx`INSERT INTO expenses (id, business_id, category, category_id, expense_date, description, amount, notes)
+          VALUES (gen_random_uuid(), ${businessId}, ${expense.category},
+                  COALESCE(${expense.categoryId ?? null}::uuid, (SELECT id FROM expense_categories WHERE code = ${expense.category})),
+                  ${expense.expenseDate}, ${expense.description}, ${expense.amount}, ${expense.notes ?? null})`;
 
       return payrollRows;
     });

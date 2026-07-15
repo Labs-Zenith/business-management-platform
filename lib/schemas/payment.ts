@@ -14,6 +14,10 @@
  * the body.
  *
  * `amount` is an integer minor unit (COP cents) — see `lib/money.ts`.
+ *
+ * `methodId` (optional FK to `payment_methods.id`, Wave 1A) is validated as a
+ * uuid when present — the repository resolves it from `method`'s code when
+ * omitted (no dropdown UI wires it yet).
  */
 
 import { z } from "zod";
@@ -33,6 +37,7 @@ export const paymentCreateSchema = z
     amount: z.number().positive(),
     method: z.string().trim().min(1).max(METHOD_MAX).optional(),
     notes: z.string().trim().max(NOTES_MAX).optional(),
+    methodId: z.string().trim().uuid().optional(),
   })
   .strict();
 

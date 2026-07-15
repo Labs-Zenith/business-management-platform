@@ -13,6 +13,10 @@
  * `MAX_AMOUNT_COP_CENTS` (Postgres `INTEGER`'s max value) so an
  * out-of-range amount fails cleanly here with a 400, instead of reaching
  * the database and failing with a raw, unclean Postgres error.
+ *
+ * `categoryId` (optional FK to `expense_categories.id`, Wave 1A) is validated
+ * as a uuid when present — the repository resolves it from `category`'s code
+ * when omitted (no dropdown UI wires it yet).
  */
 
 import { z } from "zod";
@@ -34,6 +38,7 @@ export const expenseCreateSchema = z
     description: z.string().trim().min(1).max(DESCRIPTION_MAX),
     amount: z.number().int().positive().max(MAX_AMOUNT_COP_CENTS),
     notes: z.string().trim().max(NOTES_MAX).optional(),
+    categoryId: z.string().trim().uuid().optional(),
   })
   .strict();
 

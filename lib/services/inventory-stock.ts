@@ -16,6 +16,16 @@
  * The raw SQL CTE in `lib/db/inventory-repo.ts`'s atomic floor-at-zero guard
  * is a SEPARATE write-path concern and must stay as SQL — this function is
  * only for the read-path JS computation.
+ *
+ * LOW-STOCK RULE (Wave 1A): `isLowStock` is now a FIXED business rule — true
+ * when `1 <= currentQuantity <= 3` — replacing the earlier per-product
+ * configurable `minStockThreshold` comparison entirely. `minStockThreshold`
+ * is gone from `ProductStockInput`/`Product`/`ProductCreate`/`ProductUpdate`
+ * (`lib/services/ports.ts`, `lib/schemas/product.ts`) and from both product
+ * repos' read/write; the `products.min_stock_threshold` DB column is left in
+ * place, unused (no destructive migration). A product with 0 units (out of
+ * stock) is NOT flagged low-stock by this rule — it's a distinct state a
+ * future change may surface separately.
  */
 
 export type StockMovementLike = {
@@ -25,7 +35,6 @@ export type StockMovementLike = {
 
 export type ProductStockInput = {
   unitCost: number;
-  minStockThreshold: number;
 };
 
 export type ComputedStock = {
@@ -34,13 +43,16 @@ export type ComputedStock = {
   isLowStock: boolean;
 };
 
+const LOW_STOCK_MIN = 1;
+const LOW_STOCK_MAX = 3;
+
 export function computeProductStock(product: ProductStockInput, movements: StockMovementLike[]): ComputedStock {
   const currentQuantity = movements.reduce(
     (qty, movement) => qty + (movement.type === "in" ? movement.quantity : -movement.quantity),
     0,
   );
   const totalValue = currentQuantity * product.unitCost;
-  const isLowStock = currentQuantity < product.minStockThreshold;
+  const isLowStock = currentQuantity >= LOW_STOCK_MIN && currentQuantity <= LOW_STOCK_MAX;
 
   return { currentQuantity, totalValue, isLowStock };
 }

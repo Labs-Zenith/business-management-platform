@@ -63,7 +63,6 @@ export function createProductRepository(store: MockStore): ProductRepository {
         name: data.name,
         sku: data.sku ?? null,
         unitCost: data.unitCost,
-        minStockThreshold: data.minStockThreshold ?? 0,
         active: true,
         createdAt: now,
         updatedAt: now,

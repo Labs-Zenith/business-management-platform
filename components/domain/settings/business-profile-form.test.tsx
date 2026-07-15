@@ -27,8 +27,20 @@ describe("BusinessProfileForm", () => {
     vi.unstubAllGlobals();
   });
 
-  it("pre-fills every field from the business prop", () => {
+  it("shows the admin the read-only profile with an Editar button first, not the form", () => {
     render(<BusinessProfileForm business={BUSINESS} canEdit />);
+
+    expect(screen.getByText(BUSINESS.name)).toBeInTheDocument();
+    expect(screen.getByText(BUSINESS.currency)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
+    expect(screen.queryAllByRole("textbox").length).toBe(0);
+  });
+
+  it("reveals the editable form, pre-filled from the business prop, after clicking Editar", async () => {
+    const user = userEvent.setup();
+    render(<BusinessProfileForm business={BUSINESS} canEdit />);
+
+    await user.click(screen.getByRole("button", { name: /editar/i }));
 
     expect(screen.getByLabelText(/nombre/i)).toHaveValue(BUSINESS.name);
     expect(screen.getByLabelText(/telefono/i)).toHaveValue(BUSINESS.phone);
@@ -37,7 +49,27 @@ describe("BusinessProfileForm", () => {
     expect(screen.getByLabelText(/moneda/i)).toHaveValue(BUSINESS.currency);
   });
 
-  it("PATCHes /api/business with the edited fields, shows a success message, and refreshes on success", async () => {
+  it("Cancelar discards edits and returns to the read-only view", async () => {
+    const user = userEvent.setup();
+    render(<BusinessProfileForm business={BUSINESS} canEdit />);
+
+    await user.click(screen.getByRole("button", { name: /editar/i }));
+    const nameInput = screen.getByLabelText(/nombre/i);
+    await user.clear(nameInput);
+    await user.type(nameInput, "Nombre sin guardar");
+
+    await user.click(screen.getByRole("button", { name: /cancelar/i }));
+
+    expect(screen.queryAllByRole("textbox").length).toBe(0);
+    expect(screen.getByText(BUSINESS.name)).toBeInTheDocument();
+    expect(screen.queryByText("Nombre sin guardar")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /editar/i }));
+    expect(screen.getByLabelText(/nombre/i)).toHaveValue(BUSINESS.name);
+  });
+
+  it("PATCHes /api/business with the edited fields, refreshes, and returns to read-only on success", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -46,6 +78,7 @@ describe("BusinessProfileForm", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(<BusinessProfileForm business={BUSINESS} canEdit />);
+    await user.click(screen.getByRole("button", { name: /editar/i }));
 
     const nameInput = screen.getByLabelText(/nombre/i);
     await user.clear(nameInput);
@@ -62,9 +95,11 @@ describe("BusinessProfileForm", () => {
 
     expect(await screen.findByText(/guardado/i)).toBeInTheDocument();
     expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryAllByRole("textbox").length).toBe(0);
+    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
   });
 
-  it("shows the server error message and does not refresh when the request fails", async () => {
+  it("shows the server error message, stays in edit mode, and does not refresh when the request fails", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
       "fetch",
@@ -75,6 +110,7 @@ describe("BusinessProfileForm", () => {
     );
 
     render(<BusinessProfileForm business={BUSINESS} canEdit />);
+    await user.click(screen.getByRole("button", { name: /editar/i }));
 
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
@@ -82,12 +118,13 @@ describe("BusinessProfileForm", () => {
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
-  it("renders a read-only profile with no inputs and no Save button when canEdit is false (worker, no role gate was the security gap)", () => {
+  it("renders a read-only profile with no inputs, no Save button, and no Editar button when canEdit is false (worker, no role gate was the security gap)", () => {
     render(<BusinessProfileForm business={BUSINESS} canEdit={false} />);
 
     expect(screen.getByText(BUSINESS.name)).toBeInTheDocument();
     expect(screen.getByText(BUSINESS.currency)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /guardar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /editar/i })).not.toBeInTheDocument();
     expect(screen.queryAllByRole("textbox").length).toBe(0);
   });
 });

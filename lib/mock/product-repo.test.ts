@@ -24,7 +24,6 @@ function buildInput(overrides: Partial<ProductCreate> = {}): ProductCreate {
     name: "Shampoo Profesional",
     sku: "SHP-001",
     unitCost: 25000,
-    minStockThreshold: 10,
     ...overrides,
   };
 }
@@ -45,18 +44,16 @@ describe("createProductRepository.create", () => {
     expect(product.name).toBe("Shampoo Profesional");
     expect(product.sku).toBe("SHP-001");
     expect(product.unitCost).toBe(25000);
-    expect(product.minStockThreshold).toBe(10);
     expect(product.active).toBe(true);
     expect(store.products.get(product.id)).toEqual(product);
   });
 
-  it("stores sku as null when omitted, and defaults minStockThreshold to 0", async () => {
+  it("stores sku as null when omitted", async () => {
     const repo = createProductRepository(store);
 
     const product = await repo.create(BUSINESS_ID, { name: "Sin SKU", unitCost: 5000 });
 
     expect(product.sku).toBeNull();
-    expect(product.minStockThreshold).toBe(0);
   });
 
   it("accepts a duplicate sku within the same business without error (no uniqueness constraint)", async () => {
@@ -99,7 +96,7 @@ describe("createProductRepository.getById — business_id scoping", () => {
 });
 
 describe("createProductRepository.update", () => {
-  it("applies name/sku/unitCost/minStockThreshold/active updates", async () => {
+  it("applies name/sku/unitCost/active updates", async () => {
     const repo = createProductRepository(store);
     const created = await repo.create(BUSINESS_ID, buildInput());
 
@@ -107,7 +104,6 @@ describe("createProductRepository.update", () => {
       name: "Shampoo Premium",
       sku: "SHP-002",
       unitCost: 30000,
-      minStockThreshold: 15,
       active: false,
     });
 
@@ -115,7 +111,6 @@ describe("createProductRepository.update", () => {
     expect(updated!.name).toBe("Shampoo Premium");
     expect(updated!.sku).toBe("SHP-002");
     expect(updated!.unitCost).toBe(30000);
-    expect(updated!.minStockThreshold).toBe(15);
     expect(updated!.active).toBe(false);
   });
 
@@ -139,7 +134,7 @@ describe("createProductRepository — computed stock (currentQuantity/totalValue
   it("nets 3 in-movements + 2 out-movements to the correct remaining quantity and total value", async () => {
     const productRepo = createProductRepository(store);
     const movementRepo = createInventoryMovementRepository(store);
-    const product = await productRepo.create(BUSINESS_ID, buildInput({ unitCost: 1000, minStockThreshold: 0 }));
+    const product = await productRepo.create(BUSINESS_ID, buildInput({ unitCost: 1000 }));
 
     await movementRepo.create(BUSINESS_ID, { productId: product.id, type: "in", quantity: 10 });
     await movementRepo.create(BUSINESS_ID, { productId: product.id, type: "in", quantity: 5 });
@@ -164,13 +159,13 @@ describe("createProductRepository — computed stock (currentQuantity/totalValue
     expect(found!.totalValue).toBe(0);
   });
 
-  it("uses each product's OWN threshold independently, even when quantities match", async () => {
+  it("computes isLowStock from each product's OWN movements independently (the fixed 1-3 rule), not cross-contaminated by another product's movements", async () => {
     const productRepo = createProductRepository(store);
     const movementRepo = createInventoryMovementRepository(store);
-    const productA = await productRepo.create(BUSINESS_ID, buildInput({ name: "A", minStockThreshold: 10 }));
-    const productB = await productRepo.create(BUSINESS_ID, buildInput({ name: "B", minStockThreshold: 5 }));
-    await movementRepo.create(BUSINESS_ID, { productId: productA.id, type: "in", quantity: 8 });
-    await movementRepo.create(BUSINESS_ID, { productId: productB.id, type: "in", quantity: 8 });
+    const productA = await productRepo.create(BUSINESS_ID, buildInput({ name: "A" }));
+    const productB = await productRepo.create(BUSINESS_ID, buildInput({ name: "B" }));
+    await movementRepo.create(BUSINESS_ID, { productId: productA.id, type: "in", quantity: 2 }); // within 1-3 -> low
+    await movementRepo.create(BUSINESS_ID, { productId: productB.id, type: "in", quantity: 8 }); // above 3 -> not low
 
     const foundA = await productRepo.getById(BUSINESS_ID, productA.id);
     const foundB = await productRepo.getById(BUSINESS_ID, productB.id);

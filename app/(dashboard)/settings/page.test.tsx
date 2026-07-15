@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Business, Session } from "@/lib/services/ports";
 
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
@@ -53,13 +54,19 @@ describe("SettingsPage (Negocio, editable — Fase 5 Lane 2)", () => {
     mockGetBusinessProfile.mockReset();
   });
 
-  it("resolves the session first, then renders an editable form pre-filled with that session's business profile for an admin", async () => {
+  it("resolves the session first, then shows the read-only profile; clicking 'Editar' reveals the form pre-filled with that session's business profile for an admin", async () => {
+    const user = userEvent.setup();
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
     render(await SettingsPage());
 
     expect(mockGetBusinessProfile).toHaveBeenCalledWith(SESSION);
+    // Read-only first: values shown, no inputs until "Editar".
+    expect(screen.getByText(BUSINESS.name)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /editar/i }));
+
     expect(screen.getByLabelText(/nombre/i)).toHaveValue(BUSINESS.name);
     expect(screen.getByLabelText(/telefono/i)).toHaveValue(BUSINESS.phone);
     expect(screen.getByLabelText(/^email/i)).toHaveValue(BUSINESS.email);
@@ -67,11 +74,19 @@ describe("SettingsPage (Negocio, editable — Fase 5 Lane 2)", () => {
     expect(screen.getByLabelText(/moneda/i)).toHaveValue(BUSINESS.currency);
   });
 
-  it("renders an editable form with a save button for an admin — editing is no longer deferred (was read-only)", async () => {
+  it("shows an admin a read-only profile with an 'Editar' button first (editing is deferred), and the form + Save only after clicking it", async () => {
+    const user = userEvent.setup();
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockGetBusinessProfile.mockResolvedValue(BUSINESS);
 
     render(await SettingsPage());
+
+    // Deferred: no form/Save until the admin opts into editing.
+    expect(screen.getByRole("button", { name: /editar/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /guardar/i })).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("textbox").length).toBe(0);
+
+    await user.click(screen.getByRole("button", { name: /editar/i }));
 
     expect(screen.getByRole("button", { name: /guardar/i })).toBeInTheDocument();
     expect(screen.getAllByRole("textbox").length).toBeGreaterThan(0);

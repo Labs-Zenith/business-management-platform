@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Business } from "@/lib/services/ports";
-import { createEmptyStore, hydrateStore, serializeStore, type Profile, type SerializedStore } from "./store";
+import {
+  createEmptyStore,
+  findCatalogIdByCode,
+  hydrateStore,
+  serializeStore,
+  type Profile,
+  type SerializedStore,
+} from "./store";
 
 /**
  * Regression test for design Risk R4: a cookie serialized BEFORE the
@@ -92,6 +99,7 @@ describe("hydrateStore — backward compatibility with pre-expenses cookies (R4)
       employeeId: "70000000-0000-4000-8000-000000000001",
       amount: 1000000,
       periodType: "quincenal",
+      periodTypeId: findCatalogIdByCode(target.payrollPeriodTypes, "quincenal")!,
       periodStart: "2026-07-01",
       periodEnd: "2026-07-15",
       paymentDate: "2026-07-16",
@@ -114,6 +122,7 @@ describe("hydrateStore — backward compatibility with pre-expenses cookies (R4)
       id: "60000000-0000-4000-8000-000000000001",
       businessId: BUSINESS_ID,
       category: "otro",
+      categoryId: findCatalogIdByCode(target.expenseCategories, "otro")!,
       expenseDate: "2026-07-01",
       description: "Gasto de prueba",
       amount: 10000,
@@ -176,7 +185,6 @@ describe("hydrateStore — backward compatibility with pre-expenses cookies (R4)
       name: "Shampoo Profesional",
       sku: "SHP-001",
       unitCost: 25000,
-      minStockThreshold: 10,
       active: true,
       createdAt: "2026-07-01T00:00:00.000Z",
       updatedAt: "2026-07-01T00:00:00.000Z",
@@ -186,6 +194,7 @@ describe("hydrateStore — backward compatibility with pre-expenses cookies (R4)
       businessId: BUSINESS_ID,
       productId: "90000000-0000-4000-8000-000000000001",
       type: "in",
+      typeId: findCatalogIdByCode(target.movementTypes, "in")!,
       quantity: 10,
       note: null,
       createdAt: "2026-07-01T00:00:00.000Z",

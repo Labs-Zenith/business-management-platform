@@ -21,10 +21,19 @@
  * This function only ever forwards `session.businessId` (never a
  * client-supplied id) and the validated `amount`/`paymentDate`/`method`/
  * `notes` fields from `lib/schemas/payment.ts`'s `.strict()` schema.
+ *
+ * `methodId` (optional FK to `payment_methods.id`) is validated to actually
+ * EXIST in the catalog — via `assertCatalogId` — before it is ever forwarded
+ * to `repositories.payments.createForInvoice`, so a well-formed but
+ * nonexistent id fails here with a clean `VALIDATION_ERROR` instead of
+ * reaching the mock (silent dangling FK) or the DB backend (raw
+ * FK-violation 500). When omitted, the repository still resolves it from
+ * `method`'s code, exactly as before.
  */
 
 import { formatCOP } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
+import { assertCatalogId } from "@/lib/services/catalog-service";
 import { recordAuditLog } from "@/lib/services/audit-log-service";
 import { repositories } from "@/lib/services/repositories";
 import type { InvoiceDetail, Paged, PaymentInput, PaymentListQuery, PaymentWithRefs, Session } from "@/lib/services/ports";
@@ -34,6 +43,8 @@ export type PaymentCreateInput = {
   amount: number;
   method?: string | null;
   notes?: string | null;
+  /** Optional FK to `payment_methods.id` — see this file's module doc comment. */
+  methodId?: string;
 };
 
 export async function listPayments(session: Session, query: PaymentListQuery): Promise<Paged<PaymentWithRefs>> {
@@ -60,10 +71,16 @@ export async function createPayment(
   invoiceId: string,
   data: PaymentCreateInput,
 ): Promise<InvoiceDetail> {
+  if (data.methodId) {
+    const methods = await repositories.catalog.listPaymentMethods();
+    assertCatalogId(methods, data.methodId, "methodId");
+  }
+
   const persist: PaymentInput = {
     paymentDate: data.paymentDate,
     amount: data.amount,
     method: data.method ?? null,
+    methodId: data.methodId ?? null,
     notes: data.notes ?? null,
   };
 

@@ -50,6 +50,7 @@ const INVOICE_DETAIL: InvoiceDetail = {
   id: INVOICE_ID,
   businessId: SESSION.businessId,
   customerId: "40000000-0000-4000-8000-000000000001",
+  invoiceTypeId: "c1000000-0000-4000-8000-000000000001",
   number: "FAC-0001",
   issueDate: "2026-07-01",
   dueDate: "2026-08-01",

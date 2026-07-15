@@ -41,6 +41,7 @@ type InvoiceRow = {
   id: string;
   business_id: string;
   customer_id: string;
+  invoice_type_id: string;
   number: string;
   issue_date: string;
   due_date: string | null;
@@ -60,6 +61,7 @@ type PaymentRow = {
   payment_date: string;
   amount: number;
   method: string | null;
+  method_id: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -97,6 +99,7 @@ function withFinance(invoice: InvoiceRow, payments: PaymentRow[]): InvoiceWithFi
     id: invoice.id,
     businessId: invoice.business_id,
     customerId: invoice.customer_id,
+    invoiceTypeId: invoice.invoice_type_id,
     number: invoice.number,
     issueDate: toDateStr(invoice.issue_date),
     dueDate: invoice.due_date ? toDateStr(invoice.due_date) : null,
@@ -124,6 +127,7 @@ function toPaymentWithRefs(
     paymentDate: toDateStr(payment.payment_date),
     amount: Number(payment.amount),
     method: payment.method,
+    methodId: payment.method_id,
     notes: payment.notes,
     createdAt: new Date(payment.created_at).toISOString(),
     updatedAt: new Date(payment.updated_at).toISOString(),

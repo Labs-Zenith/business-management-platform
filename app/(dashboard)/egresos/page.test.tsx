@@ -44,6 +44,7 @@ const EXPENSE: Expense = {
   id: "60000000-0000-4000-8000-000000000001",
   businessId: SESSION.businessId,
   category: "otro",
+  categoryId: "c2000000-0000-4000-8000-000000000002",
   expenseDate: "2026-07-06",
   description: "Papeleria",
   amount: 45_000,

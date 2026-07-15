@@ -10,7 +10,7 @@ import type {
 } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
 import { withLock } from "./lock";
-import { generateId, store as defaultStore, type MockStore } from "./store";
+import { findCatalogIdByCode, generateId, store as defaultStore, type MockStore } from "./store";
 
 function paymentsForInvoice(store: MockStore, invoiceId: string): Payment[] {
   return [...store.payments.values()].filter((payment) => payment.invoiceId === invoiceId);
@@ -130,6 +130,27 @@ export function createPaymentRepository(store: MockStore): PaymentRepository {
         }
 
         const now = new Date().toISOString();
+        const method = data.method ?? null;
+        // `methodId` mirrors `method`'s own nullability: an explicitly-
+        // supplied id is verified to actually exist in the catalog first
+        // (defense in depth for any direct caller that bypasses
+        // `payment-service.ts#createPayment`'s own `assertCatalogId` guard);
+        // otherwise it's resolved from the catalog by `method`'s code when
+        // `method` is present, and stays `null` when there's no `method` at
+        // all (no catalog code to resolve — see `PaymentInput.methodId`'s
+        // doc comment for why this is NOT enforced NOT NULL).
+        let methodId: string | null;
+        if (data.methodId) {
+          if (!store.paymentMethods.has(data.methodId)) {
+            throw new ApiError("VALIDATION_ERROR", "Invalid methodId: no matching catalog entry.", {
+              field: "methodId",
+              id: data.methodId,
+            });
+          }
+          methodId = data.methodId;
+        } else {
+          methodId = method ? (findCatalogIdByCode(store.paymentMethods, method) ?? null) : null;
+        }
         const payment: Payment = {
           id: generateId(),
           businessId,
@@ -138,7 +159,8 @@ export function createPaymentRepository(store: MockStore): PaymentRepository {
           customerId: invoice.customerId,
           paymentDate: data.paymentDate,
           amount: data.amount,
-          method: data.method ?? null,
+          method,
+          methodId,
           notes: data.notes ?? null,
           createdAt: now,
           updatedAt: now,

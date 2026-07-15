@@ -8,7 +8,7 @@ import type {
   Paged,
 } from "@/lib/services/ports";
 import { withLock } from "./lock";
-import { generateId, store as defaultStore, type MockStore } from "./store";
+import { generateId, resolveCatalogId, store as defaultStore, type MockStore } from "./store";
 
 function movementsForProduct(store: MockStore, productId: string) {
   return [...store.inventoryMovements.values()].filter((movement) => movement.productId === productId);
@@ -109,11 +109,21 @@ export function createInventoryMovementRepository(store: MockStore): InventoryMo
         }
 
         const now = new Date().toISOString();
+        // `typeId` resolved from `type`'s catalog code when the caller
+        // doesn't supply one directly (no dropdown UI wires it yet — Wave
+        // 2). `type` is always populated (required, enum-checked), so this
+        // resolution always succeeds against the seeded catalog. An
+        // explicitly-supplied `typeId` is verified to actually exist in the
+        // catalog first — defense in depth for any direct caller that
+        // bypasses `inventory-service.ts#recordMovement`'s own
+        // `assertCatalogId` guard (see `resolveCatalogId`'s doc comment).
+        const typeId = resolveCatalogId(store.movementTypes, data.typeId, data.type, "typeId");
         const movement: InventoryMovement = {
           id: generateId(),
           businessId,
           productId: product.id,
           type: data.type,
+          typeId,
           quantity: data.quantity,
           note: data.note ?? null,
           createdAt: now,

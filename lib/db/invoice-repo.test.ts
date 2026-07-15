@@ -63,12 +63,14 @@ const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_BUSINESS_ID = "10000000-0000-4000-8000-000000000099";
 const INVOICE_ID = "50000000-0000-4000-8000-000000000001";
 const CUSTOMER_ID = "40000000-0000-4000-8000-000000000001";
+const INVOICE_TYPE_ID = "c1000000-0000-4000-8000-000000000001";
 
 function invoiceRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: INVOICE_ID,
     business_id: BUSINESS_ID,
     customer_id: CUSTOMER_ID,
+    invoice_type_id: INVOICE_TYPE_ID,
     number: "FAC-0001",
     issue_date: "2026-07-09",
     due_date: "2026-08-09",
@@ -395,5 +397,94 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     await expect(invoiceRepo.update(BUSINESS_ID, INVOICE_ID, buildPersist())).rejects.toThrow(
       "simulated transaction failure",
     );
+  });
+});
+
+/**
+ * `create` (Wave 1A data-model foundation): sequence bump + type resolution
+ * + header INSERT + every item INSERT now all run inside ONE
+ * `runTransaction` callback (previously the sequence bump was a separate,
+ * un-transacted `sql` call before the header/items — a failing item INSERT
+ * could leave a bumped sequence number with no invoice ever persisted for
+ * it). Mirrors `update`'s established single-transaction test shape.
+ */
+describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety-critical)", () => {
+  beforeEach(() => {
+    mockSql.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
+    mockRunTransaction.mockImplementation((fn: (tx: typeof mockTx) => Promise<unknown>) => fn(mockTx));
+  });
+
+  it("runs the sequence-bump/type-resolve + header INSERT + item INSERT(s) sequentially inside ONE runTransaction callback, in that order", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ invoice_type_id: INVOICE_TYPE_ID, seq: 7, prefix: "FAC" }]) // statement 1: sequence bump + type resolve
+      .mockResolvedValueOnce([invoiceRow({ number: "FAC-0007" })]) // statement 2: header insert
+      .mockResolvedValueOnce([]); // statement 3: item insert
+    mockSql.mockResolvedValueOnce([customerRow()]); // buildDetail: customer
+    mockSql.mockResolvedValueOnce([
+      { id: "60000000-0000-4000-8000-000000000001", invoice_id: INVOICE_ID, description: "Servicio", quantity: "1", unit_price: 100000, line_total: 100000 },
+    ]); // buildDetail: items
+    mockSql.mockResolvedValueOnce([]); // buildDetail: payments
+
+    const persist = buildPersist({
+      items: [{ description: "Servicio", quantity: 1, unitPrice: 100000, lineTotal: 100000 }],
+      subtotal: 100000,
+      total: 100000,
+    });
+    const detail = await invoiceRepo.create(BUSINESS_ID, persist);
+
+    expect(detail.number).toBe("FAC-0007");
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(3); // seq+type resolve, header, ONE item
+
+    const seqText = Array.from(mockTx.mock.calls[0]![0] as unknown as string[]).join("");
+    expect(seqText).toContain("invoice_sequences");
+    expect(seqText).toContain("ON CONFLICT");
+    expect(seqText).toContain("invoice_types");
+
+    const headerText = Array.from(mockTx.mock.calls[1]![0] as unknown as string[]).join("");
+    expect(headerText).toContain("INSERT INTO invoices");
+    expect(headerText).toContain("RETURNING");
+
+    const itemText = Array.from(mockTx.mock.calls[2]![0] as unknown as string[]).join("");
+    expect(itemText).toContain("INSERT INTO invoice_items");
+  });
+
+  it("defaults to the 'venta' type via COALESCE when data.invoiceTypeId is not supplied (interpolates null, not a forged id)", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ invoice_type_id: INVOICE_TYPE_ID, seq: 1, prefix: "FAC" }])
+      .mockResolvedValueOnce([invoiceRow({ number: "FAC-0001" })])
+      .mockResolvedValueOnce([]);
+    mockSql.mockResolvedValueOnce([customerRow()]);
+    mockSql.mockResolvedValueOnce([]);
+    mockSql.mockResolvedValueOnce([]);
+
+    await invoiceRepo.create(BUSINESS_ID, buildPersist({ items: [{ description: "X", quantity: 1, unitPrice: 1, lineTotal: 1 }] }));
+
+    const [, ...seqValues] = mockTx.mock.calls[0]!;
+    // First interpolated value is the COALESCE's explicit-id slot — null,
+    // since `data.invoiceTypeId` was not supplied.
+    expect(seqValues[0]).toBeNull();
+  });
+
+  it("aborts the WHOLE transaction — nothing read back, nothing fabricated — when an item INSERT rejects", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ invoice_type_id: INVOICE_TYPE_ID, seq: 1, prefix: "FAC" }])
+      .mockResolvedValueOnce([invoiceRow()])
+      .mockRejectedValueOnce(new Error("simulated item insert failure"));
+
+    await expect(invoiceRepo.create(BUSINESS_ID, buildPersist())).rejects.toThrow("simulated item insert failure");
+
+    // buildDetail's post-transaction reads never ran — the rejection inside
+    // the transaction callback propagates before any read-back happens.
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it("propagates the error and fabricates nothing when the transaction itself rejects", async () => {
+    mockRunTransaction.mockRejectedValueOnce(new Error("simulated transaction failure"));
+
+    await expect(invoiceRepo.create(BUSINESS_ID, buildPersist())).rejects.toThrow("simulated transaction failure");
+    expect(mockSql).not.toHaveBeenCalled();
   });
 });

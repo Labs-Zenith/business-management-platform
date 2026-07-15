@@ -17,6 +17,14 @@
  * section) — with no inputs and no Save button. This is a UX convenience
  * only — the authoritative gate is `updateBusinessProfile`'s server-side
  * `can(session.role, "editBusinessProfile")` check.
+ *
+ * Admins now land on the same read-only `CardRow` view as workers, plus an
+ * "Editar" button; clicking it reveals the editable form (local `isEditing`
+ * state, default `false`, only reachable when `canEdit`). The form's
+ * "Cancelar" button discards in-progress edits (resets `values` from the
+ * original `business` prop) and returns to read-only; a successful save also
+ * returns to read-only (matching the "guardado" convention above) instead of
+ * staying on the form.
  */
 
 import { useRouter } from "next/navigation";
@@ -86,8 +94,9 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
-  if (!canEdit) {
+  if (!canEdit || !isEditing) {
     const formValues = toFormValues(business);
     return (
       <div className="flex flex-col gap-2">
@@ -96,6 +105,20 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
             {formValues[field.key] || "-"}
           </CardRow>
         ))}
+        {success ? <p className="text-sm text-muted-foreground">{SUCCESS_MESSAGE}</p> : null}
+        {canEdit ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full sm:w-fit"
+            onClick={() => {
+              setSuccess(false);
+              setIsEditing(true);
+            }}
+          >
+            Editar
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -103,6 +126,13 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
   function updateField<K extends keyof BusinessProfileFormValues>(key: K, value: BusinessProfileFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
     setSuccess(false);
+  }
+
+  function handleCancel() {
+    setValues(toFormValues(business));
+    setError(null);
+    setSuccess(false);
+    setIsEditing(false);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -125,6 +155,7 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
       }
 
       setSuccess(true);
+      setIsEditing(false);
       router.refresh();
     } catch {
       setError(GENERIC_ERROR_MESSAGE);
@@ -188,10 +219,20 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
           {error}
         </p>
       ) : null}
-      {success ? <p className="text-sm text-muted-foreground">{SUCCESS_MESSAGE}</p> : null}
-      <Button type="submit" disabled={isSubmitting} className="w-full sm:w-fit">
-        {isSubmitting ? "Guardando..." : "Guardar cambios"}
-      </Button>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button type="submit" disabled={isSubmitting} className="w-full sm:w-fit">
+          {isSubmitting ? "Guardando..." : "Guardar cambios"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={isSubmitting}
+          className="w-full sm:w-fit"
+          onClick={handleCancel}
+        >
+          Cancelar
+        </Button>
+      </div>
     </form>
   );
 }

@@ -66,6 +66,7 @@ function seedOtherBusinessInvoice(): Invoice {
     id: "50000000-0000-4000-8000-000000000998",
     businessId: OTHER_BUSINESS_ID,
     customerId: otherCustomerId,
+    invoiceTypeId: "c1000000-0000-4000-8000-000000000001",
     number: "FAC-OTHER-0001",
     issueDate: "2026-01-01",
     dueDate: null,

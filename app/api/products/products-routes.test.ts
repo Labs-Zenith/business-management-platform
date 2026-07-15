@@ -71,7 +71,6 @@ function seedOtherBusinessProduct(): Product {
     name: "Producto de otro negocio",
     sku: null,
     unitCost: 10000,
-    minStockThreshold: 0,
     active: true,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
@@ -166,18 +165,25 @@ describe("POST /api/products", () => {
   it("creates a product under the session's business, active by default", async () => {
     await signIn();
 
-    const response = await listPost(
-      postRequest({ name: "Crema Facial", sku: "CRE-005", unitCost: 30000, minStockThreshold: 5 }),
-    );
+    const response = await listPost(postRequest({ name: "Crema Facial", sku: "CRE-005", unitCost: 30000 }));
 
     expect(response.status).toBe(201);
     const body = await response.json();
     expect(body.data.name).toBe("Crema Facial");
     expect(body.data.sku).toBe("CRE-005");
     expect(body.data.unitCost).toBe(30000);
-    expect(body.data.minStockThreshold).toBe(5);
     expect(body.data.active).toBe(true);
     expect(body.data.businessId).toBe(BUSINESS_ID);
+  });
+
+  it("rejects a minStockThreshold field — removed (Wave 1A): low-stock is a fixed rule, not a per-product value", async () => {
+    await signIn();
+
+    const response = await listPost(
+      postRequest({ name: "Crema Facial", sku: "CRE-005", unitCost: 30000, minStockThreshold: 5 }),
+    );
+
+    expect(response.status).toBe(400);
   });
 
   it("creates a product without sku, stored as null", async () => {

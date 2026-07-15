@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
 import { resetStore, store } from "@/lib/mock/store";
+import { repositories } from "@/lib/services/repositories";
 import type { Session } from "@/lib/services/ports";
 import { createProduct } from "./product-service";
 import { listMovements, recordMovement } from "./inventory-service";
@@ -98,6 +99,37 @@ describe("recordMovement (inventory-service) — passes through repo behavior un
     // Not just "the response is an error" — no movement was ever created
     // (the store's movement count is unchanged), regardless of any
     // pre-existing/fixture-seeded movements.
+    expect(store.inventoryMovements.size).toBe(movementCountBefore);
+  });
+
+  it("accepts a well-formed typeId that actually exists in the movement_types catalog", async () => {
+    resetStore();
+    const product = await createProduct(SESSION, { name: "Producto", unitCost: 1000 });
+    const [existingType] = await repositories.catalog.listMovementTypes();
+
+    const movement = await recordMovement(SESSION, {
+      productId: product.id,
+      type: "in",
+      quantity: 5,
+      typeId: existingType!.id,
+    });
+
+    expect(movement.typeId).toBe(existingType!.id);
+  });
+
+  it("rejects a well-formed but nonexistent typeId with VALIDATION_ERROR, creating nothing", async () => {
+    resetStore();
+    const product = await createProduct(SESSION, { name: "Producto", unitCost: 1000 });
+    const movementCountBefore = store.inventoryMovements.size;
+
+    await expect(
+      recordMovement(SESSION, {
+        productId: product.id,
+        type: "in",
+        quantity: 5,
+        typeId: "c4000000-0000-4000-8000-000000000099",
+      }),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     expect(store.inventoryMovements.size).toBe(movementCountBefore);
   });
 });
