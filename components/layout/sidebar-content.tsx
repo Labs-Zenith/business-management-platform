@@ -76,8 +76,8 @@ export default function SidebarContent({
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">
       <div
         className={cn(
-          "mb-2 flex items-center gap-1",
-          collapsed ? "flex-col" : "justify-between px-1"
+          "mb-2 flex gap-1",
+          collapsed ? "flex-col items-center" : "items-start justify-between px-1"
         )}
       >
         <BusinessSwitcher

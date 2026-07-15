@@ -116,8 +116,8 @@ function LoginForm() {
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader>
-          <div className="mb-1 flex items-center gap-2">
+        <CardHeader className="items-center text-center">
+          <div className="mb-1 flex items-center justify-center gap-2">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <Building2 className="size-4" />
             </div>

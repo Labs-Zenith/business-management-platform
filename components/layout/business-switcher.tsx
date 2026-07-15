@@ -116,7 +116,7 @@ export default function BusinessSwitcher({
       onOpenChange={(next) => {
         if (!collapsed) setOpen(next);
       }}
-      className="flex w-full flex-col gap-1"
+      className="flex min-w-0 flex-1 flex-col gap-1"
     >
       <CollapsibleTrigger
         disabled={isSwitching}

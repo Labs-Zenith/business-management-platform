@@ -59,7 +59,11 @@ export default function MobileNavSheet({
           </Button>
         }
       />
-      <SheetContent side="left" className="w-72 gap-0 bg-sidebar p-0 text-sidebar-foreground">
+      <SheetContent
+        side="left"
+        showCloseButton={false}
+        className="w-72 gap-0 bg-sidebar p-0 text-sidebar-foreground"
+      >
         <SheetHeader className="sr-only">
           <SheetTitle>Negocio</SheetTitle>
         </SheetHeader>
