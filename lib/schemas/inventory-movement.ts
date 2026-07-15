@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Inventory movement input schema, per
  * `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s

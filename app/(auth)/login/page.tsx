@@ -2,6 +2,8 @@
 
 import { useState, Suspense, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { z } from "zod";
+import { Building2, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +16,22 @@ import {
 } from "@/components/ui/card";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo iniciar sesion. Verifica tus datos e intenta de nuevo.";
+
+/**
+ * Mirrors the field-level rules in `app/api/auth/login/route.ts`'s
+ * `loginSchema` (email/password only — this form doesn't need `.strict()`
+ * since it never sends extra fields). Used ONLY for live client-side UX
+ * (inline errors + disabling the submit button); the API route re-validates
+ * independently server-side and remains the actual source of truth. Kept
+ * inline rather than via the shared `useZodForm` hook — this is a small
+ * 2-field form and other concurrent lanes are touching that shared hook.
+ */
+const emailSchema = z
+  .string()
+  .trim()
+  .min(1, "El correo es obligatorio.")
+  .email("Ingresa un correo válido.");
+const passwordSchema = z.string().min(1, "La contraseña es obligatoria.");
 
 /**
  * Only a same-origin relative path (starting with a single `/`) is ever
@@ -35,11 +53,18 @@ function sanitizeNextPath(next: string | null): string | null {
   return next;
 }
 
+interface Touched {
+  email: boolean;
+  password: boolean;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [touched, setTouched] = useState<Touched>({ email: false, password: false });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,6 +74,16 @@ function LoginForm() {
   // return to afterwards, instead of hard-bouncing to `/dashboard`.
   const nextPath = sanitizeNextPath(searchParams.get("next"));
   const isAddAccountFlow = nextPath !== null;
+
+  const emailResult = emailSchema.safeParse(email);
+  const passwordResult = passwordSchema.safeParse(password);
+  const emailError = emailResult.success ? null : emailResult.error.issues[0]?.message;
+  const passwordError = passwordResult.success ? null : passwordResult.error.issues[0]?.message;
+  const isFormValid = emailResult.success && passwordResult.success;
+
+  function markTouched(field: keyof Touched) {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -79,10 +114,16 @@ function LoginForm() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4">
+    <div className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>{isAddAccountFlow ? "Agregar otra cuenta" : "Iniciar sesion"}</CardTitle>
+          <div className="mb-1 flex items-center gap-2">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+              <Building2 className="size-4" />
+            </div>
+            <span className="text-sm font-medium">Panel de negocio</span>
+          </div>
+          <CardTitle>{isAddAccountFlow ? "Agregar otra cuenta" : "Iniciar sesión"}</CardTitle>
           <CardDescription>
             {isAddAccountFlow
               ? "Ingresa las credenciales de la cuenta que quieres agregar."
@@ -92,7 +133,7 @@ function LoginForm() {
         <CardContent>
           <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit}>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Correo electrónico</Label>
               <Input
                 id="email"
                 name="email"
@@ -101,26 +142,49 @@ function LoginForm() {
                 required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
+                onBlur={() => markTouched("email")}
               />
+              {touched.email && emailError ? (
+                <p className="text-xs text-destructive">{emailError}</p>
+              ) : null}
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Contrasena</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
+              <Label htmlFor="password">Contraseña</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  className="pr-10"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  onBlur={() => markTouched("password")}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                  className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-muted-foreground"
+                >
+                  {showPassword ? (
+                    <EyeOff className="size-4" />
+                  ) : (
+                    <Eye className="size-4" />
+                  )}
+                </button>
+              </div>
+              {touched.password && passwordError ? (
+                <p className="text-xs text-destructive">{passwordError}</p>
+              ) : null}
             </div>
             {error ? (
               <p role="alert" className="text-sm text-destructive">
                 {error}
               </p>
             ) : null}
-            <Button type="submit" disabled={isSubmitting} className="w-full">
+            <Button type="submit" disabled={isSubmitting || !isFormValid} className="w-full">
               {isSubmitting ? "Ingresando..." : "Ingresar"}
             </Button>
           </form>

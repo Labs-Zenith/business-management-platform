@@ -95,10 +95,14 @@ export default function PayrollPaymentFormDialog({ employees, periodTypes, trigg
     control,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isValid },
   } = useForm<PayrollPaymentFormValues>({
     resolver: zodResolver(payrollPaymentFormSchema),
     defaultValues: defaultValues(employees),
+    // Live (as-you-type) validation: errors surface per field after its
+    // first blur, then keep re-validating on every subsequent change —
+    // matches `invoice-form-content.tsx`'s live-validation convention.
+    mode: "onTouched",
   });
 
   // `useWatch` (not `useForm()`'s returned `watch()`) — the dedicated hook is
@@ -177,7 +181,7 @@ export default function PayrollPaymentFormDialog({ employees, periodTypes, trigg
                   value={field.value}
                   onValueChange={field.onChange}
                 >
-                  <SelectTrigger id="payroll-employee" className="h-9 w-full">
+                  <SelectTrigger id="payroll-employee" className="h-9 w-full" onBlur={field.onBlur}>
                     <SelectValue placeholder="Selecciona un empleado" />
                   </SelectTrigger>
                   <SelectContent>
@@ -225,7 +229,7 @@ export default function PayrollPaymentFormDialog({ employees, periodTypes, trigg
                   value={field.value}
                   onValueChange={field.onChange}
                 >
-                  <SelectTrigger id="payroll-period-type" className="h-9 w-full">
+                  <SelectTrigger id="payroll-period-type" className="h-9 w-full" onBlur={field.onBlur}>
                     <SelectValue placeholder="Selecciona un tipo de periodo" />
                   </SelectTrigger>
                   <SelectContent>
@@ -293,7 +297,7 @@ export default function PayrollPaymentFormDialog({ employees, periodTypes, trigg
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+            <Button type="submit" disabled={isSubmitting || !isValid} className="w-full sm:w-auto">
               {isSubmitting ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>

@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Payroll payment input schema, per
  * `openspec/changes/nomina-payroll/specs/payroll-management/spec.md`'s

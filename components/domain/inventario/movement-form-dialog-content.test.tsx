@@ -119,7 +119,11 @@ describe("MovementFormDialog", () => {
     expect(body).not.toHaveProperty("note");
   });
 
-  it("blocks submission client-side and shows a validation error when quantity is zero (no request sent)", async () => {
+  it("shows a live inline error and disables the submit button when quantity is zero (no request sent)", async () => {
+    // The submit button is disabled while the form is invalid (live
+    // `useZodForm` validation, `lib/schemas/inventory-movement.ts`), so a
+    // click on "Guardar" is a no-op here — the field is blurred directly
+    // instead to surface the live inline error.
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -134,10 +138,36 @@ describe("MovementFormDialog", () => {
 
     await openDialog(user);
     // quantity left at its default ("") — invalid, must be > 0
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await user.click(screen.getByLabelText(/cantidad/i));
+    await user.tab();
 
-    expect(await screen.findByText(/la cantidad debe ser un entero mayor a 0/i)).toBeInTheDocument();
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clears the live inline error and enables the submit button once a valid quantity is entered", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
+
+    await openDialog(user);
+    await user.click(screen.getByLabelText(/cantidad/i));
+    await user.tab();
+
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/cantidad/i), "5");
+
+    await waitFor(() => expect(screen.queryByText(/demasiado peque/i)).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /guardar/i })).not.toBeDisabled();
   });
 
   it("strips a typed negative sign via the QuantityInput mask, so a '-3' entry submits the positive quantity 3 (negative entry is impossible)", async () => {
@@ -268,7 +298,7 @@ describe("MovementFormDialog", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the empty-state fallback option and blocks submission via required-field validation when there are zero active products", async () => {
+  it("renders the empty-state fallback option and shows a live validation error + disabled submit when there are zero active products", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -285,14 +315,16 @@ describe("MovementFormDialog", () => {
     await openSelect(user, /producto/i);
     expect(await screen.findByRole("option", { name: "Sin productos activos" })).toBeInTheDocument();
     // Close the popup (Escape) before continuing to interact with the rest of the form.
+    // Closing the Select (via `onOpenChange`) marks `productId` `touched`, so
+    // the live inline error appears without needing a submit attempt.
     await user.keyboard("{Escape}");
     expect(screen.getByLabelText(/producto/i)).toHaveTextContent(/selecciona un producto/i);
 
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "5");
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
 
-    expect(await screen.findByText(/producto requerido/i)).toBeInTheDocument();
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

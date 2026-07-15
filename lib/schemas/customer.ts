@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Customer input schemas, per
  * `openspec/changes/mocked-mvp-scaffold/specs/customers/spec.md` and

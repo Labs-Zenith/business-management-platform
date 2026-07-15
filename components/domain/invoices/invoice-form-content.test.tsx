@@ -161,6 +161,11 @@ describe("InvoiceFormContent", () => {
     // the request, mirroring `expense-form-dialog-content.test.tsx`'s
     // "blocks submission client-side ... when amount is not greater than 0"
     // precedent.
+    //
+    // Live (`mode: "onTouched"`) validation: the error surfaces on BLUR
+    // (once `unitPrice` is touched), and the submit button itself is
+    // disabled while the form is invalid — clicking it is a no-op, not the
+    // trigger for the error.
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -172,9 +177,13 @@ describe("InvoiceFormContent", () => {
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "1");
     // unitPrice left at its default ("") — invalid, must be non-empty
-    await user.click(screen.getByRole("button", { name: /crear factura/i }));
+    await user.click(screen.getByLabelText(/valor unitario/i));
+    await user.tab();
 
     expect(await screen.findByText(/^requerido$/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /crear factura/i })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /crear factura/i }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -274,6 +283,12 @@ describe("InvoiceFormContent", () => {
     // so the resolver actually rejects submission, not just "field never
     // touched" (see the separate "omits dueDate ... never touched" test,
     // which does NOT exercise this gesture at all).
+    //
+    // `DatePicker` has no `onBlur` prop to wire to RHF's `Controller` field,
+    // so this field can never become "touched" via blur the way text/
+    // `MoneyInput`/`Select` fields can — live validation here surfaces as
+    // the submit button itself going disabled (`formState.isValid`), not an
+    // inline message under this specific field.
     const user = userEvent.setup();
     vi.setSystemTime(new Date(2026, 6, 7));
     const fetchMock = vi.fn();
@@ -293,9 +308,9 @@ describe("InvoiceFormContent", () => {
 
     expect(screen.getByLabelText(/fecha de emision/i)).toHaveTextContent(/seleccionar fecha/i);
 
-    await user.click(screen.getByRole("button", { name: /crear factura/i }));
+    expect(await screen.findByRole("button", { name: /crear factura/i })).toBeDisabled();
 
-    expect(await screen.findByText(/fecha de emision requerida/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /crear factura/i }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -577,8 +592,13 @@ describe("InvoiceFormContent", () => {
       render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={PARTIALLY_PAID_INVOICE} />);
 
       // Initial total (300000) >= paidAmount (250000): no warning, submit enabled.
+      // `findByRole` (not `getByRole`): `formState.isValid` settles
+      // asynchronously (an effect-driven validation pass) once `mode:
+      // "onTouched"` + subscribing to `isValid` are both in play, so the
+      // very first synchronous render may still show the pre-validation
+      // default before it resolves to the actual (valid, here) result.
       expect(screen.queryByText(/no puede ser menor a lo ya pagado/i)).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /guardar cambios/i })).toBeEnabled();
+      expect(await screen.findByRole("button", { name: /guardar cambios/i })).toBeEnabled();
 
       // Drop unitPrice to 1000 pesos: new total = lineTotal(2, pesosToCents(1000)) = 200000 < 250000.
       await user.clear(screen.getByLabelText(/valor unitario/i));
@@ -606,11 +626,23 @@ describe("InvoiceFormContent", () => {
       expect(screen.getByRole("button", { name: /guardar cambios/i })).toBeEnabled();
     });
 
-    it("never applies the warning in create mode (no invoice prop, no paidAmount)", () => {
+    it("never applies the warning in create mode (no invoice prop, no paidAmount)", async () => {
+      // A brand-new create-mode form starts with a blank item (empty
+      // `description`/`unitPrice`), which is itself invalid per
+      // `invoiceItemFormSchema` — so submit starts disabled regardless of
+      // the below-paid-total warning; filling valid values first isolates
+      // this test to what it actually asserts (the warning never applies
+      // here), rather than conflating it with the unrelated blank-item case
+      // already covered by "blocks submission client-side ... unitPrice is
+      // left empty" above.
+      const user = userEvent.setup();
       render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
+      await selectOption(user, /cliente/i, CUSTOMER.name);
+      await fillFirstItem(user, "Consultoria", "500");
+
       expect(screen.queryByText(/no puede ser menor a lo ya pagado/i)).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /crear factura/i })).toBeEnabled();
+      expect(await screen.findByRole("button", { name: /crear factura/i })).toBeEnabled();
     });
   });
 

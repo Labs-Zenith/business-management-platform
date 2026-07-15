@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Shared constants for `lib/schemas/*` input schemas.
  *

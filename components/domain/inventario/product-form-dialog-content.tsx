@@ -28,6 +28,18 @@
  * rule (`1 <= currentQuantity <= 3`, see `lib/services/inventory-stock.ts`),
  * not a per-product configurable value — there is no "Stock mínimo" field on
  * this form anymore.
+ *
+ * Live (as-you-type) validation via the shared `useZodForm` hook
+ * (`lib/hooks/use-zod-form.ts`) against the SAME domain schema the server
+ * enforces (`lib/schemas/product.ts`'s `productCreateSchema`/
+ * `productUpdateSchema`) — the create/update variant is picked per `mode`,
+ * matching `buildPayload`'s existing create/edit payload-shape split (an
+ * empty `sku` is omitted on create, sent as `null` on edit). Messages come
+ * straight from the schema (no custom Spanish overrides) — a deliberate
+ * "single source of truth" tradeoff, mirroring `employee-form-dialog-content.tsx`'s
+ * identical live-validation wiring. Each field only renders its error once
+ * `touched` (blurred at least once), and the submit button stays disabled
+ * while `!isValid`.
  */
 
 import { useRouter } from "next/navigation";
@@ -46,7 +58,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Switch } from "@/components/ui/switch";
+import { useZodForm } from "@/lib/hooks/use-zod-form";
 import { pesosToCents } from "@/lib/money";
+import { productCreateSchema, productUpdateSchema } from "@/lib/schemas/product";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo guardar el producto. Verifica los datos e intenta de nuevo.";
 
@@ -67,10 +81,6 @@ type ProductFormValues = {
   active: boolean;
 };
 
-type ProductFormFieldErrors = {
-  unitCost?: string;
-};
-
 function toFormValues(product?: ProductFormDialogProduct): ProductFormValues {
   return {
     name: product?.name ?? "",
@@ -80,13 +90,30 @@ function toFormValues(product?: ProductFormDialogProduct): ProductFormValues {
   };
 }
 
-function validate(values: ProductFormValues): ProductFormFieldErrors {
-  const nextFieldErrors: ProductFormFieldErrors = {};
-  if (values.unitCost === "" || Number(values.unitCost) <= 0) {
-    nextFieldErrors.unitCost = "El costo debe ser mayor a 0";
-  }
-  return nextFieldErrors;
+/**
+ * Maps the form's raw string `values` to the exact payload shape/types the
+ * domain schema (and the server) expect — reused both to feed `useZodForm`
+ * (live validation) and as the actual `fetch` request body, so the two never
+ * drift apart.
+ */
+function buildPayload(mode: "create" | "edit", values: ProductFormValues) {
+  const trimmedSku = values.sku.trim();
+  const unitCost = pesosToCents(Number(values.unitCost) || 0);
+  return mode === "create"
+    ? {
+        name: values.name.trim(),
+        ...(trimmedSku ? { sku: trimmedSku } : {}),
+        unitCost,
+      }
+    : {
+        name: values.name.trim(),
+        sku: trimmedSku || null,
+        unitCost,
+        active: values.active,
+      };
 }
+
+type ProductFormTouched = { name?: boolean; unitCost?: boolean };
 
 export type ProductFormDialogProps = {
   mode: "create" | "edit";
@@ -100,19 +127,32 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<ProductFormValues>(() => toFormValues(product));
-  const [fieldErrors, setFieldErrors] = useState<ProductFormFieldErrors>({});
+  const [touched, setTouched] = useState<ProductFormTouched>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const schema = mode === "create" ? productCreateSchema : productUpdateSchema;
+  // Explicit `<unknown>` type argument: TS can't unify the create/update
+  // schemas' differing (required vs. optional) output types into a single
+  // `T` for `ZodType<T>` inference, and the hook's `errors`/`isValid`
+  // return shape doesn't depend on `T` anyway (`values` is already
+  // `unknown`), so this sidesteps the inference failure with no runtime
+  // behavior change.
+  const { errors, isValid } = useZodForm<unknown>(schema, buildPayload(mode, values));
+
   function updateField<K extends keyof ProductFormValues>(key: K, value: ProductFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
+  }
+
+  function markTouched(field: keyof ProductFormTouched) {
+    setTouched((current) => ({ ...current, [field]: true }));
   }
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
     if (nextOpen) {
       setValues(toFormValues(product));
-      setFieldErrors({});
+      setTouched({});
       setError(null);
     }
   }
@@ -124,9 +164,8 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
     }
     setError(null);
 
-    const nextFieldErrors = validate(values);
-    setFieldErrors(nextFieldErrors);
-    if (Object.keys(nextFieldErrors).length > 0) {
+    if (!isValid) {
+      setTouched({ name: true, unitCost: true });
       return;
     }
 
@@ -135,20 +174,7 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
     try {
       const isCreate = mode === "create";
       const url = isCreate ? "/api/products" : `/api/products/${product!.id}`;
-      const trimmedSku = values.sku.trim();
-      const unitCost = pesosToCents(Number(values.unitCost) || 0);
-      const payload = isCreate
-        ? {
-            name: values.name.trim(),
-            ...(trimmedSku ? { sku: trimmedSku } : {}),
-            unitCost,
-          }
-        : {
-            name: values.name.trim(),
-            sku: trimmedSku || null,
-            unitCost,
-            active: values.active,
-          };
+      const payload = buildPayload(mode, values);
 
       const response = await fetch(url, {
         method: isCreate ? "POST" : "PATCH",
@@ -192,7 +218,10 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
               required
               value={values.name}
               onChange={(event) => updateField("name", event.target.value)}
+              onBlur={() => markTouched("name")}
+              aria-invalid={touched.name && !!errors.name}
             />
+            {touched.name && errors.name ? <p className="text-xs text-destructive">{errors.name}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="product-sku">SKU</Label>
@@ -211,8 +240,12 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
               required
               value={values.unitCost}
               onChange={(value) => updateField("unitCost", value)}
+              onBlur={() => markTouched("unitCost")}
+              aria-invalid={touched.unitCost && !!errors.unitCost}
             />
-            {fieldErrors.unitCost ? <p className="text-xs text-destructive">{fieldErrors.unitCost}</p> : null}
+            {touched.unitCost && errors.unitCost ? (
+              <p className="text-xs text-destructive">{errors.unitCost}</p>
+            ) : null}
           </div>
           {mode === "edit" ? (
             <div className="flex items-center gap-2.5">
@@ -230,7 +263,7 @@ export default function ProductFormDialog({ mode, product, trigger }: ProductFor
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+            <Button type="submit" disabled={isSubmitting || !isValid} className="w-full sm:w-auto">
               {isSubmitting ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>

@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Invoice input schema, per
  * `openspec/changes/mocked-mvp-scaffold/specs/invoices/spec.md` and

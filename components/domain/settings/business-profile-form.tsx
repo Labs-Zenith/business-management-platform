@@ -25,6 +25,18 @@
  * original `business` prop) and returns to read-only; a successful save also
  * returns to read-only (matching the "guardado" convention above) instead of
  * staying on the form.
+ *
+ * Live (as-you-type) validation via the shared `useZodForm` hook
+ * (`lib/hooks/use-zod-form.ts`) against the SAME domain schema the server
+ * enforces (`lib/schemas/business.ts`'s `businessUpdateSchema`), fed with
+ * this file's own `toPayload(values)` helper (unchanged) so live validation
+ * and the actual PATCH body never drift apart. Messages come straight from
+ * the schema (no custom Spanish overrides) — a deliberate "single source of
+ * truth" tradeoff, mirroring `employee-form-dialog-content.tsx`'s identical
+ * live-validation wiring. Each field only renders its error once `touched`
+ * (blurred at least once), and the submit button stays disabled while
+ * `!isValid`. Only applies to the ADMIN editable branch below — the
+ * read-only `CardRow` branch above has no inputs to validate.
  */
 
 import { useRouter } from "next/navigation";
@@ -33,6 +45,8 @@ import { Button } from "@/components/ui/button";
 import { CardRow } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useZodForm } from "@/lib/hooks/use-zod-form";
+import { businessUpdateSchema } from "@/lib/schemas/business";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo guardar el negocio. Verifica los datos e intenta de nuevo.";
 const SUCCESS_MESSAGE = "Cambios guardados.";
@@ -88,13 +102,21 @@ const READ_ONLY_FIELDS: ReadonlyArray<{ label: string; key: keyof BusinessProfil
   { label: "Moneda", key: "currency" },
 ];
 
+type BusinessProfileFormTouched = Partial<Record<keyof BusinessProfileFormValues, boolean>>;
+
 export default function BusinessProfileForm({ business, canEdit }: BusinessProfileFormProps) {
   const router = useRouter();
   const [values, setValues] = useState<BusinessProfileFormValues>(() => toFormValues(business));
+  const [touched, setTouched] = useState<BusinessProfileFormTouched>({});
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Hook call kept unconditional (before the read-only branch's early
+  // return) per the Rules of Hooks — only actually rendered/used in the
+  // editable branch below.
+  const { errors, isValid } = useZodForm(businessUpdateSchema, toPayload(values));
 
   if (!canEdit || !isEditing) {
     const formValues = toFormValues(business);
@@ -128,8 +150,13 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
     setSuccess(false);
   }
 
+  function markTouched(field: keyof BusinessProfileFormTouched) {
+    setTouched((current) => ({ ...current, [field]: true }));
+  }
+
   function handleCancel() {
     setValues(toFormValues(business));
+    setTouched({});
     setError(null);
     setSuccess(false);
     setIsEditing(false);
@@ -139,6 +166,12 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
     event.preventDefault();
     setError(null);
     setSuccess(false);
+
+    if (!isValid) {
+      setTouched({ name: true, phone: true, email: true, address: true, currency: true });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -174,7 +207,10 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
           required
           value={values.name}
           onChange={(event) => updateField("name", event.target.value)}
+          onBlur={() => markTouched("name")}
+          aria-invalid={touched.name && !!errors.name}
         />
+        {touched.name && errors.name ? <p className="text-xs text-destructive">{errors.name}</p> : null}
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="business-phone">Telefono</Label>
@@ -183,7 +219,10 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
           name="phone"
           value={values.phone}
           onChange={(event) => updateField("phone", event.target.value)}
+          onBlur={() => markTouched("phone")}
+          aria-invalid={touched.phone && !!errors.phone}
         />
+        {touched.phone && errors.phone ? <p className="text-xs text-destructive">{errors.phone}</p> : null}
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="business-email">Email</Label>
@@ -193,7 +232,10 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
           type="email"
           value={values.email}
           onChange={(event) => updateField("email", event.target.value)}
+          onBlur={() => markTouched("email")}
+          aria-invalid={touched.email && !!errors.email}
         />
+        {touched.email && errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="business-address">Direccion</Label>
@@ -202,7 +244,10 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
           name="address"
           value={values.address}
           onChange={(event) => updateField("address", event.target.value)}
+          onBlur={() => markTouched("address")}
+          aria-invalid={touched.address && !!errors.address}
         />
+        {touched.address && errors.address ? <p className="text-xs text-destructive">{errors.address}</p> : null}
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="business-currency">Moneda</Label>
@@ -212,7 +257,12 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
           required
           value={values.currency}
           onChange={(event) => updateField("currency", event.target.value.toUpperCase())}
+          onBlur={() => markTouched("currency")}
+          aria-invalid={touched.currency && !!errors.currency}
         />
+        {touched.currency && errors.currency ? (
+          <p className="text-xs text-destructive">{errors.currency}</p>
+        ) : null}
       </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
@@ -220,7 +270,7 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
         </p>
       ) : null}
       <div className="flex flex-col gap-2 sm:flex-row">
-        <Button type="submit" disabled={isSubmitting} className="w-full sm:w-fit">
+        <Button type="submit" disabled={isSubmitting || !isValid} className="w-full sm:w-fit">
           {isSubmitting ? "Guardando..." : "Guardar cambios"}
         </Button>
         <Button

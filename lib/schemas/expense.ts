@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Expense input schema, per
  * `openspec/changes/expenses-dashboard-split/specs/expense-tracking/spec.md`

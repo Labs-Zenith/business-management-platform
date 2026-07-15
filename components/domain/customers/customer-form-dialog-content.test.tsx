@@ -160,6 +160,30 @@ describe("CustomerFormDialog (create mode)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a live inline error and disables the submit button when email is invalid, then enables it once fixed", async () => {
+    const user = userEvent.setup();
+    render(<CustomerFormDialog mode="create" trigger={<button type="button">Crear cliente</button>} />);
+
+    await user.click(screen.getByRole("button", { name: /crear cliente/i }));
+    await user.type(await screen.findByLabelText(/nombre/i), "Nuevo Cliente");
+
+    // A pristine, untouched email field shows no error yet, even though the
+    // form is otherwise valid.
+    expect(screen.queryByText(/correo/i)).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/email/i), "not-an-email");
+    await user.tab();
+
+    expect(await screen.findByText(/correo/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
+
+    await user.clear(screen.getByLabelText(/email/i));
+    await user.type(screen.getByLabelText(/email/i), "cliente@example.com");
+
+    await waitFor(() => expect(screen.queryByText(/correo/i)).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /guardar/i })).not.toBeDisabled();
+  });
+
   it("resets the form back to blank values if the dialog is closed and reopened without submitting", async () => {
     const user = userEvent.setup();
     render(<CustomerFormDialog mode="create" trigger={<button type="button">Crear cliente</button>} />);

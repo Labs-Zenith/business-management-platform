@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -82,7 +82,12 @@ describe("ExpenseFormDialog", () => {
     expect(body.categoryId).toBe(CATEGORIES[0]!.id);
   });
 
-  it("blocks submission client-side and shows a validation error when amount is not greater than 0 (no request sent)", async () => {
+  it("shows a live inline error and disables the submit button when amount is not greater than 0 (no request sent)", async () => {
+    // The submit button is disabled while the form is invalid (live
+    // `useZodForm` validation, `lib/schemas/expense.ts`), so a click on
+    // "Guardar" is a no-op here — the field is blurred directly instead to
+    // surface the live inline error, matching how a real user would discover
+    // it while tabbing through the form.
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -92,13 +97,15 @@ describe("ExpenseFormDialog", () => {
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
     // amount left at its default ("") — invalid, must be > 0
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await user.click(screen.getByLabelText(/monto/i));
+    await user.tab();
 
-    expect(await screen.findByText(/el monto debe ser mayor a 0/i)).toBeInTheDocument();
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("blocks submission client-side when the description is missing (no request sent)", async () => {
+  it("shows a live inline error and disables the submit button when the description is missing (no request sent)", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -108,10 +115,31 @@ describe("ExpenseFormDialog", () => {
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.clear(await screen.findByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await user.click(screen.getByLabelText(/descripcion/i));
+    await user.tab();
 
-    expect(await screen.findByText(/descripcion requerida/i)).toBeInTheDocument();
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clears the live inline error and enables the submit button once a valid amount is entered", async () => {
+    const user = userEvent.setup();
+
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
+
+    await user.click(screen.getByRole("button", { name: /crear gasto/i }));
+    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.click(screen.getByLabelText(/monto/i));
+    await user.tab();
+
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/monto/i), "500");
+
+    await waitFor(() => expect(screen.queryByText(/demasiado peque/i)).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /guardar/i })).not.toBeDisabled();
   });
 
   it("shows the server error message, keeps the dialog open, and preserves entered values when the request fails", async () => {
@@ -285,11 +313,14 @@ describe("ExpenseFormDialog", () => {
   });
 
   it("blocks submission client-side when expenseDate is cleared via the DatePicker's toggle-to-clear gesture (no request sent)", async () => {
-    // `expenseDate` is required (`expenseFormSchema`'s `z.string().trim().min(1, ...)`)
-    // and defaults to today's date, so a fresh dialog never starts empty —
-    // the only way to reach the empty/invalid state is via `DatePicker`'s
-    // real clear gesture (re-clicking the already-selected day), which this
-    // test exercises end-to-end through the `Controller` wiring.
+    // `expenseDate` is required (`lib/schemas/expense.ts`'s `dateSchema`,
+    // `z.string().trim().min(1, ...)`) and defaults to today's date, so a
+    // fresh dialog never starts empty — the only way to reach the
+    // empty/invalid state is via `DatePicker`'s real clear gesture
+    // (re-clicking the already-selected day), which this test exercises
+    // end-to-end. The `DatePicker`'s `onChange` marks the field `touched`
+    // immediately (it has no native blur to hook into), so the live inline
+    // error appears right after the clear gesture — no submit click needed.
     const user = userEvent.setup();
     vi.setSystemTime(new Date(2026, 6, 7));
     const fetchMock = vi.fn();
@@ -312,10 +343,9 @@ describe("ExpenseFormDialog", () => {
     await clearDay(user, /fecha/i, dayLabel);
 
     expect(screen.getByLabelText(/fecha/i)).toHaveTextContent(/seleccionar fecha/i);
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
-
-    expect(await screen.findByText(/fecha requerida/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

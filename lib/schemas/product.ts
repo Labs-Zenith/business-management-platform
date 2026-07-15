@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Product input schemas, per
  * `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s "Products

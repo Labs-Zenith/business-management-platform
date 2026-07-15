@@ -3,11 +3,9 @@
 /**
  * Actual create/edit customer form + dialog implementation, mirroring
  * `employee-form-dialog-content.tsx`'s established dialog pattern (plain
- * `useState` + native form, no `react-hook-form`/zod client-side — the
- * server remains authoritative via `lib/schemas/customer.ts`). Always
- * imported indirectly through `./customer-form-dialog.tsx`
- * (`dynamic(..., {ssr: false})`) — never import this file directly from a
- * page.
+ * `useState` + native form). Always imported indirectly through
+ * `./customer-form-dialog.tsx` (`dynamic(..., {ssr: false})`) — never import
+ * this file directly from a page.
  *
  * Reuses the exact field set, `toFormValues`, and payload logic that used to
  * live in `customer-form-content.tsx` (the page-based form this dialog
@@ -20,10 +18,21 @@
  * client-side mutation boundary); `router.refresh()` re-runs the
  * Server Component fetch afterwards so the Clientes list/detail reflects the
  * change.
+ *
+ * LIVE (as-you-type) validation is layered on top via the shared
+ * `useZodForm` hook (`lib/hooks/use-zod-form.ts`), fed the SAME shape
+ * `toDescriptivePayload` already builds for submit — `lib/schemas/customer.ts`
+ * (`customerCreateSchema`/`customerUpdateSchema`, matching `mode`) is the
+ * single source of truth for both the inline client errors and the server's
+ * own `safeParse`. Each field only shows its error once `touched` (via
+ * `onBlur`, or "touch all" on a submit attempt), so a pristine dialog never
+ * opens already showing errors. The submit button stays disabled while
+ * `!isValid`, in addition to the existing `isSubmitting` guard.
  */
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent, type ReactElement } from "react";
+import type { ZodType } from "zod";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +47,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { useZodForm } from "@/lib/hooks/use-zod-form";
+import { customerCreateSchema, customerUpdateSchema } from "@/lib/schemas/customer";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo guardar el cliente. Verifica los datos e intenta de nuevo.";
 
@@ -85,6 +96,18 @@ function toDescriptivePayload(values: CustomerFormValues): Record<string, string
   return payload;
 }
 
+type CustomerFormTouchedField = "name" | "documentNumber" | "email" | "phone" | "address" | "notes";
+type CustomerFormTouched = Partial<Record<CustomerFormTouchedField, boolean>>;
+
+const ALL_CUSTOMER_FIELDS_TOUCHED: CustomerFormTouched = {
+  name: true,
+  documentNumber: true,
+  email: true,
+  phone: true,
+  address: true,
+  notes: true,
+};
+
 export type CustomerFormDialogProps = {
   mode: "create" | "edit";
   /** Required when `mode === "edit"`. */
@@ -97,32 +120,47 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<CustomerFormValues>(() => toFormValues(customer));
+  const [touched, setTouched] = useState<CustomerFormTouched>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const isCreate = mode === "create";
+  const descriptivePayload = toDescriptivePayload(values);
+  const zodValues = isCreate ? descriptivePayload : { ...descriptivePayload, isActive: values.isActive };
+  const { errors, isValid } = useZodForm(
+    (isCreate ? customerCreateSchema : customerUpdateSchema) as ZodType<unknown>,
+    zodValues,
+  );
+
   function updateField<K extends keyof CustomerFormValues>(key: K, value: CustomerFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
+  }
+
+  function markTouched(field: CustomerFormTouchedField) {
+    setTouched((current) => ({ ...current, [field]: true }));
   }
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
     if (nextOpen) {
       setValues(toFormValues(customer));
+      setTouched({});
       setError(null);
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setTouched(ALL_CUSTOMER_FIELDS_TOUCHED);
+    if (!isValid) {
+      return;
+    }
     setError(null);
     setIsSubmitting(true);
 
     try {
-      const isCreate = mode === "create";
       const url = isCreate ? "/api/customers" : `/api/customers/${customer!.id}`;
-      const payload = isCreate
-        ? toDescriptivePayload(values)
-        : { ...toDescriptivePayload(values), isActive: values.isActive };
+      const payload = zodValues;
 
       const response = await fetch(url, {
         method: isCreate ? "POST" : "PATCH",
@@ -166,7 +204,10 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
               required
               value={values.name}
               onChange={(event) => updateField("name", event.target.value)}
+              onBlur={() => markTouched("name")}
+              aria-invalid={Boolean(touched.name && errors.name)}
             />
+            {touched.name && errors.name ? <p className="text-xs text-destructive">{errors.name}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="customer-document">Documento</Label>
@@ -175,7 +216,12 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
               name="documentNumber"
               value={values.documentNumber}
               onChange={(event) => updateField("documentNumber", event.target.value)}
+              onBlur={() => markTouched("documentNumber")}
+              aria-invalid={Boolean(touched.documentNumber && errors.documentNumber)}
             />
+            {touched.documentNumber && errors.documentNumber ? (
+              <p className="text-xs text-destructive">{errors.documentNumber}</p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="customer-email">Email</Label>
@@ -185,7 +231,10 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
               type="email"
               value={values.email}
               onChange={(event) => updateField("email", event.target.value)}
+              onBlur={() => markTouched("email")}
+              aria-invalid={Boolean(touched.email && errors.email)}
             />
+            {touched.email && errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="customer-phone">Telefono</Label>
@@ -194,7 +243,10 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
               name="phone"
               value={values.phone}
               onChange={(event) => updateField("phone", event.target.value)}
+              onBlur={() => markTouched("phone")}
+              aria-invalid={Boolean(touched.phone && errors.phone)}
             />
+            {touched.phone && errors.phone ? <p className="text-xs text-destructive">{errors.phone}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="customer-address">Direccion</Label>
@@ -203,7 +255,10 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
               name="address"
               value={values.address}
               onChange={(event) => updateField("address", event.target.value)}
+              onBlur={() => markTouched("address")}
+              aria-invalid={Boolean(touched.address && errors.address)}
             />
+            {touched.address && errors.address ? <p className="text-xs text-destructive">{errors.address}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="customer-notes">Notas</Label>
@@ -212,7 +267,10 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
               name="notes"
               value={values.notes}
               onChange={(event) => updateField("notes", event.target.value)}
+              onBlur={() => markTouched("notes")}
+              aria-invalid={Boolean(touched.notes && errors.notes)}
             />
+            {touched.notes && errors.notes ? <p className="text-xs text-destructive">{errors.notes}</p> : null}
           </div>
           {mode === "edit" ? (
             <div className="flex items-center gap-2.5">
@@ -230,7 +288,7 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+            <Button type="submit" disabled={isSubmitting || !isValid} className="w-full sm:w-auto">
               {isSubmitting ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>

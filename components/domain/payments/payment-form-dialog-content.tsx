@@ -22,12 +22,25 @@
  * Uses plain `useState` + native form, matching
  * `customer-form-dialog-content.tsx`'s established pattern — no
  * `react-hook-form` needed for four simple fields.
+ *
+ * LIVE (as-you-type) validation is layered on top via the shared
+ * `useZodForm` hook (`lib/hooks/use-zod-form.ts`), fed the SAME shape the
+ * submit payload already builds — `lib/schemas/payment.ts`
+ * (`paymentCreateSchema`) is the single source of truth for both the inline
+ * client errors and the server's own `safeParse`. Each field only shows its
+ * error once `touched`, so a pristine dialog never opens already showing
+ * errors. The submit button stays disabled while `!isValid`, in addition to
+ * the existing `isSubmitting`/`exceedsBalance` guards — the `exceedsBalance`
+ * check itself stays a separate, dialog-specific UX cap (not part of the
+ * shared domain schema).
  */
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent, type ReactElement } from "react";
 import { todayIsoDate } from "@/lib/dates";
 import { formatCOP, pesosToCents } from "@/lib/money";
+import { useZodForm } from "@/lib/hooks/use-zod-form";
+import { paymentCreateSchema } from "@/lib/schemas/payment";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +70,16 @@ function initialValues(): PaymentFormValues {
   return { paymentDate: todayIsoDate(), amount: "", method: "", notes: "" };
 }
 
+type PaymentFormTouchedField = "paymentDate" | "amount" | "method" | "notes";
+type PaymentFormTouched = Partial<Record<PaymentFormTouchedField, boolean>>;
+
+const ALL_PAYMENT_FIELDS_TOUCHED: PaymentFormTouched = {
+  paymentDate: true,
+  amount: true,
+  method: true,
+  notes: true,
+};
+
 export type PaymentFormDialogProps = {
   invoiceId: string;
   /** Current pending balance, in integer cents — shown and used for the client-side cap. */
@@ -69,26 +92,43 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<PaymentFormValues>(initialValues);
+  const [touched, setTouched] = useState<PaymentFormTouched>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const amountCents = pesosToCents(Number(values.amount) || 0);
   const exceedsBalance = amountCents > balance;
 
+  const { errors, isValid } = useZodForm(paymentCreateSchema, {
+    paymentDate: values.paymentDate,
+    amount: amountCents,
+    ...(values.method.trim() ? { method: values.method.trim() } : {}),
+    ...(values.notes.trim() ? { notes: values.notes.trim() } : {}),
+  });
+
   function updateField<K extends keyof PaymentFormValues>(key: K, value: PaymentFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
+  }
+
+  function markTouched(field: PaymentFormTouchedField) {
+    setTouched((current) => ({ ...current, [field]: true }));
   }
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
     if (nextOpen) {
       setValues(initialValues());
+      setTouched({});
       setError(null);
     }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setTouched(ALL_PAYMENT_FIELDS_TOUCHED);
+    if (!isValid) {
+      return;
+    }
     setError(null);
 
     // `paymentDate` is required, but `DatePicker` is a `<button>` trigger, not
@@ -158,8 +198,14 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
             <DatePicker
               id="payment-date"
               value={values.paymentDate}
-              onChange={(value) => updateField("paymentDate", value)}
+              onChange={(value) => {
+                updateField("paymentDate", value);
+                markTouched("paymentDate");
+              }}
             />
+            {touched.paymentDate && errors.paymentDate ? (
+              <p className="text-xs text-destructive">{errors.paymentDate}</p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payment-amount">Monto</Label>
@@ -169,9 +215,13 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
               required
               value={values.amount}
               onChange={(value) => updateField("amount", value)}
+              onBlur={() => markTouched("amount")}
+              aria-invalid={Boolean(touched.amount && (errors.amount || exceedsBalance))}
             />
             {exceedsBalance ? (
               <p className="text-xs text-destructive">El monto no puede exceder el saldo pendiente.</p>
+            ) : touched.amount && errors.amount ? (
+              <p className="text-xs text-destructive">{errors.amount}</p>
             ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
@@ -181,7 +231,10 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
               name="method"
               value={values.method}
               onChange={(event) => updateField("method", event.target.value)}
+              onBlur={() => markTouched("method")}
+              aria-invalid={Boolean(touched.method && errors.method)}
             />
+            {touched.method && errors.method ? <p className="text-xs text-destructive">{errors.method}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payment-notes">Nota</Label>
@@ -190,7 +243,10 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
               name="notes"
               value={values.notes}
               onChange={(event) => updateField("notes", event.target.value)}
+              onBlur={() => markTouched("notes")}
+              aria-invalid={Boolean(touched.notes && errors.notes)}
             />
+            {touched.notes && errors.notes ? <p className="text-xs text-destructive">{errors.notes}</p> : null}
           </div>
           {error ? (
             <p role="alert" className="text-sm text-destructive">
@@ -198,7 +254,7 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting || exceedsBalance} className="w-full sm:w-auto">
+            <Button type="submit" disabled={isSubmitting || exceedsBalance || !isValid} className="w-full sm:w-auto">
               {isSubmitting ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>

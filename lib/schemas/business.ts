@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Business-profile update schema, per `docs/business-rules.md`'s "Negocios
  * (Perfil y Cambio de Negocio)" section and mirroring

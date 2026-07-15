@@ -89,12 +89,14 @@ describe("ProductFormDialog (create mode)", () => {
     expect(body.unitCost).toBe(858);
   });
 
-  it("blocks submission client-side and shows an inline validation error when unitCost is cleared (no request sent)", async () => {
-    // Plain `useState` form with `<form noValidate>` — no client-side
-    // validation existed for `unitCost` before this fix (clearing it
-    // submitted `0`, only caught by the server), mirroring
-    // `movement-form-dialog-content.tsx`'s established `validate()`/
-    // `fieldErrors` pattern.
+  it("blocks submission client-side and shows an inline live-validation error when unitCost is cleared (no request sent)", async () => {
+    // Live validation via the shared `useZodForm` hook against
+    // `lib/schemas/product.ts`'s `productCreateSchema` directly (messages
+    // come from the schema as-is, not a custom Spanish override) — the error
+    // surfaces on BLUR (once `unitCost` is `touched`), and the submit button
+    // itself is disabled while the form is invalid, so a click on it is a
+    // no-op (not the trigger for the error anymore, unlike the old
+    // `validate()`/`fieldErrors` pattern this replaces).
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -104,10 +106,28 @@ describe("ProductFormDialog (create mode)", () => {
     await user.click(screen.getByRole("button", { name: /nuevo producto/i }));
     await user.type(await screen.findByLabelText(/nombre/i), "Nuevo producto");
     await user.clear(screen.getByLabelText(/costo unitario/i));
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await user.tab();
 
-    expect(await screen.findByText(/el costo debe ser mayor a 0/i)).toBeInTheDocument();
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("enables the submit button once unitCost is a valid positive amount", async () => {
+    const user = userEvent.setup();
+    render(<ProductFormDialog mode="create" trigger={<button type="button">Nuevo producto</button>} />);
+
+    await user.click(screen.getByRole("button", { name: /nuevo producto/i }));
+    await user.type(await screen.findByLabelText(/nombre/i), "Nuevo producto");
+    await user.clear(screen.getByLabelText(/costo unitario/i));
+    await user.tab();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/costo unitario/i), "500");
+
+    expect(await screen.findByRole("button", { name: /guardar/i })).toBeEnabled();
   });
 
   it("omits the sku field entirely when left blank", async () => {

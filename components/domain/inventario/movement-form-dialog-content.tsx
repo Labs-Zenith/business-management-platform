@@ -32,6 +32,17 @@
  * like any other server error — the server's message is displayed verbatim,
  * never re-translated client-side, matching every other dialog's error
  * convention in this codebase.
+ *
+ * LIVE (as-you-type) validation is layered on top via the shared
+ * `useZodForm` hook (`lib/hooks/use-zod-form.ts`), fed the SAME shape the
+ * submit payload already builds — `lib/schemas/inventory-movement.ts`
+ * (`inventoryMovementCreateSchema`) is the single source of truth for both
+ * the inline client errors and the server's own `safeParse`, replacing the
+ * previous submit-time-only manual `validate()`/`fieldErrors` pair. Each
+ * field only shows its error once `touched` (via `onBlur`/select-close, or
+ * "touch all" on a submit attempt), so a pristine dialog never opens already
+ * showing errors. The submit button stays disabled while `!isValid`, in
+ * addition to the existing `isSubmitting` guard.
  */
 
 import { useRouter } from "next/navigation";
@@ -50,6 +61,8 @@ import { Label } from "@/components/ui/label";
 import { QuantityInput } from "@/components/ui/money-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useZodForm } from "@/lib/hooks/use-zod-form";
+import { inventoryMovementCreateSchema } from "@/lib/schemas/inventory-movement";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo registrar el movimiento. Verifica los datos e intenta de nuevo.";
 
@@ -68,9 +81,13 @@ type MovementFormValues = {
   note: string;
 };
 
-type MovementFormFieldErrors = {
-  productId?: string;
-  quantity?: string;
+type MovementFormTouchedField = "productId" | "type" | "quantity";
+type MovementFormTouched = Partial<Record<MovementFormTouchedField, boolean>>;
+
+const ALL_MOVEMENT_FIELDS_TOUCHED: MovementFormTouched = {
+  productId: true,
+  type: true,
+  quantity: true,
 };
 
 function defaultValues(products: MovementFormDialogProduct[]): MovementFormValues {
@@ -95,33 +112,32 @@ export default function MovementFormDialog({ products, movementTypes, trigger }:
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<MovementFormValues>(() => defaultValues(products));
-  const [fieldErrors, setFieldErrors] = useState<MovementFormFieldErrors>({});
+  const [touched, setTouched] = useState<MovementFormTouched>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const { errors, isValid } = useZodForm(inventoryMovementCreateSchema, {
+    productId: values.productId,
+    type: values.type,
+    quantity: Number(values.quantity) || 0,
+    ...(values.note.trim() ? { note: values.note.trim() } : {}),
+  });
+
   function updateField<K extends keyof MovementFormValues>(key: K, value: MovementFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
+  }
+
+  function markTouched(field: MovementFormTouchedField) {
+    setTouched((current) => ({ ...current, [field]: true }));
   }
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
     if (nextOpen) {
       setValues(defaultValues(products));
-      setFieldErrors({});
+      setTouched({});
       setError(null);
     }
-  }
-
-  function validate(): MovementFormFieldErrors {
-    const nextFieldErrors: MovementFormFieldErrors = {};
-    if (!values.productId) {
-      nextFieldErrors.productId = "Producto requerido";
-    }
-    const quantity = Number(values.quantity);
-    if (values.quantity === "" || !Number.isInteger(quantity) || quantity <= 0) {
-      nextFieldErrors.quantity = "La cantidad debe ser un entero mayor a 0";
-    }
-    return nextFieldErrors;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -129,13 +145,11 @@ export default function MovementFormDialog({ products, movementTypes, trigger }:
     if (isSubmitting) {
       return;
     }
-    setError(null);
-
-    const nextFieldErrors = validate();
-    setFieldErrors(nextFieldErrors);
-    if (Object.keys(nextFieldErrors).length > 0) {
+    setTouched(ALL_MOVEMENT_FIELDS_TOUCHED);
+    if (!isValid) {
       return;
     }
+    setError(null);
 
     setIsSubmitting(true);
     try {
@@ -185,6 +199,9 @@ export default function MovementFormDialog({ products, movementTypes, trigger }:
               items={products.map((product) => ({ value: product.id, label: product.name }))}
               value={values.productId}
               onValueChange={(value) => updateField("productId", value ?? "")}
+              onOpenChange={(nextOpenSelect) => {
+                if (!nextOpenSelect) markTouched("productId");
+              }}
             >
               <SelectTrigger id="movement-product" className="h-9 w-full">
                 <SelectValue placeholder="Selecciona un producto" />
@@ -202,7 +219,9 @@ export default function MovementFormDialog({ products, movementTypes, trigger }:
                 ))}
               </SelectContent>
             </Select>
-            {fieldErrors.productId ? <p className="text-xs text-destructive">{fieldErrors.productId}</p> : null}
+            {touched.productId && errors.productId ? (
+              <p className="text-xs text-destructive">{errors.productId}</p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="movement-type">Tipo</Label>
@@ -210,6 +229,9 @@ export default function MovementFormDialog({ products, movementTypes, trigger }:
               items={movementTypes.map((type) => ({ value: type.code, label: type.label }))}
               value={values.type}
               onValueChange={(value) => updateField("type", (value ?? "in") as MovementType)}
+              onOpenChange={(nextOpenSelect) => {
+                if (!nextOpenSelect) markTouched("type");
+              }}
             >
               <SelectTrigger id="movement-type" className="h-9 w-full">
                 <SelectValue />
@@ -231,8 +253,12 @@ export default function MovementFormDialog({ products, movementTypes, trigger }:
               required
               value={values.quantity}
               onChange={(value) => updateField("quantity", value)}
+              onBlur={() => markTouched("quantity")}
+              aria-invalid={Boolean(touched.quantity && errors.quantity)}
             />
-            {fieldErrors.quantity ? <p className="text-xs text-destructive">{fieldErrors.quantity}</p> : null}
+            {touched.quantity && errors.quantity ? (
+              <p className="text-xs text-destructive">{errors.quantity}</p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="movement-note">Nota</Label>
@@ -248,7 +274,7 @@ export default function MovementFormDialog({ products, movementTypes, trigger }:
             </p>
           ) : null}
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
+            <Button type="submit" disabled={isSubmitting || !isValid} className="w-full sm:w-auto">
               {isSubmitting ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>

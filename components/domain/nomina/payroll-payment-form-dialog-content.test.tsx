@@ -132,6 +132,10 @@ describe("PayrollPaymentFormDialog", () => {
   });
 
   it("blocks submission client-side and shows a validation error when amount is not greater than 0 (no request sent)", async () => {
+    // Live (`mode: "onTouched"`) validation: the error surfaces on BLUR
+    // (once `amount` is touched), and the submit button itself is disabled
+    // while the form is invalid — clicking it is a no-op, not the trigger
+    // for the error.
     const user = userEvent.setup();
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -142,9 +146,13 @@ describe("PayrollPaymentFormDialog", () => {
 
     await openDialog(user);
     // amount left at its default ("") — invalid, must be > 0
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await user.click(screen.getByLabelText(/monto/i));
+    await user.tab();
 
     expect(await screen.findByText(/el monto debe ser mayor a 0/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -278,6 +286,14 @@ describe("PayrollPaymentFormDialog", () => {
     // "blocks submission client-side when issueDate is cleared..." precedent.
     // Unlike `referenceDate`, `paymentDate` does not drive the live period
     // preview, so no preview assertion is needed here.
+    //
+    // `DatePicker` (`components/ui/date-picker.tsx`) has no `onBlur` prop to
+    // wire to RHF's `Controller` field, so this field can never become
+    // "touched" via blur the way text/`MoneyInput`/`Select` fields can —
+    // live validation here only ever surfaces as the submit button itself
+    // going disabled (`formState.isValid`), not an inline message under this
+    // specific field. This asserts that disabled-submit blocking directly,
+    // rather than an inline error that this field mechanically cannot show.
     const user = userEvent.setup();
     vi.setSystemTime(new Date(2026, 6, 7));
     const fetchMock = vi.fn();
@@ -300,9 +316,9 @@ describe("PayrollPaymentFormDialog", () => {
 
     expect(screen.getByLabelText(/fecha de pago/i)).toHaveTextContent(/seleccionar fecha/i);
 
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    expect(await screen.findByRole("button", { name: /guardar/i })).toBeDisabled();
 
-    expect(await screen.findByText(/fecha de pago requerida/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -428,9 +444,13 @@ describe("PayrollPaymentFormDialog", () => {
       expect(screen.getByLabelText(/fecha de referencia/i)).toHaveTextContent(/seleccionar fecha/i);
       expect(screen.queryByTestId("payroll-period-preview")).not.toBeInTheDocument();
 
-      await user.click(screen.getByRole("button", { name: /guardar/i }));
+      // `DatePicker` has no `onBlur` prop to wire to RHF's `Controller`
+      // field, so this field can never become "touched" via blur — live
+      // validation here surfaces as the submit button itself going disabled
+      // (`formState.isValid`), not an inline message under this field.
+      expect(await screen.findByRole("button", { name: /guardar/i })).toBeDisabled();
 
-      expect(await screen.findByText(/fecha de referencia requerida/i)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
       expect(fetchMock).not.toHaveBeenCalled();
       expect(screen.queryByTestId("payroll-period-preview")).not.toBeInTheDocument();
     });

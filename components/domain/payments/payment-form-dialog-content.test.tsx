@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -74,6 +74,25 @@ describe("PaymentFormDialog", () => {
 
     expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
     expect(screen.getByText(/no puede exceder el saldo pendiente/i)).toBeInTheDocument();
+  });
+
+  it("shows a live inline error and disables the submit button when amount is zero, then enables it once a valid amount is entered", async () => {
+    const user = userEvent.setup();
+    render(
+      <PaymentFormDialog invoiceId={INVOICE_ID} balance={200000} trigger={<button type="button">Registrar pago</button>} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: /registrar pago/i }));
+    await user.click(screen.getByLabelText(/monto/i));
+    await user.tab();
+
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/monto/i), "800");
+
+    await waitFor(() => expect(screen.queryByText(/demasiado peque/i)).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /guardar/i })).not.toBeDisabled();
   });
 
   it("shows the server error message and does not refresh when the request fails", async () => {
@@ -181,9 +200,11 @@ describe("PaymentFormDialog", () => {
   });
 
   it("blocks submission client-side when paymentDate is cleared via the DatePicker's toggle-to-clear gesture (no request sent)", async () => {
-    // `paymentDate` is required client-side (see `payment-form-dialog-content.tsx`'s
-    // explicit `!values.paymentDate` check — this form has no zod resolver, so
-    // that check is the only thing standing in for RHF's `min(1, ...)` here).
+    // `paymentDate` is required (`lib/schemas/payment.ts`'s `dateSchema`,
+    // `z.string().trim().min(1, ...)`) via the shared `useZodForm` hook. The
+    // `DatePicker`'s `onChange` marks the field `touched` immediately (it has
+    // no native blur to hook into), so the live inline error appears right
+    // after the clear gesture — the submit button also becomes disabled.
     const user = userEvent.setup();
     vi.setSystemTime(new Date(2026, 6, 7));
     const fetchMock = vi.fn();
@@ -204,10 +225,9 @@ describe("PaymentFormDialog", () => {
     await clearDay(user, /fecha/i, dayLabel);
 
     expect(screen.getByLabelText(/fecha/i)).toHaveTextContent(/seleccionar fecha/i);
+    expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /guardar/i })).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: /guardar/i }));
-
-    expect(await screen.findByText(/fecha de pago requerida/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

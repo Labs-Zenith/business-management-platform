@@ -19,8 +19,8 @@ async function submitValidLogin() {
     vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) })
   );
   render(<LoginPage />);
-  await user.type(screen.getByLabelText(/email/i), "demo@negociodemo.test");
-  await user.type(screen.getByLabelText(/contrase/i), "demo1234");
+  await user.type(screen.getByLabelText(/correo/i), "demo@negociodemo.test");
+  await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
   await user.click(screen.getByRole("button", { name: /ingresar/i }));
 }
 
@@ -46,8 +46,8 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    await user.type(screen.getByLabelText(/email/i), "demo@negociodemo.test");
-    await user.type(screen.getByLabelText(/contrase/i), "demo1234");
+    await user.type(screen.getByLabelText(/correo/i), "demo@negociodemo.test");
+    await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
     await user.click(screen.getByRole("button", { name: /ingresar/i }));
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -74,8 +74,8 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    await user.type(screen.getByLabelText(/email/i), "demo@negociodemo.test");
-    await user.type(screen.getByLabelText(/contrase/i), "wrong-password");
+    await user.type(screen.getByLabelText(/correo/i), "demo@negociodemo.test");
+    await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "wrong-password");
     await user.click(screen.getByRole("button", { name: /ingresar/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/invalid email or password/i);
@@ -97,5 +97,46 @@ describe("LoginPage", () => {
     await submitValidLogin();
     expect(pushMock).toHaveBeenCalledWith("/dashboard");
     expect(pushMock).not.toHaveBeenCalledWith(malicious);
+  });
+
+  it("shows an inline error for an invalid email and keeps the submit button disabled", async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    const submitButton = screen.getByRole("button", { name: /ingresar/i });
+    expect(submitButton).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/correo/i), "not-an-email");
+    await user.tab(); // blur the email field
+
+    expect(await screen.findByText(/correo v[aá]lido/i)).toBeInTheDocument();
+    expect(submitButton).toBeDisabled();
+  });
+
+  it("enables the submit button once a valid email and non-empty password are entered", async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    const submitButton = screen.getByRole("button", { name: /ingresar/i });
+    expect(submitButton).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/correo/i), "demo@negociodemo.test");
+    await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
+
+    expect(submitButton).toBeEnabled();
+  });
+
+  it("toggles the password field's type between password and text via the eye button", async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    const passwordInput = screen.getByLabelText(/contrase/i, { selector: "input" });
+    expect(passwordInput).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: /mostrar contrase/i }));
+    expect(passwordInput).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: /ocultar contrase/i }));
+    expect(passwordInput).toHaveAttribute("type", "password");
   });
 });

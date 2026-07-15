@@ -1,3 +1,4 @@
+import "@/lib/zod-locale";
 /**
  * Payment input schema, per
  * `openspec/changes/mocked-mvp-scaffold/specs/payments/spec.md` and

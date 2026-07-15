@@ -150,10 +150,13 @@ export default function InvoiceFormContent({
     register,
     control,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isValid },
   } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceFormSchema),
     defaultValues: toDefaultValues(defaultCustomerId, invoice, invoiceTypes),
+    // Live (as-you-type) validation: errors surface per field after its
+    // first blur, then keep re-validating on every subsequent change.
+    mode: "onTouched",
   });
 
   // `useWatch` (not `useForm()`'s returned `watch()`) — the dedicated hook is
@@ -238,7 +241,7 @@ export default function InvoiceFormContent({
               value={field.value}
               onValueChange={field.onChange}
             >
-              <SelectTrigger id="invoice-customer" className="h-9 w-full">
+              <SelectTrigger id="invoice-customer" className="h-9 w-full" onBlur={field.onBlur}>
                 <SelectValue placeholder="Selecciona un cliente" />
               </SelectTrigger>
               <SelectContent>
@@ -266,7 +269,7 @@ export default function InvoiceFormContent({
                 value={field.value}
                 onValueChange={field.onChange}
               >
-                <SelectTrigger id="invoice-type" className="h-9 w-full">
+                <SelectTrigger id="invoice-type" className="h-9 w-full" onBlur={field.onBlur}>
                   <SelectValue placeholder="Selecciona un tipo de factura" />
                 </SelectTrigger>
                 <SelectContent>
@@ -329,7 +332,7 @@ export default function InvoiceFormContent({
         </p>
       ) : null}
 
-      <Button type="submit" disabled={isSubmitting || isBelowPaidTotal} className="w-full sm:w-fit">
+      <Button type="submit" disabled={isSubmitting || isBelowPaidTotal || !isValid} className="w-full sm:w-fit">
         {isSubmitting ? "Guardando..." : isEditing ? "Guardar cambios" : "Crear factura"}
       </Button>
     </form>
