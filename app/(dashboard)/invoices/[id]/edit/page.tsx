@@ -85,6 +85,11 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
       />
       <InvoiceForm
         customers={result.data.map((customer) => ({ id: customer.id, name: customer.name }))}
+        // The "Tipo de factura" dropdown is never rendered in edit mode (the
+        // type is immutable after creation — see `invoice-form-content.tsx`'s
+        // doc comment), so no catalog fetch is needed here; `[]` satisfies
+        // the required prop without an unused query.
+        invoiceTypes={[]}
         invoice={{
           id: invoice.id,
           customerId: invoice.customerId,

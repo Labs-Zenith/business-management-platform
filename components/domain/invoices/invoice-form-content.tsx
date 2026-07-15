@@ -37,6 +37,7 @@ import { Controller, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { todayIsoDate } from "@/lib/dates";
@@ -48,6 +49,21 @@ const CREATE_ERROR_MESSAGE = "No se pudo crear la factura. Verifica los datos e 
 const EDIT_ERROR_MESSAGE = "No se pudo guardar los cambios. Verifica los datos e intenta de nuevo.";
 
 export type InvoiceFormCustomer = { id: string; name: string };
+
+/** Minimal shape this form needs for the "Tipo de factura" dropdown — a subset of `InvoiceType` (`lib/services/ports.ts`). */
+export type InvoiceFormInvoiceType = { id: string; code: string; label: string };
+
+/**
+ * Resolves the catalog's `venta` type as the create-mode default — matching
+ * `lib/services/invoice-service.ts#resolveInvoiceTypeId`'s server-side
+ * default exactly, so the form's pre-selected value is never a silent
+ * mismatch with what the server would have defaulted to anyway. Falls back
+ * to the first catalog entry (then `""`) only in the defensive case where
+ * the `venta` type is somehow absent from the passed-in list.
+ */
+function defaultInvoiceTypeId(invoiceTypes: InvoiceFormInvoiceType[]): string {
+  return invoiceTypes.find((type) => type.code === "venta")?.id ?? invoiceTypes[0]?.id ?? "";
+}
 
 /** Minimal shape this form needs to pre-fill edit mode — a subset of `InvoiceDetail`. */
 export type InvoiceFormContentInvoice = {
@@ -76,19 +92,30 @@ export type InvoiceFormContentInvoice = {
 
 export type InvoiceFormContentProps = {
   customers: InvoiceFormCustomer[];
+  /** Sources the NEW "Tipo de factura" dropdown, create mode only (see this file's doc comment: the type is immutable after creation). */
+  invoiceTypes: InvoiceFormInvoiceType[];
   /** Preselects the customer, e.g. when arriving from "Crear factura para este cliente". Ignored in edit mode. */
   defaultCustomerId?: string;
   /** When present, the form operates in edit mode: pre-fills from this invoice and PATCHes instead of POSTing. */
   invoice?: InvoiceFormContentInvoice;
 };
 
-function toDefaultValues(defaultCustomerId?: string, invoice?: InvoiceFormContentInvoice): InvoiceFormValues {
+function toDefaultValues(
+  defaultCustomerId: string | undefined,
+  invoice: InvoiceFormContentInvoice | undefined,
+  invoiceTypes: InvoiceFormInvoiceType[],
+): InvoiceFormValues {
   if (invoice) {
     return {
       customerId: invoice.customerId,
       issueDate: invoice.issueDate,
       dueDate: invoice.dueDate ?? "",
       notes: invoice.notes ?? "",
+      // The invoice type is immutable after creation (see this file's doc
+      // comment) — the dropdown itself is not even rendered in edit mode, so
+      // this value is never read/submitted, but the field must still exist
+      // for `InvoiceFormValues`'s shape.
+      invoiceTypeId: "",
       items: invoice.items.map((item) => ({
         description: item.description,
         quantity: item.quantity,
@@ -104,11 +131,17 @@ function toDefaultValues(defaultCustomerId?: string, invoice?: InvoiceFormConten
     issueDate: todayIsoDate(),
     dueDate: "",
     notes: "",
+    invoiceTypeId: defaultInvoiceTypeId(invoiceTypes),
     items: [{ description: "", quantity: 1, unitPrice: "" }],
   };
 }
 
-export default function InvoiceFormContent({ customers, defaultCustomerId, invoice }: InvoiceFormContentProps) {
+export default function InvoiceFormContent({
+  customers,
+  invoiceTypes,
+  defaultCustomerId,
+  invoice,
+}: InvoiceFormContentProps) {
   const router = useRouter();
   const isEditing = Boolean(invoice);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -120,7 +153,7 @@ export default function InvoiceFormContent({ customers, defaultCustomerId, invoi
     formState: { errors, isSubmitting },
   } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceFormSchema),
-    defaultValues: toDefaultValues(defaultCustomerId, invoice),
+    defaultValues: toDefaultValues(defaultCustomerId, invoice, invoiceTypes),
   });
 
   // `useWatch` (not `useForm()`'s returned `watch()`) — the dedicated hook is
@@ -158,6 +191,10 @@ export default function InvoiceFormContent({ customers, defaultCustomerId, invoi
         issueDate: values.issueDate,
         ...(values.dueDate ? { dueDate: values.dueDate } : {}),
         ...(values.notes?.trim() ? { notes: values.notes.trim() } : {}),
+        // Create mode only — the invoice type is immutable after creation
+        // (`invoice-service.ts#updateInvoice` never forwards it), so an edit
+        // never sends it even though the schema still accepts the field.
+        ...(!isEditing && values.invoiceTypeId ? { invoiceTypeId: values.invoiceTypeId } : {}),
         items: values.items.map((item) => ({
           description: item.description,
           quantity: item.quantity,
@@ -192,20 +229,59 @@ export default function InvoiceFormContent({ customers, defaultCustomerId, invoi
     <form className="mx-auto flex w-full max-w-2xl flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="invoice-customer">Cliente</Label>
-        <select
-          id="invoice-customer"
-          className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
-          {...register("customerId")}
-        >
-          <option value="">Selecciona un cliente</option>
-          {customers.map((customer) => (
-            <option key={customer.id} value={customer.id}>
-              {customer.name}
-            </option>
-          ))}
-        </select>
+        <Controller
+          control={control}
+          name="customerId"
+          render={({ field }) => (
+            <Select
+              items={customers.map((customer) => ({ value: customer.id, label: customer.name }))}
+              value={field.value}
+              onValueChange={field.onChange}
+            >
+              <SelectTrigger id="invoice-customer" className="h-9 w-full">
+                <SelectValue placeholder="Selecciona un cliente" />
+              </SelectTrigger>
+              <SelectContent>
+                {customers.map((customer) => (
+                  <SelectItem key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
         {errors.customerId ? <p className="text-xs text-destructive">{errors.customerId.message}</p> : null}
       </div>
+
+      {!isEditing ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="invoice-type">Tipo de factura</Label>
+          <Controller
+            control={control}
+            name="invoiceTypeId"
+            render={({ field }) => (
+              <Select
+                items={invoiceTypes.map((type) => ({ value: type.id, label: type.label }))}
+                value={field.value}
+                onValueChange={field.onChange}
+              >
+                <SelectTrigger id="invoice-type" className="h-9 w-full">
+                  <SelectValue placeholder="Selecciona un tipo de factura" />
+                </SelectTrigger>
+                <SelectContent>
+                  {invoiceTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>
+                      {type.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.invoiceTypeId ? <p className="text-xs text-destructive">{errors.invoiceTypeId.message}</p> : null}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">

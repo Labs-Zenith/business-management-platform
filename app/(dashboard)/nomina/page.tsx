@@ -3,6 +3,7 @@ import { requireCapabilityOrNotFound } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listEmployees } from "@/lib/services/employee-service";
 import { listPayrollPayments } from "@/lib/services/payroll-service";
+import { listPayrollPeriodTypes } from "@/lib/services/catalog-service";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -48,9 +49,10 @@ export default async function NominaPage() {
   await loadStoreFromCookie();
   const session = await requireCapabilityOrNotFound("viewPayroll");
 
-  const [employeesResult, paymentsResult] = await Promise.all([
+  const [employeesResult, paymentsResult, periodTypes] = await Promise.all([
     listEmployees(session, { page: 1, pageSize: MAX_DISPLAYED_ROWS }),
     listPayrollPayments(session, { page: 1, pageSize: MAX_DISPLAYED_ROWS }),
+    listPayrollPeriodTypes(),
   ]);
 
   const activeEmployees = employeesResult.data
@@ -75,6 +77,7 @@ export default async function NominaPage() {
             />
             <PayrollPaymentFormDialog
               employees={activeEmployees}
+              periodTypes={periodTypes.map((type) => ({ id: type.id, code: type.code, label: type.label }))}
               trigger={
                 <Button className="w-full sm:w-auto">
                   <Plus className="size-4" />

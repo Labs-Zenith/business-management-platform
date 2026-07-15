@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type {
   CustomerListQuery,
   CustomerWithBalance,
@@ -100,13 +101,30 @@ describe("InvoicesPage", () => {
       pageSize: 20,
     });
     expect(screen.getByText("FAC-0001")).toBeInTheDocument();
-    // "Ana Gomez" appears twice — once as the customer-filter <option>, once
-    // as the invoice row's customer cell — so assert both are present rather
-    // than a single ambiguous match.
-    expect(screen.getAllByText("Ana Gomez")).toHaveLength(2);
-    // Likewise "Pendiente" appears both as the status-filter <option> and as
-    // the row's status badge text.
+    // Unlike the old native `<select>` (whose `<option>`s were always in the
+    // DOM), the `SelectFilterField` popup only mounts its options once
+    // opened — "Ana Gomez"/"Pendiente" now appear exactly once each (the
+    // invoice row), not twice, until a filter Select is explicitly opened
+    // (see the "customer/status filter Selects" tests below for that case).
+    expect(screen.getByText("Ana Gomez")).toBeInTheDocument();
     expect(screen.getAllByText("Pendiente").length).toBeGreaterThan(0);
+  });
+
+  it("offers the customer and status filter options once their Select triggers are opened", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListInvoices.mockResolvedValue({ data: [INVOICE], page: 1, pageSize: 20, total: 1 });
+    mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 1, pageSize: 50, total: 1 });
+
+    render(await InvoicesPage({ searchParams: Promise.resolve({}) }));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText(/cliente/i));
+    expect(await screen.findByRole("option", { name: "Ana Gomez" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Todos" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByLabelText(/estado/i));
+    expect(await screen.findByRole("option", { name: "Pendiente" })).toBeInTheDocument();
   });
 
   it("wires DateFilterField into the filter form's from/to fields with defaultValue coming from searchParams", async () => {

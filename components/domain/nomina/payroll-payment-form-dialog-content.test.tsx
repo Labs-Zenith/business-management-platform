@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { computePeriod, periodDays } from "@/lib/services/payroll-period";
 import { clearDay, displayDate, pickDay } from "@/components/ui/date-picker-test-helpers";
+import { selectOption } from "@/components/ui/select-test-helpers";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -18,6 +19,11 @@ import PayrollPaymentFormDialog from "./payroll-payment-form-dialog-content";
 const EMPLOYEES = [
   { id: "60000000-0000-4000-8000-000000000001", name: "Ana Empleada" },
   { id: "60000000-0000-4000-8000-000000000002", name: "Beto Empleado" },
+];
+
+const PERIOD_TYPES = [
+  { id: "e1000000-0000-4000-8000-000000000001", code: "quincenal", label: "Quincenal" },
+  { id: "e1000000-0000-4000-8000-000000000002", code: "mensual", label: "Mensual" },
 ];
 
 function openDialog(user: ReturnType<typeof userEvent.setup>) {
@@ -45,14 +51,14 @@ describe("PayrollPaymentFormDialog", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
-    await user.selectOptions(await screen.findByLabelText(/empleado/i), EMPLOYEES[1]!.id);
+    await selectOption(user, /empleado/i, EMPLOYEES[1]!.name);
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
-    await user.selectOptions(screen.getByLabelText(/tipo de periodo/i), "mensual");
+    await selectOption(user, /tipo de periodo/i, "Mensual");
 
     const targetDate = new Date(2026, 6, 20);
     const dayLabel = format(targetDate, "PPPP", { locale: es });
@@ -69,6 +75,10 @@ describe("PayrollPaymentFormDialog", () => {
       employeeId: EMPLOYEES[1]!.id,
       amount: 50000,
       periodType: "mensual",
+      // The catalog id matching "mensual" — resolved from the `periodTypes`
+      // prop by code, see `payroll-payment-form-dialog-content.tsx`'s
+      // `periodTypeId` lookup at submit time.
+      periodTypeId: PERIOD_TYPES[1]!.id,
       referenceDate: "2026-07-20",
       paymentDate: "2026-07-20",
       notes: "Pago julio",
@@ -87,7 +97,7 @@ describe("PayrollPaymentFormDialog", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
@@ -107,7 +117,7 @@ describe("PayrollPaymentFormDialog", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
@@ -127,7 +137,7 @@ describe("PayrollPaymentFormDialog", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
@@ -149,7 +159,7 @@ describe("PayrollPaymentFormDialog", () => {
     );
 
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
@@ -167,7 +177,7 @@ describe("PayrollPaymentFormDialog", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Failed to fetch")));
 
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
@@ -197,7 +207,7 @@ describe("PayrollPaymentFormDialog", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
@@ -227,7 +237,7 @@ describe("PayrollPaymentFormDialog", () => {
 
     const user = userEvent.setup();
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
@@ -244,13 +254,15 @@ describe("PayrollPaymentFormDialog", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<PayrollPaymentFormDialog employees={[]} trigger={<button type="button">Registrar pago</button>} />);
+    render(<PayrollPaymentFormDialog employees={[]} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />);
 
     await openDialog(user);
 
     const employeeSelect = await screen.findByLabelText(/empleado/i);
-    expect(screen.getByRole("option", { name: "Sin empleados activos" })).toBeInTheDocument();
-    expect(employeeSelect).toHaveValue("");
+    await user.click(employeeSelect);
+    expect(await screen.findByRole("option", { name: "Sin empleados activos" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(employeeSelect).toHaveTextContent(/selecciona un empleado/i);
 
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
@@ -272,7 +284,7 @@ describe("PayrollPaymentFormDialog", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     render(
-      <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+      <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
     );
 
     await openDialog(user);
@@ -299,7 +311,7 @@ describe("PayrollPaymentFormDialog", () => {
       const user = userEvent.setup();
       vi.setSystemTime(new Date(2026, 6, 7));
       render(
-        <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+        <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
       );
 
       await openDialog(user);
@@ -327,7 +339,7 @@ describe("PayrollPaymentFormDialog", () => {
       const user = userEvent.setup();
       vi.setSystemTime(new Date(2026, 6, 1));
       render(
-        <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+        <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
       );
 
       await openDialog(user);
@@ -357,7 +369,7 @@ describe("PayrollPaymentFormDialog", () => {
       const user = userEvent.setup();
       vi.setSystemTime(new Date(2026, 6, 7));
       render(
-        <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+        <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
       );
 
       await openDialog(user);
@@ -369,7 +381,7 @@ describe("PayrollPaymentFormDialog", () => {
       expect(await screen.findByTestId("payroll-period-preview")).toHaveTextContent(`${quincenal.periodStart}`);
       expect(screen.getByTestId("payroll-period-preview")).toHaveTextContent(`${quincenal.periodEnd}`);
 
-      await user.selectOptions(screen.getByLabelText(/tipo de periodo/i), "mensual");
+      await selectOption(user, /tipo de periodo/i, "Mensual");
 
       const mensual = computePeriod("mensual", "2026-07-20");
       expect(mensual.periodStart).not.toBe(quincenal.periodStart);
@@ -396,7 +408,7 @@ describe("PayrollPaymentFormDialog", () => {
       vi.stubGlobal("fetch", fetchMock);
 
       render(
-        <PayrollPaymentFormDialog employees={EMPLOYEES} trigger={<button type="button">Registrar pago</button>} />,
+        <PayrollPaymentFormDialog employees={EMPLOYEES} periodTypes={PERIOD_TYPES} trigger={<button type="button">Registrar pago</button>} />,
       );
 
       await openDialog(user);

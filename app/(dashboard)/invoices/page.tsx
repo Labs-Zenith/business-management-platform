@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateFilterField } from "@/components/domain/filters/date-filter-field";
+import { SelectFilterField } from "@/components/domain/filters/select-filter-field";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 import { ExportMenu } from "@/components/domain/export-menu";
 import { PageHeader } from "@/components/domain/page-header";
@@ -102,37 +103,23 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
           <label htmlFor="customerId" className="text-sm text-muted-foreground">
             Cliente
           </label>
-          <select
+          <SelectFilterField
             id="customerId"
             name="customerId"
             defaultValue={params.customerId ?? ""}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
-          >
-            <option value="">Todos</option>
-            {customersResult.data.map((customer) => (
-              <option key={customer.id} value={customer.id}>
-                {customer.name}
-              </option>
-            ))}
-          </select>
+            options={customersResult.data.map((customer) => ({ value: customer.id, label: customer.name }))}
+          />
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
           <label htmlFor="status" className="text-sm text-muted-foreground">
             Estado
           </label>
-          <select
+          <SelectFilterField
             id="status"
             name="status"
             defaultValue={status ?? ""}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
-          >
-            <option value="">Todos</option>
-            {VALID_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {STATUS_LABELS[value]}
-              </option>
-            ))}
-          </select>
+            options={VALID_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }))}
+          />
         </div>
         <DateFilterField name="from" id="from" label="Desde" defaultValue={params.from} />
         <DateFilterField name="to" id="to" label="Hasta" defaultValue={params.to} />

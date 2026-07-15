@@ -48,6 +48,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { QuantityInput } from "@/components/ui/money-input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 const GENERIC_ERROR_MESSAGE = "No se pudo registrar el movimiento. Verifica los datos e intenta de nuevo.";
@@ -55,6 +56,9 @@ const GENERIC_ERROR_MESSAGE = "No se pudo registrar el movimiento. Verifica los 
 type MovementType = "in" | "out";
 
 export type MovementFormDialogProduct = { id: string; name: string };
+
+/** Minimal shape this dialog needs for the "Tipo" dropdown — a subset of `CatalogItem` (`lib/services/ports.ts`). */
+export type MovementFormDialogMovementType = { id: string; code: string; label: string };
 
 type MovementFormValues = {
   productId: string;
@@ -81,11 +85,13 @@ function defaultValues(products: MovementFormDialogProduct[]): MovementFormValue
 export type MovementFormDialogProps = {
   /** Active products only — populates the product select. */
   products: MovementFormDialogProduct[];
+  /** Sources the "Tipo" dropdown — passed from the Server Component page via `catalog-service#listMovementTypes`. */
+  movementTypes: MovementFormDialogMovementType[];
   /** Rendered as the dialog's trigger (e.g. a "Registrar movimiento" button). */
   trigger: ReactElement;
 };
 
-export default function MovementFormDialog({ products, trigger }: MovementFormDialogProps) {
+export default function MovementFormDialog({ products, movementTypes, trigger }: MovementFormDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<MovementFormValues>(() => defaultValues(products));
@@ -134,10 +140,12 @@ export default function MovementFormDialog({ products, trigger }: MovementFormDi
     setIsSubmitting(true);
     try {
       const trimmedNote = values.note.trim();
+      const typeId = movementTypes.find((type) => type.code === values.type)?.id;
       const payload = {
         productId: values.productId,
         type: values.type,
         quantity: Number(values.quantity) || 0,
+        ...(typeId ? { typeId } : {}),
         ...(trimmedNote ? { note: trimmedNote } : {}),
       };
 
@@ -173,32 +181,47 @@ export default function MovementFormDialog({ products, trigger }: MovementFormDi
         <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="movement-product">Producto</Label>
-            <select
-              id="movement-product"
-              className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
+            <Select
+              items={products.map((product) => ({ value: product.id, label: product.name }))}
               value={values.productId}
-              onChange={(event) => updateField("productId", event.target.value)}
+              onValueChange={(value) => updateField("productId", value ?? "")}
             >
-              {products.length === 0 ? <option value="">Sin productos activos</option> : null}
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="movement-product" className="h-9 w-full">
+                <SelectValue placeholder="Selecciona un producto" />
+              </SelectTrigger>
+              <SelectContent>
+                {products.length === 0 ? (
+                  <SelectItem value="" disabled>
+                    Sin productos activos
+                  </SelectItem>
+                ) : null}
+                {products.map((product) => (
+                  <SelectItem key={product.id} value={product.id}>
+                    {product.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {fieldErrors.productId ? <p className="text-xs text-destructive">{fieldErrors.productId}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="movement-type">Tipo</Label>
-            <select
-              id="movement-type"
-              className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
+            <Select
+              items={movementTypes.map((type) => ({ value: type.code, label: type.label }))}
               value={values.type}
-              onChange={(event) => updateField("type", event.target.value as MovementType)}
+              onValueChange={(value) => updateField("type", (value ?? "in") as MovementType)}
             >
-              <option value="in">Entrada</option>
-              <option value="out">Salida</option>
-            </select>
+              <SelectTrigger id="movement-type" className="h-9 w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {movementTypes.map((type) => (
+                  <SelectItem key={type.id} value={type.code}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="movement-quantity">Cantidad</Label>

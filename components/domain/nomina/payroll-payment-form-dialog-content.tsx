@@ -51,6 +51,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/ui/money-input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { todayIsoDate } from "@/lib/dates";
 import { pesosToCents } from "@/lib/money";
@@ -60,6 +61,9 @@ import { payrollPaymentFormSchema, type PayrollPaymentFormValues } from "./payro
 const GENERIC_ERROR_MESSAGE = "No se pudo registrar el pago. Verifica los datos e intenta de nuevo.";
 
 export type PayrollPaymentFormDialogEmployee = { id: string; name: string };
+
+/** Minimal shape this dialog needs for the "Tipo de periodo" dropdown — a subset of `CatalogItem` (`lib/services/ports.ts`). */
+export type PayrollPaymentFormDialogPeriodType = { id: string; code: string; label: string };
 
 function defaultValues(employees: PayrollPaymentFormDialogEmployee[]): PayrollPaymentFormValues {
   return {
@@ -75,11 +79,13 @@ function defaultValues(employees: PayrollPaymentFormDialogEmployee[]): PayrollPa
 export type PayrollPaymentFormDialogProps = {
   /** Active employees only — populates the employee select. */
   employees: PayrollPaymentFormDialogEmployee[];
+  /** Sources the "Tipo de periodo" dropdown — passed from the Server Component page via `catalog-service#listPayrollPeriodTypes`. */
+  periodTypes: PayrollPaymentFormDialogPeriodType[];
   /** Rendered as the dialog's trigger (e.g. a "Registrar pago" button). */
   trigger: ReactElement;
 };
 
-export default function PayrollPaymentFormDialog({ employees, trigger }: PayrollPaymentFormDialogProps) {
+export default function PayrollPaymentFormDialog({ employees, periodTypes, trigger }: PayrollPaymentFormDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -121,10 +127,12 @@ export default function PayrollPaymentFormDialog({ employees, trigger }: Payroll
   async function onSubmit(values: PayrollPaymentFormValues) {
     setSubmitError(null);
     try {
+      const periodTypeId = periodTypes.find((type) => type.code === values.periodType)?.id;
       const payload = {
         employeeId: values.employeeId,
         amount: pesosToCents(Number(values.amount) || 0),
         periodType: values.periodType,
+        ...(periodTypeId ? { periodTypeId } : {}),
         referenceDate: values.referenceDate,
         paymentDate: values.paymentDate,
         ...(values.notes?.trim() ? { notes: values.notes.trim() } : {}),
@@ -160,18 +168,33 @@ export default function PayrollPaymentFormDialog({ employees, trigger }: Payroll
         <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payroll-employee">Empleado</Label>
-            <select
-              id="payroll-employee"
-              className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
-              {...register("employeeId")}
-            >
-              {employees.length === 0 ? <option value="">Sin empleados activos</option> : null}
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name}
-                </option>
-              ))}
-            </select>
+            <Controller
+              control={control}
+              name="employeeId"
+              render={({ field }) => (
+                <Select
+                  items={employees.map((employee) => ({ value: employee.id, label: employee.name }))}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger id="payroll-employee" className="h-9 w-full">
+                    <SelectValue placeholder="Selecciona un empleado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employees.length === 0 ? (
+                      <SelectItem value="" disabled>
+                        Sin empleados activos
+                      </SelectItem>
+                    ) : null}
+                    {employees.map((employee) => (
+                      <SelectItem key={employee.id} value={employee.id}>
+                        {employee.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {errors.employeeId ? <p className="text-xs text-destructive">{errors.employeeId.message}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
@@ -193,14 +216,28 @@ export default function PayrollPaymentFormDialog({ employees, trigger }: Payroll
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payroll-period-type">Tipo de periodo</Label>
-            <select
-              id="payroll-period-type"
-              className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
-              {...register("periodType")}
-            >
-              <option value="quincenal">Quincenal</option>
-              <option value="mensual">Mensual</option>
-            </select>
+            <Controller
+              control={control}
+              name="periodType"
+              render={({ field }) => (
+                <Select
+                  items={periodTypes.map((type) => ({ value: type.code, label: type.label }))}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger id="payroll-period-type" className="h-9 w-full">
+                    <SelectValue placeholder="Selecciona un tipo de periodo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {periodTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.code}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="payroll-reference-date">Fecha de referencia</Label>

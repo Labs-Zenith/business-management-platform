@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
+import { listInvoiceTypes } from "@/lib/services/catalog-service";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -33,7 +34,10 @@ export default async function NewInvoicePage({ searchParams }: NewInvoicePagePro
   const session = await requireSessionOrRedirect();
   const params = await searchParams;
 
-  const result = await listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE });
+  const [result, invoiceTypes] = await Promise.all([
+    listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE }),
+    listInvoiceTypes(),
+  ]);
 
   return (
     <PageShell>
@@ -55,6 +59,7 @@ export default async function NewInvoicePage({ searchParams }: NewInvoicePagePro
       />
       <InvoiceForm
         customers={result.data.map((customer) => ({ id: customer.id, name: customer.name }))}
+        invoiceTypes={invoiceTypes.map((type) => ({ id: type.id, code: type.code, label: type.label }))}
         defaultCustomerId={params.customerId}
       />
     </PageShell>

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { clearDay, displayDate, pickDay } from "@/components/ui/date-picker-test-helpers";
+import { selectOption } from "@/components/ui/select-test-helpers";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -13,6 +14,11 @@ vi.mock("next/navigation", () => ({
 }));
 
 import ExpenseFormDialog from "./expense-form-dialog-content";
+
+const CATEGORIES = [
+  { id: "c1000000-0000-4000-8000-000000000001", code: "nomina", label: "Nómina" },
+  { id: "c1000000-0000-4000-8000-000000000002", code: "otro", label: "Otro" },
+];
 
 describe("ExpenseFormDialog", () => {
   beforeEach(() => {
@@ -32,7 +38,7 @@ describe("ExpenseFormDialog", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -45,8 +51,35 @@ describe("ExpenseFormDialog", () => {
     const body = JSON.parse(options.body);
     expect(body.amount).toBe(50000);
     expect(body.category).toBe("otro");
+    // "otro" is the default category; its matching catalog id must ALSO be
+    // sent, resolved from the `categories` prop by code — see
+    // `expense-form-dialog-content.tsx`'s `categoryId` lookup at submit time.
+    expect(body.categoryId).toBe(CATEGORIES[1]!.id);
     expect(body.description).toBe("Papeleria");
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits the categoryId matching a newly picked category from the Select (sourced from the catalog)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: "expense-1" } }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
+
+    await user.click(screen.getByRole("button", { name: /crear gasto/i }));
+    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.clear(screen.getByLabelText(/monto/i));
+    await user.type(screen.getByLabelText(/monto/i), "500");
+    await selectOption(user, /categoria/i, "Nómina");
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(options.body);
+    expect(body.category).toBe("nomina");
+    expect(body.categoryId).toBe(CATEGORIES[0]!.id);
   });
 
   it("blocks submission client-side and shows a validation error when amount is not greater than 0 (no request sent)", async () => {
@@ -54,7 +87,7 @@ describe("ExpenseFormDialog", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -70,7 +103,7 @@ describe("ExpenseFormDialog", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.clear(await screen.findByLabelText(/monto/i));
@@ -91,7 +124,7 @@ describe("ExpenseFormDialog", () => {
       }),
     );
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -111,7 +144,7 @@ describe("ExpenseFormDialog", () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Failed to fetch")));
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -138,7 +171,7 @@ describe("ExpenseFormDialog", () => {
       }),
     );
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -173,7 +206,7 @@ describe("ExpenseFormDialog", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+      render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
       await user.click(screen.getByRole("button", { name: /crear gasto/i }));
       await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -207,7 +240,7 @@ describe("ExpenseFormDialog", () => {
     const expectedUtcDate = pinnedInstant.toISOString().slice(0, 10);
 
     const user = userEvent.setup();
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     // The native `type="date"` input is gone — the trigger is now a `<button>`
@@ -231,7 +264,7 @@ describe("ExpenseFormDialog", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -262,7 +295,7 @@ describe("ExpenseFormDialog", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -294,7 +327,7 @@ describe("ExpenseFormDialog", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
@@ -317,7 +350,7 @@ describe("ExpenseFormDialog", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<ExpenseFormDialog trigger={<button type="button">Crear gasto</button>} />);
+    render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");

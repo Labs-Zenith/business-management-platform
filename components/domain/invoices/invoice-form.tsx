@@ -28,5 +28,6 @@ export type {
   InvoiceFormContentProps as InvoiceFormProps,
   InvoiceFormCustomer,
   InvoiceFormContentInvoice,
+  InvoiceFormInvoiceType,
 } from "./invoice-form-content";
 export default InvoiceForm;

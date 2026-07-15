@@ -3,6 +3,7 @@ import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listProducts } from "@/lib/services/product-service";
 import { listMovements } from "@/lib/services/inventory-service";
+import { listMovementTypes } from "@/lib/services/catalog-service";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -45,9 +46,10 @@ export default async function InventarioPage() {
   await loadStoreFromCookie();
   const session = await requireSessionOrRedirect();
 
-  const [productsResult, movementsResult] = await Promise.all([
+  const [productsResult, movementsResult, movementTypes] = await Promise.all([
     listProducts(session, { page: 1, pageSize: MAX_DISPLAYED_ROWS }),
     listMovements(session, { page: 1, pageSize: MAX_DISPLAYED_ROWS }),
+    listMovementTypes(),
   ]);
 
   const activeProducts = productsResult.data
@@ -72,6 +74,7 @@ export default async function InventarioPage() {
             />
             <MovementFormDialog
               products={activeProducts}
+              movementTypes={movementTypes.map((type) => ({ id: type.id, code: type.code, label: type.label }))}
               trigger={
                 <Button className="w-full sm:w-auto">
                   <Plus className="size-4" />

@@ -44,6 +44,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/ui/money-input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { todayIsoDate } from "@/lib/dates";
 import { pesosToCents } from "@/lib/money";
@@ -51,16 +52,21 @@ import { expenseFormSchema, type ExpenseFormValues } from "./expense-form-schema
 
 const GENERIC_ERROR_MESSAGE = "No se pudo registrar el egreso. Verifica los datos e intenta de nuevo.";
 
+/** Minimal shape this dialog needs for the "Categoria" dropdown — a subset of `CatalogItem` (`lib/services/ports.ts`). */
+export type ExpenseFormDialogCategory = { id: string; code: string; label: string };
+
 function defaultValues(): ExpenseFormValues {
   return { category: "otro", description: "", amount: "", expenseDate: todayIsoDate(), notes: "" };
 }
 
 export type ExpenseFormDialogProps = {
+  /** Sources the "Categoria" dropdown — passed from the Server Component page via `catalog-service#listExpenseCategories`. */
+  categories: ExpenseFormDialogCategory[];
   /** Rendered as the dialog's trigger (e.g. a "Crear gasto" button). */
   trigger: ReactElement;
 };
 
-export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
+export default function ExpenseFormDialog({ categories, trigger }: ExpenseFormDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -87,11 +93,13 @@ export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
   async function onSubmit(values: ExpenseFormValues) {
     setSubmitError(null);
     try {
+      const categoryId = categories.find((category) => category.code === values.category)?.id;
       const payload = {
         category: values.category,
         description: values.description,
         amount: pesosToCents(Number(values.amount) || 0),
         expenseDate: values.expenseDate,
+        ...(categoryId ? { categoryId } : {}),
         ...(values.notes?.trim() ? { notes: values.notes.trim() } : {}),
       };
 
@@ -125,14 +133,28 @@ export default function ExpenseFormDialog({ trigger }: ExpenseFormDialogProps) {
         <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="expense-category">Categoria</Label>
-            <select
-              id="expense-category"
-              className="h-9 rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
-              {...register("category")}
-            >
-              <option value="nomina">Nómina</option>
-              <option value="otro">Otro</option>
-            </select>
+            <Controller
+              control={control}
+              name="category"
+              render={({ field }) => (
+                <Select
+                  items={categories.map((category) => ({ value: category.code, label: category.label }))}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
+                  <SelectTrigger id="expense-category" className="h-9 w-full">
+                    <SelectValue placeholder="Selecciona una categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.code}>
+                        {category.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
             {errors.category ? <p className="text-xs text-destructive">{errors.category.message}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">

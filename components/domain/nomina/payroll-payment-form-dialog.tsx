@@ -22,6 +22,7 @@ const PayrollPaymentFormDialog = dynamic(() => import("./payroll-payment-form-di
 
 export type {
   PayrollPaymentFormDialogEmployee,
+  PayrollPaymentFormDialogPeriodType,
   PayrollPaymentFormDialogProps,
 } from "./payroll-payment-form-dialog-content";
 export default PayrollPaymentFormDialog;

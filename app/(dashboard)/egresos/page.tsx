@@ -3,6 +3,7 @@ import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listExpenses } from "@/lib/services/expense-service";
 import { getCategoryLabel } from "@/lib/services/expense-dashboard-service";
+import { listExpenseCategories } from "@/lib/services/catalog-service";
 import { formatCOP } from "@/lib/money";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
@@ -46,10 +47,13 @@ export default async function EgresosPage({ searchParams }: EgresosPageProps) {
   const session = await requireSessionOrRedirect();
   const params = await searchParams;
 
-  const result = await listExpenses(session, {
-    page: parsePageParam(params.page),
-    pageSize: PAGE_SIZE,
-  });
+  const [result, categories] = await Promise.all([
+    listExpenses(session, {
+      page: parsePageParam(params.page),
+      pageSize: PAGE_SIZE,
+    }),
+    listExpenseCategories(),
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 
@@ -60,6 +64,7 @@ export default async function EgresosPage({ searchParams }: EgresosPageProps) {
         description="Registra y consulta los egresos de tu negocio."
         actions={
           <ExpenseFormDialog
+            categories={categories.map((category) => ({ id: category.id, code: category.code, label: category.label }))}
             trigger={
               <Button className="w-full sm:w-auto">
                 <Plus className="size-4" />

@@ -21,5 +21,5 @@ const ExpenseFormDialog = dynamic(() => import("./expense-form-dialog-content"),
   ssr: false,
 });
 
-export type { ExpenseFormDialogProps } from "./expense-form-dialog-content";
+export type { ExpenseFormDialogProps, ExpenseFormDialogCategory } from "./expense-form-dialog-content";
 export default ExpenseFormDialog;

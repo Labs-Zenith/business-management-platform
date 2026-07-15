@@ -20,5 +20,9 @@ const MovementFormDialog = dynamic(() => import("./movement-form-dialog-content"
   ssr: false,
 });
 
-export type { MovementFormDialogProduct, MovementFormDialogProps } from "./movement-form-dialog-content";
+export type {
+  MovementFormDialogProduct,
+  MovementFormDialogMovementType,
+  MovementFormDialogProps,
+} from "./movement-form-dialog-content";
 export default MovementFormDialog;

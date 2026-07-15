@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { openSelect, selectOption } from "@/components/ui/select-test-helpers";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -16,6 +17,11 @@ const PRODUCTS = [
   { id: "80000000-0000-4000-8000-000000000002", name: "Martillos" },
 ];
 
+const MOVEMENT_TYPES = [
+  { id: "d1000000-0000-4000-8000-000000000001", code: "in", label: "Entrada" },
+  { id: "d1000000-0000-4000-8000-000000000002", code: "out", label: "Salida" },
+];
+
 function openDialog(user: ReturnType<typeof userEvent.setup>) {
   return user.click(screen.getByRole("button", { name: /registrar movimiento/i }));
 }
@@ -29,7 +35,7 @@ describe("MovementFormDialog", () => {
     vi.unstubAllGlobals();
   });
 
-  it("POSTs the correct payload (productId, type, quantity, note) to /api/inventory-movements, closes, and refreshes on success", async () => {
+  it("POSTs the correct payload (productId, type, typeId, quantity, note) to /api/inventory-movements, closes, and refreshes on success", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -37,11 +43,17 @@ describe("MovementFormDialog", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
-    await user.selectOptions(await screen.findByLabelText(/producto/i), PRODUCTS[1]!.id);
-    await user.selectOptions(screen.getByLabelText(/tipo/i), "out");
+    await selectOption(user, /producto/i, PRODUCTS[1]!.name);
+    await selectOption(user, /tipo/i, "Salida");
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "5");
     await user.type(screen.getByLabelText(/nota/i), "Ajuste de inventario");
@@ -56,6 +68,7 @@ describe("MovementFormDialog", () => {
     expect(body).toEqual({
       productId: PRODUCTS[1]!.id,
       type: "out",
+      typeId: MOVEMENT_TYPES[1]!.id,
       quantity: 5,
       note: "Ajuste de inventario",
     });
@@ -64,10 +77,18 @@ describe("MovementFormDialog", () => {
 
   it("only offers the products passed via the products prop (page pre-filters to active-only)", async () => {
     const user = userEvent.setup();
-    render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
+    await openSelect(user, /producto/i);
 
+    expect(await screen.findByRole("option", { name: PRODUCTS[0]!.name })).toBeInTheDocument();
     for (const product of PRODUCTS) {
       expect(screen.getByRole("option", { name: product.name })).toBeInTheDocument();
     }
@@ -79,7 +100,13 @@ describe("MovementFormDialog", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "movement-1" } }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
     await user.clear(screen.getByLabelText(/cantidad/i));
@@ -97,7 +124,13 @@ describe("MovementFormDialog", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
     // quantity left at its default ("") — invalid, must be > 0
@@ -117,7 +150,13 @@ describe("MovementFormDialog", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "movement-1" } }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
     fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: "-3" } });
@@ -143,10 +182,16 @@ describe("MovementFormDialog", () => {
       }),
     );
 
-    render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
-    await user.selectOptions(await screen.findByLabelText(/tipo/i), "out");
+    await selectOption(user, /tipo/i, "Salida");
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "999");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
@@ -155,14 +200,23 @@ describe("MovementFormDialog", () => {
     expect(refreshMock).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByLabelText(/cantidad/i)).toHaveValue("999");
-    expect(screen.getByLabelText(/tipo/i)).toHaveValue("out");
+    // The native `<select>`'s `toHaveValue("out")` assertion is gone — the
+    // trigger is now a `<button role="combobox">` displaying the selected
+    // item's label text instead of an underlying value attribute.
+    expect(screen.getByLabelText(/tipo/i)).toHaveTextContent("Salida");
   });
 
   it("shows the generic error message and keeps the dialog open when fetch throws (network failure)", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Failed to fetch")));
 
-    render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
     await user.clear(screen.getByLabelText(/cantidad/i));
@@ -186,7 +240,13 @@ describe("MovementFormDialog", () => {
     const fetchMock = vi.fn().mockReturnValue(deferred);
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MovementFormDialog products={PRODUCTS} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={PRODUCTS}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
     await user.clear(screen.getByLabelText(/cantidad/i));
@@ -213,13 +273,20 @@ describe("MovementFormDialog", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<MovementFormDialog products={[]} trigger={<button type="button">Registrar movimiento</button>} />);
+    render(
+      <MovementFormDialog
+        products={[]}
+        movementTypes={MOVEMENT_TYPES}
+        trigger={<button type="button">Registrar movimiento</button>}
+      />,
+    );
 
     await openDialog(user);
-
-    const productSelect = await screen.findByLabelText(/producto/i);
-    expect(screen.getByRole("option", { name: "Sin productos activos" })).toBeInTheDocument();
-    expect(productSelect).toHaveValue("");
+    await openSelect(user, /producto/i);
+    expect(await screen.findByRole("option", { name: "Sin productos activos" })).toBeInTheDocument();
+    // Close the popup (Escape) before continuing to interact with the rest of the form.
+    await user.keyboard("{Escape}");
+    expect(screen.getByLabelText(/producto/i)).toHaveTextContent(/selecciona un producto/i);
 
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "5");

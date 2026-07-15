@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { formatCOP, lineTotal, pesosToCents } from "@/lib/money";
 import { clearDay, displayDate, pickDay } from "@/components/ui/date-picker-test-helpers";
+import { selectOption } from "@/components/ui/select-test-helpers";
 
 const pushMock = vi.fn();
 const refreshMock = vi.fn();
@@ -16,6 +17,13 @@ vi.mock("next/navigation", () => ({
 import InvoiceFormContent from "./invoice-form-content";
 
 const CUSTOMER = { id: "60000000-0000-4000-8000-000000000001", name: "Cliente Uno" };
+
+// Includes the `venta` code so `defaultInvoiceTypeId` (`invoice-form-content.tsx`)
+// resolves the same create-mode default the real catalog would.
+const INVOICE_TYPES = [
+  { id: "f1000000-0000-4000-8000-000000000001", code: "venta", label: "Factura de venta" },
+  { id: "f1000000-0000-4000-8000-000000000002", code: "nota_credito", label: "Nota crédito" },
+];
 
 // `getByText`'s default normalizer collapses ALL whitespace (including
 // `formatCOP`'s real NBSP) to a regular space, so the query string must be
@@ -49,9 +57,9 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
     await user.click(screen.getByRole("button", { name: /crear factura/i }));
 
@@ -60,8 +68,88 @@ describe("InvoiceFormContent", () => {
     const body = JSON.parse(options.body);
     expect(body.customerId).toBe(CUSTOMER.id);
     expect(body.items).toEqual([{ description: "Consultoria", quantity: 1, unitPrice: 50000 }]);
+    // Pre-selected to the `venta` catalog type by `defaultInvoiceTypeId`
+    // (never touched by the user in this test) — see the dedicated
+    // "Tipo de factura" tests below for the explicit-pick case.
+    expect(body.invoiceTypeId).toBe(INVOICE_TYPES[0]!.id);
     expect(pushMock).toHaveBeenCalledWith("/invoices/invoice-1");
     expect(refreshMock).toHaveBeenCalledTimes(1);
+  });
+
+  describe("Tipo de factura", () => {
+    it("defaults the Select to the catalog's 'venta' type and submits its id when never touched", async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { id: "invoice-1" } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+
+      expect(screen.getByLabelText(/tipo de factura/i)).toHaveTextContent(INVOICE_TYPES[0]!.label);
+
+      await selectOption(user, /cliente/i, CUSTOMER.name);
+      await fillFirstItem(user, "Consultoria", "500");
+      await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+      const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body);
+      expect(body.invoiceTypeId).toBe(INVOICE_TYPES[0]!.id);
+    });
+
+    it("submits the newly picked invoice type's id when the user changes the Select", async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { id: "invoice-1" } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+
+      await selectOption(user, /cliente/i, CUSTOMER.name);
+      await fillFirstItem(user, "Consultoria", "500");
+      await selectOption(user, /tipo de factura/i, INVOICE_TYPES[1]!.label);
+      await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+      const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body);
+      expect(body.invoiceTypeId).toBe(INVOICE_TYPES[1]!.id);
+    });
+
+    it("is not rendered in edit mode and is never sent in the PATCH payload (the invoice type is immutable after creation)", async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { id: "invoice-1" } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(
+        <InvoiceFormContent
+          customers={[CUSTOMER]}
+          invoiceTypes={INVOICE_TYPES}
+          invoice={{
+            id: "invoice-1",
+            customerId: CUSTOMER.id,
+            issueDate: "2026-06-01",
+            dueDate: "2026-06-30",
+            notes: "",
+            items: [{ description: "Consultoria previa", quantity: 1, unitPrice: 100000 }],
+            paidAmount: 0,
+          }}
+        />,
+      );
+
+      expect(screen.queryByLabelText(/tipo de factura/i)).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
+
+      const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body);
+      expect(body).not.toHaveProperty("invoiceTypeId");
+    });
   });
 
   it("blocks submission client-side and shows a validation error when an item's unitPrice is left empty (no request sent)", async () => {
@@ -77,9 +165,9 @@ describe("InvoiceFormContent", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await selectOption(user, /cliente/i, CUSTOMER.name);
     await user.type(screen.getByLabelText(/descripcion/i), "Consultoria");
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "1");
@@ -110,9 +198,9 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-      await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+      await selectOption(user, /cliente/i, CUSTOMER.name);
       await fillFirstItem(user, "Consultoria", typed);
       await user.click(screen.getByRole("button", { name: /crear factura/i }));
 
@@ -138,7 +226,7 @@ describe("InvoiceFormContent", () => {
     const expectedLocalDate = `${pinnedInstant.getFullYear()}-${String(pinnedInstant.getMonth() + 1).padStart(2, "0")}-${String(pinnedInstant.getDate()).padStart(2, "0")}`;
     const expectedUtcDate = pinnedInstant.toISOString().slice(0, 10);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
     // The native `type="date"` input is gone — the trigger is now a `<button>`
     // labeled via `<Label htmlFor>`, displaying the `DatePicker`'s "d MMM yyyy"
@@ -161,9 +249,9 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
 
     const targetDate = new Date(2026, 6, 20);
@@ -191,9 +279,9 @@ describe("InvoiceFormContent", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
 
     // Pick a non-today day first so the clear-gesture lookup (`clearDay`)
@@ -220,12 +308,12 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
     // dueDate is optional/clearable — no forced default, placeholder shown until picked.
     expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveTextContent(/seleccionar fecha/i);
 
-    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
 
     const targetDate = new Date(2026, 6, 25);
@@ -247,9 +335,9 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
     await user.click(screen.getByRole("button", { name: /crear factura/i }));
 
@@ -273,9 +361,9 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
 
     const targetDate = new Date(2026, 6, 25);
@@ -304,7 +392,7 @@ describe("InvoiceFormContent", () => {
     // still exercised by `lib/money.test.ts`'s dedicated `lineTotal`/
     // `pesosToCents` unit tests with 3-decimal inputs.
     const user = userEvent.setup();
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
     await user.type(screen.getByLabelText(/descripcion/i), "Consultoria");
     await user.clear(screen.getByLabelText(/cantidad/i));
@@ -318,7 +406,7 @@ describe("InvoiceFormContent", () => {
 
   it("renders a running total that is the SUM of each line item's lineTotal across multiple items", async () => {
     const user = userEvent.setup();
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "3");
@@ -348,9 +436,9 @@ describe("InvoiceFormContent", () => {
       }),
     );
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-    await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+    await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
     await user.click(screen.getByRole("button", { name: /crear factura/i }));
 
@@ -373,9 +461,12 @@ describe("InvoiceFormContent", () => {
     };
 
     it("pre-fills every field from the invoice prop, converting cents back to whole pesos", async () => {
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
 
-      expect(screen.getByLabelText(/cliente/i)).toHaveValue(CUSTOMER.id);
+      // The native `<select>`'s `toHaveValue(id)` assertion is gone — the
+      // trigger is now a `<button role="combobox">` displaying the selected
+      // customer's NAME (resolved via the `items` prop), not the raw id.
+      expect(screen.getByLabelText(/cliente/i)).toHaveTextContent(CUSTOMER.name);
       expect(screen.getByLabelText(/fecha de emision/i)).toHaveTextContent(displayDate(INVOICE.issueDate));
       expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveTextContent(displayDate(INVOICE.dueDate));
       expect(screen.getByLabelText(/nota/i)).toHaveValue(INVOICE.notes);
@@ -386,7 +477,7 @@ describe("InvoiceFormContent", () => {
     });
 
     it("renders the 'Guardar cambios' submit label instead of 'Crear factura'", () => {
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
 
       expect(screen.getByRole("button", { name: /guardar cambios/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^crear factura$/i })).not.toBeInTheDocument();
@@ -400,7 +491,7 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
 
       await user.clear(screen.getByLabelText(/valor unitario/i));
       await user.type(screen.getByLabelText(/valor unitario/i), "2000");
@@ -431,7 +522,7 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
 
       const targetDate = new Date(2026, 5, 15);
       const dayLabel = format(targetDate, "PPPP", { locale: es });
@@ -454,7 +545,7 @@ describe("InvoiceFormContent", () => {
         }),
       );
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
 
       await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
 
@@ -483,7 +574,7 @@ describe("InvoiceFormContent", () => {
 
     it("shows the below-paid-total warning and disables submit once the live total drops below paidAmount", async () => {
       const user = userEvent.setup();
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={PARTIALLY_PAID_INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={PARTIALLY_PAID_INVOICE} />);
 
       // Initial total (300000) >= paidAmount (250000): no warning, submit enabled.
       expect(screen.queryByText(/no puede ser menor a lo ya pagado/i)).not.toBeInTheDocument();
@@ -501,7 +592,7 @@ describe("InvoiceFormContent", () => {
 
     it("re-enables submit and hides the warning once the live total is raised back to at least paidAmount", async () => {
       const user = userEvent.setup();
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoice={PARTIALLY_PAID_INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={PARTIALLY_PAID_INVOICE} />);
 
       await user.clear(screen.getByLabelText(/valor unitario/i));
       await user.type(screen.getByLabelText(/valor unitario/i), "1000");
@@ -516,7 +607,7 @@ describe("InvoiceFormContent", () => {
     });
 
     it("never applies the warning in create mode (no invoice prop, no paidAmount)", () => {
-      render(<InvoiceFormContent customers={[CUSTOMER]} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
       expect(screen.queryByText(/no puede ser menor a lo ya pagado/i)).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /crear factura/i })).toBeEnabled();
@@ -532,11 +623,11 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
       expect(screen.getByRole("button", { name: /crear factura/i })).toBeInTheDocument();
 
-      await user.selectOptions(screen.getByLabelText(/cliente/i), CUSTOMER.id);
+      await selectOption(user, /cliente/i, CUSTOMER.name);
       await fillFirstItem(user, "Consultoria", "500");
       await user.click(screen.getByRole("button", { name: /crear factura/i }));
 

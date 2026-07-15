@@ -37,6 +37,11 @@ export const invoiceFormSchema = z.object({
   issueDate: z.string().trim().min(1, "Fecha de emision requerida"),
   dueDate: z.string().trim().optional(),
   notes: z.string().trim().optional(),
+  // Optional at THIS (client) validation level — required/pre-filled in
+  // practice by `invoice-form-content.tsx`'s create-mode default, and unused
+  // (never rendered/submitted) in edit mode, where the invoice type is
+  // immutable after creation.
+  invoiceTypeId: z.string().trim().optional(),
   items: z.array(invoiceItemFormSchema).min(1, "Agrega al menos un item"),
 });
 
