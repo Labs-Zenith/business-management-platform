@@ -1,0 +1,94 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { SavedAccount } from "@/lib/services/ports";
+import ProfilePicker from "./profile-picker";
+
+const ACCOUNTS: SavedAccount[] = [
+  { userId: "u1", email: "demo@negociodemo.test", label: "Demo", active: true },
+  { userId: "u2", email: "otra@negociodemo.test", label: "Otra cuenta", active: false },
+];
+
+const assignMock = vi.fn();
+
+describe("ProfilePicker", () => {
+  beforeEach(() => {
+    assignMock.mockReset();
+    vi.stubGlobal("location", { ...window.location, assign: assignMock });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("POSTs the selected account's userId to /api/auth/switch-account and navigates on success", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ProfilePicker accounts={ACCOUNTS} />);
+
+    await user.click(screen.getByText("Otra cuenta"));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/switch-account",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ userId: "u2" }),
+      })
+    );
+    expect(assignMock).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("navigates to a sanitized `next` path on success when provided", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) })
+    );
+
+    render(<ProfilePicker accounts={ACCOUNTS} next="/invoices" />);
+
+    await user.click(screen.getByText("Demo"));
+
+    expect(assignMock).toHaveBeenCalledWith("/invoices");
+  });
+
+  it("shows an alert and does not navigate when the switch fails", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({ error: { message: "nope" } }),
+      })
+    );
+
+    render(<ProfilePicker accounts={ACCOUNTS} />);
+
+    await user.click(screen.getByText("Demo"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /no se pudo entrar a ese perfil/i
+    );
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it('"Usar otra cuenta" links to /login?add=1', () => {
+    render(<ProfilePicker accounts={ACCOUNTS} />);
+
+    expect(screen.getByRole("link", { name: /usar otra cuenta/i })).toHaveAttribute(
+      "href",
+      "/login?add=1"
+    );
+  });
+
+  it('"Usar otra cuenta" preserves a `next` path when present', () => {
+    render(<ProfilePicker accounts={ACCOUNTS} next="/invoices" />);
+
+    expect(screen.getByRole("link", { name: /usar otra cuenta/i })).toHaveAttribute(
+      "href",
+      `/login?add=1&next=${encodeURIComponent("/invoices")}`
+    );
+  });
+});

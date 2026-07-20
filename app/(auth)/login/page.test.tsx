@@ -1,153 +1,72 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import type { SavedAccount, Session } from "@/lib/services/ports";
 
-const pushMock = vi.fn();
-let mockNextParam = "";
+const mockGetSession = vi.fn<() => Promise<Session | null>>();
+const mockGetSavedAccounts = vi.fn<() => Promise<SavedAccount[]>>();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
-  useSearchParams: () => new URLSearchParams(mockNextParam ? `next=${mockNextParam}` : ""),
+  useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("@/lib/mock/cookie-persistence", () => ({
+  loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
+  saveStoreToCookie: vi.fn(),
+}));
+
+vi.mock("@/lib/session", () => ({
+  getSession: () => mockGetSession(),
+  getSavedAccounts: () => mockGetSavedAccounts(),
 }));
 
 import LoginPage from "./page";
 
-async function submitValidLogin() {
-  const user = userEvent.setup();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) })
-  );
-  render(<LoginPage />);
-  await user.type(screen.getByLabelText(/usuario/i), "demo@negociodemo.test");
-  await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
-  await user.click(screen.getByRole("button", { name: /ingresar/i }));
-}
+const SESSION: Session = {
+  userId: "20000000-0000-4000-8000-000000000001",
+  businessId: "10000000-0000-4000-8000-000000000001",
+  email: "demo@negociodemo.test",
+  role: "admin",
+};
 
-describe("LoginPage", () => {
+const SAVED_ACCOUNT: SavedAccount = {
+  userId: SESSION.userId,
+  email: SESSION.email,
+  label: "Demo",
+  active: true,
+};
+
+describe("LoginPage (server gate)", () => {
   beforeEach(() => {
-    pushMock.mockReset();
-    mockNextParam = "";
+    mockGetSession.mockReset();
+    mockGetSavedAccounts.mockReset();
+    mockGetSession.mockResolvedValue(SESSION);
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
+  it("renders the profile picker when saved accounts exist and ?add is absent", async () => {
+    mockGetSavedAccounts.mockResolvedValue([SAVED_ACCOUNT]);
+
+    render(await LoginPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Elige un perfil")).toBeInTheDocument();
+    expect(screen.getByText("Demo")).toBeInTheDocument();
   });
 
-  it("submits credentials to /api/auth/login and redirects to the dashboard on success", async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        data: { session: { userId: "u1", businessId: "b1", email: "demo@negociodemo.test" } },
-      }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
+  it("renders the login form when there are no saved accounts", async () => {
+    mockGetSavedAccounts.mockResolvedValue([]);
 
-    render(<LoginPage />);
+    render(await LoginPage({ searchParams: Promise.resolve({}) }));
 
-    await user.type(screen.getByLabelText(/usuario/i), "demo@negociodemo.test");
-    await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
-    await user.click(screen.getByRole("button", { name: /ingresar/i }));
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/auth/login",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ email: "demo@negociodemo.test", password: "demo1234" }),
-      })
-    );
-    expect(pushMock).toHaveBeenCalledWith("/dashboard");
+    expect(screen.getByLabelText(/usuario/i)).toBeInTheDocument();
+    expect(screen.queryByText("Elige un perfil")).not.toBeInTheDocument();
   });
 
-  it("shows a generic error message and does not redirect when credentials are wrong", async () => {
-    const user = userEvent.setup();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: false,
-        json: async () => ({
-          error: { code: "UNAUTHENTICATED", message: "Invalid email or password." },
-        }),
-      })
-    );
+  it("renders the login form when ?add=1 is present, even with saved accounts", async () => {
+    mockGetSavedAccounts.mockResolvedValue([SAVED_ACCOUNT]);
 
-    render(<LoginPage />);
+    render(await LoginPage({ searchParams: Promise.resolve({ add: "1" }) }));
 
-    await user.type(screen.getByLabelText(/usuario/i), "demo@negociodemo.test");
-    await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "wrong-password");
-    await user.click(screen.getByRole("button", { name: /ingresar/i }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent(/invalid email or password/i);
-    expect(pushMock).not.toHaveBeenCalled();
-  });
-
-  it("honors a same-origin ?next= path on success (Agregar cuenta return-to)", async () => {
-    mockNextParam = encodeURIComponent("/invoices");
-    await submitValidLogin();
-    expect(pushMock).toHaveBeenCalledWith("/invoices");
-  });
-
-  it.each([
-    ["protocol-relative //evil.com", "//evil.com"],
-    ["backslash bypass /\\evil.com", "/\\evil.com"],
-    ["absolute https://evil.com", "https://evil.com"],
-  ])("rejects an open-redirect ?next= (%s) and falls back to /dashboard", async (_label, malicious) => {
-    mockNextParam = encodeURIComponent(malicious);
-    await submitValidLogin();
-    expect(pushMock).toHaveBeenCalledWith("/dashboard");
-    expect(pushMock).not.toHaveBeenCalledWith(malicious);
-  });
-
-  it("does not enforce email format — the username field only requires a non-empty value", async () => {
-    const user = userEvent.setup();
-    render(<LoginPage />);
-
-    const submitButton = screen.getByRole("button", { name: /ingresar/i });
-    expect(submitButton).toBeDisabled(); // empty on mount
-
-    // An `@`-containing value is NOT rejected: no "correo válido" error appears,
-    // and with a password the form becomes submittable.
-    await user.type(screen.getByLabelText(/usuario/i), "usuario@");
-    await user.tab(); // blur the field
-    expect(screen.queryByText(/correo v[aá]lido/i)).not.toBeInTheDocument();
-
-    await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
-    expect(submitButton).toBeEnabled();
-  });
-
-  it("accepts a plain username (no @) and enables submit; on success it maps the username to the internal email", async () => {
-    const user = userEvent.setup();
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) });
-    vi.stubGlobal("fetch", fetchMock);
-    render(<LoginPage />);
-
-    const submitButton = screen.getByRole("button", { name: /ingresar/i });
-    await user.type(screen.getByLabelText(/usuario/i), "printingcompany");
-    await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
-
-    expect(submitButton).toBeEnabled();
-
-    await user.click(submitButton);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/auth/login",
-      expect.objectContaining({
-        body: JSON.stringify({ email: "printingcompany@zenith.app", password: "demo1234" }),
-      })
-    );
-  });
-
-  it("toggles the password field's type between password and text via the eye button", async () => {
-    const user = userEvent.setup();
-    render(<LoginPage />);
-
-    const passwordInput = screen.getByLabelText(/contrase/i, { selector: "input" });
-    expect(passwordInput).toHaveAttribute("type", "password");
-
-    await user.click(screen.getByRole("button", { name: /mostrar contrase/i }));
-    expect(passwordInput).toHaveAttribute("type", "text");
-
-    await user.click(screen.getByRole("button", { name: /ocultar contrase/i }));
-    expect(passwordInput).toHaveAttribute("type", "password");
+    expect(screen.getByLabelText(/usuario/i)).toBeInTheDocument();
+    expect(screen.queryByText("Elige un perfil")).not.toBeInTheDocument();
   });
 });
