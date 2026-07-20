@@ -121,6 +121,13 @@ describe("DatePicker", () => {
     // to the wrong (previous) day here — the exact bug `lib/dates.ts`'s
     // `todayIsoDate()` was written to avoid, reproduced at the calendar-day level.
     process.env.TZ = "Asia/Tokyo";
+    // Pin "today" far from the target day: react-day-picker prefixes a day's
+    // accessible name with "Hoy, " when it renders as the current date (see
+    // `react-day-picker/locale`'s `es.labels.labelDayButton`), so if the real
+    // ambient clock ever lands on July 21 2026 this test's `dayLabel` locator
+    // below would silently stop matching — not a component bug, just this
+    // test unintentionally depending on which day it happens to run on.
+    vi.setSystemTime(new Date(2000, 0, 1));
     const onChange = vi.fn();
 
     render(<DatePicker value="2026-07-20" onChange={onChange} />);
