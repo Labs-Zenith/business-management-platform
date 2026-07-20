@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { Building2, Eye, EyeOff } from "lucide-react";
 import { usernameToEmail } from "@/lib/auth/username";
+import { sanitizeNextPath } from "@/lib/auth/next-path";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,26 +31,6 @@ const GENERIC_ERROR_MESSAGE = "No se pudo iniciar sesión. Verifica tus datos e 
  */
 const identifierSchema = z.string().trim().min(1, "El usuario es obligatorio.");
 const passwordSchema = z.string().min(1, "La contraseña es obligatoria.");
-
-/**
- * Only a same-origin relative path (starting with a single `/`) is ever
- * honored as a post-login redirect target — this is the "Agregar cuenta"
- * flow's `?next=<path>` (see `components/layout/business-switcher.tsx`),
- * NOT an arbitrary caller-controlled value, so this guards against an open
- * redirect (`//evil.com`, `https://evil.com`, etc.) being smuggled through
- * the query string.
- */
-export function sanitizeNextPath(next: string | null): string | null {
-  // Only a same-origin ABSOLUTE path is honored. Reject: non-`/`-leading
-  // values, `//host` (protocol-relative), and ANY backslash — browsers'
-  // WHATWG URL parser treats `\` like `/`, so `/\evil.com` would normalize to
-  // `https://evil.com` and `router.push` it as a full external navigation
-  // (open-redirect). A legitimate in-app path never contains a backslash.
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
-    return null;
-  }
-  return next;
-}
 
 interface Touched {
   email: boolean;

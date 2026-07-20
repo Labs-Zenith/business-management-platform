@@ -1,6 +1,7 @@
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getSession, getSavedAccounts } from "@/lib/session";
-import LoginForm, { sanitizeNextPath } from "@/components/domain/auth/login-form";
+import { sanitizeNextPath } from "@/lib/auth/next-path";
+import LoginForm from "@/components/domain/auth/login-form";
 import ProfilePicker from "@/components/domain/auth/profile-picker";
 
 type LoginPageProps = {
