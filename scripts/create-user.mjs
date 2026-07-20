@@ -31,6 +31,7 @@ const DEMO_BUSINESS_ID = "10000000-0000-4000-8000-000000000001"; // BUSINESS_ID 
 const { values } = parseArgs({
   options: {
     email: { type: "string" },
+    username: { type: "string" },
     password: { type: "string" },
     role: { type: "string", default: "admin" },
     name: { type: "string" },
@@ -44,12 +45,20 @@ function fail(message) {
   process.exit(1);
 }
 
-const email = values.email?.trim();
+// Internal login domain — MUST match `lib/auth/username.ts`'s
+// INTERNAL_EMAIL_DOMAIN so a user provisioned with `--username foo` can sign
+// in by typing just `foo` (the login form appends this same domain).
+const INTERNAL_EMAIL_DOMAIN = "zenith.app";
+
+// Accept either `--email a@b.com` or `--username foo` (→ foo@zenith.app).
+const email = (
+  values.email ?? (values.username ? `${values.username.trim()}@${INTERNAL_EMAIL_DOMAIN}` : undefined)
+)?.trim();
 const password = values.password;
 const role = values.role;
 const fullName = values.name ?? null;
 
-if (!email || !password) fail("Missing --email or --password.");
+if (!email || !password) fail("Missing --email/--username or --password.");
 if (role !== "admin" && role !== "worker") fail(`--role must be 'admin' or 'worker' (got '${role}').`);
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

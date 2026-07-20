@@ -4,6 +4,7 @@ import { useState, Suspense, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
 import { Building2, Eye, EyeOff } from "lucide-react";
+import { usernameToEmail } from "@/lib/auth/username";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,19 +19,20 @@ import {
 const GENERIC_ERROR_MESSAGE = "No se pudo iniciar sesion. Verifica tus datos e intenta de nuevo.";
 
 /**
- * Mirrors the field-level rules in `app/api/auth/login/route.ts`'s
- * `loginSchema` (email/password only — this form doesn't need `.strict()`
- * since it never sends extra fields). Used ONLY for live client-side UX
- * (inline errors + disabling the submit button); the API route re-validates
- * independently server-side and remains the actual source of truth. Kept
- * inline rather than via the shared `useZodForm` hook — this is a small
- * 2-field form and other concurrent lanes are touching that shared hook.
+ * The login field accepts a plain USERNAME (no `@`) or a full email: Supabase
+ * Auth is email-based, so `usernameToEmail` appends the internal domain to a
+ * username before submit (see `lib/auth/username.ts`); an input that already
+ * has `@` passes through. Client-side UX only (inline errors + disabling the
+ * button); the API route re-validates server-side (source of truth). Required,
+ * and if it looks like an email it must be a valid one.
  */
-const emailSchema = z
+const identifierSchema = z
   .string()
   .trim()
-  .min(1, "El correo es obligatorio.")
-  .email("Ingresa un correo válido.");
+  .min(1, "El usuario es obligatorio.")
+  .refine((value) => !value.includes("@") || z.string().email().safeParse(value).success, {
+    message: "Ingresa un correo válido.",
+  });
 const passwordSchema = z.string().min(1, "La contraseña es obligatoria.");
 
 /**
@@ -75,7 +77,7 @@ function LoginForm() {
   const nextPath = sanitizeNextPath(searchParams.get("next"));
   const isAddAccountFlow = nextPath !== null;
 
-  const emailResult = emailSchema.safeParse(email);
+  const emailResult = identifierSchema.safeParse(email);
   const passwordResult = passwordSchema.safeParse(password);
   const emailError = emailResult.success ? null : emailResult.error.issues[0]?.message;
   const passwordError = passwordResult.success ? null : passwordResult.error.issues[0]?.message;
@@ -94,7 +96,7 @@ function LoginForm() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: usernameToEmail(email), password }),
       });
 
       if (!response.ok) {
@@ -133,12 +135,12 @@ function LoginForm() {
         <CardContent>
           <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit}>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Correo electrónico</Label>
+              <Label htmlFor="email">Usuario</Label>
               <Input
                 id="email"
                 name="email"
-                type="email"
-                autoComplete="email"
+                type="text"
+                autoComplete="username"
                 required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}

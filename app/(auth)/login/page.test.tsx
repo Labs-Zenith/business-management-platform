@@ -19,7 +19,7 @@ async function submitValidLogin() {
     vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) })
   );
   render(<LoginPage />);
-  await user.type(screen.getByLabelText(/correo/i), "demo@negociodemo.test");
+  await user.type(screen.getByLabelText(/usuario/i), "demo@negociodemo.test");
   await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
   await user.click(screen.getByRole("button", { name: /ingresar/i }));
 }
@@ -46,7 +46,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    await user.type(screen.getByLabelText(/correo/i), "demo@negociodemo.test");
+    await user.type(screen.getByLabelText(/usuario/i), "demo@negociodemo.test");
     await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
     await user.click(screen.getByRole("button", { name: /ingresar/i }));
 
@@ -74,7 +74,7 @@ describe("LoginPage", () => {
 
     render(<LoginPage />);
 
-    await user.type(screen.getByLabelText(/correo/i), "demo@negociodemo.test");
+    await user.type(screen.getByLabelText(/usuario/i), "demo@negociodemo.test");
     await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "wrong-password");
     await user.click(screen.getByRole("button", { name: /ingresar/i }));
 
@@ -99,31 +99,39 @@ describe("LoginPage", () => {
     expect(pushMock).not.toHaveBeenCalledWith(malicious);
   });
 
-  it("shows an inline error for an invalid email and keeps the submit button disabled", async () => {
+  it("shows an inline error only when the input looks like a malformed email (has @), and keeps submit disabled", async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
     const submitButton = screen.getByRole("button", { name: /ingresar/i });
     expect(submitButton).toBeDisabled();
 
-    await user.type(screen.getByLabelText(/correo/i), "not-an-email");
-    await user.tab(); // blur the email field
+    await user.type(screen.getByLabelText(/usuario/i), "usuario@");
+    await user.tab(); // blur the field
 
     expect(await screen.findByText(/correo v[aá]lido/i)).toBeInTheDocument();
     expect(submitButton).toBeDisabled();
   });
 
-  it("enables the submit button once a valid email and non-empty password are entered", async () => {
+  it("accepts a plain username (no @) and enables submit; on success it maps the username to the internal email", async () => {
     const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) });
+    vi.stubGlobal("fetch", fetchMock);
     render(<LoginPage />);
 
     const submitButton = screen.getByRole("button", { name: /ingresar/i });
-    expect(submitButton).toBeDisabled();
-
-    await user.type(screen.getByLabelText(/correo/i), "demo@negociodemo.test");
+    await user.type(screen.getByLabelText(/usuario/i), "printingcompany");
     await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
 
     expect(submitButton).toBeEnabled();
+
+    await user.click(submitButton);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/login",
+      expect.objectContaining({
+        body: JSON.stringify({ email: "printingcompany@zenith.app", password: "demo1234" }),
+      })
+    );
   });
 
   it("toggles the password field's type between password and text via the eye button", async () => {
