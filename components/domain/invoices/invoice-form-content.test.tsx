@@ -44,7 +44,7 @@ describe("InvoiceFormContent", () => {
   });
 
   async function fillFirstItem(user: ReturnType<typeof userEvent.setup>, description: string, unitPrice: string) {
-    await user.type(screen.getByLabelText(/descripcion/i), description);
+    await user.type(screen.getByLabelText(/descripción/i), description);
     await user.clear(screen.getByLabelText(/valor unitario/i));
     await user.type(screen.getByLabelText(/valor unitario/i), unitPrice);
   }
@@ -173,7 +173,7 @@ describe("InvoiceFormContent", () => {
     render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
     await selectOption(user, /cliente/i, CUSTOMER.name);
-    await user.type(screen.getByLabelText(/descripcion/i), "Consultoria");
+    await user.type(screen.getByLabelText(/descripción/i), "Consultoria");
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "1");
     // unitPrice left at its default ("") — invalid, must be non-empty
@@ -240,7 +240,7 @@ describe("InvoiceFormContent", () => {
     // The native `type="date"` input is gone — the trigger is now a `<button>`
     // labeled via `<Label htmlFor>`, displaying the `DatePicker`'s "d MMM yyyy"
     // formatted text instead of an ISO `value`.
-    const trigger = screen.getByLabelText(/fecha de emision/i);
+    const trigger = screen.getByLabelText(/fecha de emisión/i);
 
     expect(trigger).toHaveTextContent(displayDate(expectedLocalDate));
     if (expectedLocalDate !== expectedUtcDate) {
@@ -265,9 +265,9 @@ describe("InvoiceFormContent", () => {
 
     const targetDate = new Date(2026, 6, 20);
     const dayLabel = format(targetDate, "PPPP", { locale: es });
-    await pickDay(user, /fecha de emision/i, dayLabel);
+    await pickDay(user, /fecha de emisión/i, dayLabel);
 
-    expect(screen.getByLabelText(/fecha de emision/i)).toHaveTextContent("20 jul 2026");
+    expect(screen.getByLabelText(/fecha de emisión/i)).toHaveTextContent("20 jul 2026");
 
     await user.click(screen.getByRole("button", { name: /crear factura/i }));
 
@@ -303,10 +303,10 @@ describe("InvoiceFormContent", () => {
     // never collides with react-day-picker's "Hoy, " accessible-name prefix.
     const targetDate = new Date(2026, 6, 20);
     const dayLabel = format(targetDate, "PPPP", { locale: es });
-    await pickDay(user, /fecha de emision/i, dayLabel);
-    await clearDay(user, /fecha de emision/i, dayLabel);
+    await pickDay(user, /fecha de emisión/i, dayLabel);
+    await clearDay(user, /fecha de emisión/i, dayLabel);
 
-    expect(screen.getByLabelText(/fecha de emision/i)).toHaveTextContent(/seleccionar fecha/i);
+    expect(screen.getByLabelText(/fecha de emisión/i)).toHaveTextContent(/seleccionar fecha/i);
 
     expect(await screen.findByRole("button", { name: /crear factura/i })).toBeDisabled();
 
@@ -409,7 +409,7 @@ describe("InvoiceFormContent", () => {
     const user = userEvent.setup();
     render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
 
-    await user.type(screen.getByLabelText(/descripcion/i), "Consultoria");
+    await user.type(screen.getByLabelText(/descripción/i), "Consultoria");
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "3");
     await user.clear(screen.getByLabelText(/valor unitario/i));
@@ -482,10 +482,10 @@ describe("InvoiceFormContent", () => {
       // trigger is now a `<button role="combobox">` displaying the selected
       // customer's NAME (resolved via the `items` prop), not the raw id.
       expect(screen.getByLabelText(/cliente/i)).toHaveTextContent(CUSTOMER.name);
-      expect(screen.getByLabelText(/fecha de emision/i)).toHaveTextContent(displayDate(INVOICE.issueDate));
+      expect(screen.getByLabelText(/fecha de emisión/i)).toHaveTextContent(displayDate(INVOICE.issueDate));
       expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveTextContent(displayDate(INVOICE.dueDate));
       expect(screen.getByLabelText(/nota/i)).toHaveValue(INVOICE.notes);
-      expect(screen.getByLabelText(/descripcion/i)).toHaveValue(INVOICE.items[0].description);
+      expect(screen.getByLabelText(/descripción/i)).toHaveValue(INVOICE.items[0].description);
       expect(screen.getByLabelText(/cantidad/i)).toHaveValue(INVOICE.items[0].quantity);
       // Displayed value is COP-grouped ("1.500" pesos), not the raw "1500".
       expect(screen.getByLabelText(/valor unitario/i)).toHaveValue("1.500");

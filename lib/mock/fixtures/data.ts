@@ -260,7 +260,7 @@ export const invoiceFixtures: InvoiceFixture[] = [
     customerId: customerId(7),
     issueDayOffset: -40,
     dueDayOffset: -10, // past due, but a payment exists -> stays partially_paid
-    items: [{ description: "Diseno grafico", quantity: 1, unitPrice: 500000 }],
+    items: [{ description: "Diseño gráfico", quantity: 1, unitPrice: 500000 }],
     notes: "Vencida pero con abono; debe quedar partially_paid, no overdue",
     payments: [{ amount: 200000, dayOffset: -8, method: "cash", notes: "Abono inicial" }],
   },
@@ -344,7 +344,7 @@ export const expenseFixtures: ExpenseFixture[] = [
   {
     id: expenseId(1),
     category: "nomina",
-    description: "Nomina quincenal - equipo operativo",
+    description: "Nómina quincenal - equipo operativo",
     amountInCents: 3500000,
     dayOffset: -3,
     notes: "Pago quincenal",
@@ -360,7 +360,7 @@ export const expenseFixtures: ExpenseFixture[] = [
   {
     id: expenseId(3),
     category: "otro",
-    description: "Servicios publicos",
+    description: "Servicios públicos",
     amountInCents: 350000,
     dayOffset: -10,
     notes: "Agua, luz y gas",
@@ -368,7 +368,7 @@ export const expenseFixtures: ExpenseFixture[] = [
   {
     id: expenseId(4),
     category: "nomina",
-    description: "Nomina quincenal - mes anterior",
+    description: "Nómina quincenal - mes anterior",
     amountInCents: 3400000,
     dayOffset: -35,
     notes: null,
@@ -459,7 +459,7 @@ export const payrollPaymentFixtures: PayrollPaymentFixture[] = [
     periodStart: "2026-05-01",
     periodEnd: "2026-05-31",
     paymentDayOffset: -40,
-    notes: "Nomina mensual de mayo",
+    notes: "Nómina mensual de mayo",
   },
 ];
 

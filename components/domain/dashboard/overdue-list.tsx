@@ -39,7 +39,7 @@ export async function OverdueList() {
         <Table className="min-w-[640px]">
           <TableHeader>
             <TableRow>
-              <TableHead>Numero</TableHead>
+              <TableHead>Número</TableHead>
               <TableHead>Cliente</TableHead>
               <TableHead>Vencimiento</TableHead>
               <TableHead>Saldo</TableHead>

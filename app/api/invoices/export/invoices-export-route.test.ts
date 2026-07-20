@@ -59,7 +59,7 @@ describe("GET /api/invoices/export", () => {
     expect(sheet).toBeDefined();
     expect(sheet!.getRow(1).values).toEqual([
       undefined,
-      "Numero",
+      "Número",
       "Cliente",
       "Fecha",
       "Vencimiento",

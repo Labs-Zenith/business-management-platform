@@ -168,7 +168,7 @@ export async function renderInvoicePdf(business: Business, invoice: InvoiceDetai
   doc.font("Helvetica-Bold").fontSize(14).fillColor("#171717").text(`Factura ${invoice.number}`);
   doc.moveDown(0.5);
   writeKeyValue(doc, "Cliente", invoice.customer.name);
-  writeKeyValue(doc, "Fecha de emision", invoice.issueDate);
+  writeKeyValue(doc, "Fecha de emisión", invoice.issueDate);
   writeKeyValue(doc, "Fecha de vencimiento", invoice.dueDate ?? "Sin fecha");
   writeKeyValue(doc, "Estado", INVOICE_STATUS_LABELS[invoice.status]);
   if (invoice.notes) {
@@ -177,7 +177,7 @@ export async function renderInvoicePdf(business: Business, invoice: InvoiceDetai
   doc.moveDown(1);
 
   writeTable(doc, invoice.items, [
-    { header: "Descripcion", width: 220, value: (item) => item.description },
+    { header: "Descripción", width: 220, value: (item) => item.description },
     { header: "Cantidad", width: 70, align: "right", value: (item) => String(item.quantity) },
     { header: "Valor unitario", width: 110, align: "right", value: (item) => formatCOP(item.unitPrice) },
     { header: "Total item", width: 110, align: "right", value: (item) => formatCOP(item.lineTotal) },
@@ -205,9 +205,9 @@ export async function renderInvoicesExportPdf(rows: InvoiceExportRow[]): Promise
   const doc = createDocument();
   const done = collectDocument(doc);
 
-  writeTitle(doc, "Exportacion de facturas", `${rows.length} registros`);
+  writeTitle(doc, "Exportación de facturas", `${rows.length} registros`);
   writeTable(doc, rows, [
-    { header: "Numero", width: 70, value: (invoice) => invoice.number },
+    { header: "Número", width: 70, value: (invoice) => invoice.number },
     { header: "Cliente", width: 120, value: (invoice) => invoice.customerName },
     { header: "Fecha", width: 65, value: (invoice) => invoice.issueDate },
     { header: "Vence", width: 65, value: (invoice) => invoice.dueDate ?? "-" },
@@ -224,13 +224,13 @@ export async function renderPaymentsExportPdf(rows: PaymentWithRefs[]): Promise<
   const doc = createDocument();
   const done = collectDocument(doc);
 
-  writeTitle(doc, "Exportacion de pagos", `${rows.length} registros`);
+  writeTitle(doc, "Exportación de pagos", `${rows.length} registros`);
   writeTable(doc, rows, [
     { header: "Fecha", width: 75, value: (payment) => payment.paymentDate },
     { header: "Cliente", width: 145, value: (payment) => payment.customer.name },
     { header: "Factura", width: 90, value: (payment) => payment.invoice.number },
     { header: "Monto", width: 90, align: "right", value: (payment) => formatCOP(payment.amount) },
-    { header: "Metodo", width: 90, value: (payment) => payment.method ?? "-" },
+    { header: "Método", width: 90, value: (payment) => payment.method ?? "-" },
     { header: "Notas", width: 110, value: (payment) => payment.notes ?? "-" },
   ]);
   doc.end();
@@ -287,7 +287,7 @@ function writePagosPorMesSection(doc: PDFKit.PDFDocument, charts: DashboardExpor
 function writeFacturasVencidasSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"]) {
   writeSectionHeading(doc, "Facturas vencidas");
   writeTable(doc, summary.overdueInvoiceList, [
-    { header: "Numero", width: 65, value: (row) => row.number },
+    { header: "Número", width: 65, value: (row) => row.number },
     { header: "Fecha", width: 60, value: (row) => row.issueDate },
     { header: "Vencimiento", width: 65, value: (row) => row.dueDate ?? "-" },
     { header: "Total", width: 75, align: "right", value: (row) => formatCOP(row.total) },
@@ -304,7 +304,7 @@ function writePagosRecientesSection(doc: PDFKit.PDFDocument, summary: DashboardE
     { header: "Cliente", width: 110, value: (row) => row.customer.name },
     { header: "Factura", width: 75, value: (row) => row.invoice.number },
     { header: "Monto", width: 75, align: "right", value: (row) => formatCOP(row.amount) },
-    { header: "Metodo", width: 70, value: (row) => row.method ?? "-" },
+    { header: "Método", width: 70, value: (row) => row.method ?? "-" },
     { header: "Notas", width: 85, value: (row) => row.notes ?? "-" },
   ]);
 }
@@ -314,9 +314,9 @@ function writeGastosPorCategoriaSection(
   expenses: DashboardExportData["expenses"],
   chartPng: Buffer,
 ) {
-  writeSectionHeading(doc, "Gastos por categoria");
+  writeSectionHeading(doc, "Gastos por categoría");
   writeTable(doc, expenses.byCategory, [
-    { header: "Categoria", width: 280, value: (row) => row.label },
+    { header: "Categoría", width: 280, value: (row) => row.label },
     { header: "Total", width: 150, align: "right", value: (row) => formatCOP(row.total) },
   ]);
   writeChartImage(doc, chartPng);
@@ -336,8 +336,8 @@ function writeGastosRecientesSection(doc: PDFKit.PDFDocument, expenses: Dashboar
   writeSectionHeading(doc, "Gastos recientes");
   writeTable(doc, expenses.recentExpenses, [
     { header: "Fecha", width: 65, value: (row) => row.expenseDate },
-    { header: "Categoria", width: 90, value: (row) => getCategoryLabel(row.category) },
-    { header: "Descripcion", width: 150, value: (row) => row.description },
+    { header: "Categoría", width: 90, value: (row) => getCategoryLabel(row.category) },
+    { header: "Descripción", width: 150, value: (row) => row.description },
     { header: "Monto", width: 80, align: "right", value: (row) => formatCOP(row.amount) },
     { header: "Notas", width: 90, value: (row) => row.notes ?? "-" },
   ]);

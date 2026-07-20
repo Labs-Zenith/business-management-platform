@@ -157,7 +157,7 @@ describe("NominaPage", () => {
     render(await NominaPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText(/no se encontraron empleados/i)).toBeInTheDocument();
-    expect(screen.getByText(/no se encontraron pagos de nomina/i)).toBeInTheDocument();
+    expect(screen.getByText(/no se encontraron pagos de nómina/i)).toBeInTheDocument();
   });
 
   it("offers the 'Nuevo empleado' and 'Registrar pago' quick actions", async () => {

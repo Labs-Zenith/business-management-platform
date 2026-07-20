@@ -167,7 +167,7 @@ export default function PayrollPaymentFormDialog({ employees, periodTypes, trigg
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar pago</DialogTitle>
-          <DialogDescription>Registra un nuevo pago de nomina para un empleado.</DialogDescription>
+          <DialogDescription>Registra un nuevo pago de nómina para un empleado.</DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit(onSubmit)}>
           <div className="flex flex-col gap-1.5">
@@ -273,7 +273,7 @@ export default function PayrollPaymentFormDialog({ employees, periodTypes, trigg
           </div>
           {preview ? (
             <p data-testid="payroll-period-preview" className="text-sm text-muted-foreground">
-              Periodo: {preview.periodStart} a {preview.periodEnd} ({preview.days} dias)
+              Periodo: {preview.periodStart} a {preview.periodEnd} ({preview.days} días)
             </p>
           ) : null}
           <div className="flex flex-col gap-1.5">

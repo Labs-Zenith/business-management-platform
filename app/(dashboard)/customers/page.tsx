@@ -77,7 +77,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
             id="q"
             name="q"
             defaultValue={params.q ?? ""}
-            placeholder="Nombre, documento, email o telefono"
+            placeholder="Nombre, documento, email o teléfono"
             className="w-full"
           />
         </div>
@@ -105,7 +105,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         <TableHeader>
           <TableRow>
             <TableHead>Nombre</TableHead>
-            <TableHead>Telefono</TableHead>
+            <TableHead>Teléfono</TableHead>
             <TableHead className="text-right">Saldo pendiente</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead className="text-right">Acciones</TableHead>

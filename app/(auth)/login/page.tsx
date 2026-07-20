@@ -16,7 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-const GENERIC_ERROR_MESSAGE = "No se pudo iniciar sesion. Verifica tus datos e intenta de nuevo.";
+const GENERIC_ERROR_MESSAGE = "No se pudo iniciar sesión. Verifica tus datos e intenta de nuevo.";
 
 /**
  * Login is USERNAME + password — no email validation. Supabase Auth is

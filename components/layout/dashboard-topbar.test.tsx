@@ -55,7 +55,7 @@ describe("DashboardTopbar", () => {
     expect(screen.queryByRole("link", { name: "Nómina" })).not.toBeInTheDocument();
   });
 
-  it("threads memberships + session.email into the drawer, showing the business switcher and the user row with Cerrar sesion once opened", async () => {
+  it("threads memberships + session.email into the drawer, showing the business switcher and the user row with Cerrar sesión once opened", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
     render(<DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} />);
@@ -67,6 +67,6 @@ describe("DashboardTopbar", () => {
 
     await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
 
-    expect(await screen.findByRole("menuitem", { name: /cerrar sesion/i })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: /cerrar sesión/i })).toBeInTheDocument();
   });
 });

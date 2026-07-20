@@ -69,7 +69,7 @@ export async function renderInvoicesWorkbook(rows: InvoiceExportRow[]): Promise<
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Facturas");
   sheet.columns = [
-    { header: "Numero", key: "number", width: 16 },
+    { header: "Número", key: "number", width: 16 },
     { header: "Cliente", key: "customer", width: 18 },
     { header: "Fecha", key: "issueDate", width: 14 },
     { header: "Vencimiento", key: "dueDate", width: 14 },
@@ -146,7 +146,7 @@ function addPagosPorMesSheet(workbook: ExcelJS.Workbook, charts: DashboardCharts
 function addFacturasVencidasSheet(workbook: ExcelJS.Workbook, summary: DashboardSummary) {
   const facturasVencidas = workbook.addWorksheet("Facturas vencidas");
   facturasVencidas.columns = [
-    { header: "Numero", key: "number", width: 16 },
+    { header: "Número", key: "number", width: 16 },
     { header: "Fecha", key: "issueDate", width: 14 },
     { header: "Vencimiento", key: "dueDate", width: 14 },
     { header: "Total", key: "total", width: 16 },
@@ -167,7 +167,7 @@ function addPagosRecientesSheet(workbook: ExcelJS.Workbook, summary: DashboardSu
     { header: "Cliente", key: "customer", width: 28 },
     { header: "Factura", key: "invoice", width: 18 },
     { header: "Monto", key: "amount", width: 16 },
-    { header: "Metodo", key: "method", width: 18 },
+    { header: "Método", key: "method", width: 18 },
     { header: "Notas", key: "notes", width: 28 },
   ];
   styleHeader(pagosRecientes.getRow(1));
@@ -177,9 +177,9 @@ function addPagosRecientesSheet(workbook: ExcelJS.Workbook, summary: DashboardSu
 }
 
 function addGastosPorCategoriaSheet(workbook: ExcelJS.Workbook, expenses: ExpensesSummary) {
-  const gastosPorCategoria = workbook.addWorksheet("Gastos por categoria");
+  const gastosPorCategoria = workbook.addWorksheet("Gastos por categoría");
   gastosPorCategoria.columns = [
-    { header: "Categoria", key: "label", width: 18 },
+    { header: "Categoría", key: "label", width: 18 },
     { header: "Total", key: "total", width: 16 },
   ];
   styleHeader(gastosPorCategoria.getRow(1));
@@ -216,7 +216,7 @@ const GRAFICOS_ORDER: { key: keyof DashboardChartImages; title: string }[] = [
   { key: "receivablesByStatus", title: "Saldo por estado" },
   { key: "topDebtors", title: "Mayores saldos" },
   { key: "monthlyPayments", title: "Pagos por mes" },
-  { key: "expensesByCategory", title: "Gastos por categoria" },
+  { key: "expensesByCategory", title: "Gastos por categoría" },
   { key: "expensesByMonth", title: "Gastos por mes" },
 ];
 
@@ -226,7 +226,7 @@ const GRAFICOS_ORDER: { key: keyof DashboardChartImages; title: string }[] = [
  * never touches their columns/rows/tests.
  */
 function addGraficosSheet(workbook: ExcelJS.Workbook, chartImages: DashboardChartImages) {
-  const graficos = workbook.addWorksheet("Graficos");
+  const graficos = workbook.addWorksheet("Gráficos");
   let row = 0;
   for (const { key, title } of GRAFICOS_ORDER) {
     graficos.getCell(row + 1, 1).value = title;
@@ -248,8 +248,8 @@ function addGastosRecientesSheet(workbook: ExcelJS.Workbook, expenses: ExpensesS
   const gastosRecientes = workbook.addWorksheet("Gastos recientes");
   gastosRecientes.columns = [
     { header: "Fecha", key: "expenseDate", width: 14 },
-    { header: "Categoria", key: "category", width: 16 },
-    { header: "Descripcion", key: "description", width: 28 },
+    { header: "Categoría", key: "category", width: 16 },
+    { header: "Descripción", key: "description", width: 28 },
     { header: "Monto", key: "amount", width: 16 },
     { header: "Notas", key: "notes", width: 28 },
   ];
@@ -310,7 +310,7 @@ export async function renderPaymentsWorkbook(rows: PaymentWithRefs[]): Promise<B
     { header: "Cliente", key: "customer", width: 28 },
     { header: "Factura", key: "invoice", width: 18 },
     { header: "Monto", key: "amount", width: 16 },
-    { header: "Metodo", key: "method", width: 18 },
+    { header: "Método", key: "method", width: 18 },
     { header: "Notas", key: "notes", width: 28 },
   ];
   styleHeader(sheet.getRow(1));

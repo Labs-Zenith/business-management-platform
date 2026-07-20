@@ -39,7 +39,7 @@ export function InvoiceItemFields({ control, register, errors }: InvoiceItemFiel
             className="grid grid-cols-1 items-end gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_auto_auto]"
           >
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`items.${index}.description`}>Descripcion</Label>
+              <Label htmlFor={`items.${index}.description`}>Descripción</Label>
               <Input id={`items.${index}.description`} {...register(`items.${index}.description` as const)} />
               {itemErrors?.description ? (
                 <p className="text-xs text-destructive">{itemErrors.description.message}</p>

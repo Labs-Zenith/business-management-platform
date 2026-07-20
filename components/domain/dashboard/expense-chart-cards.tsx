@@ -68,7 +68,7 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
         </CardHeader>
         <CardContent>
           {!hasMonthlyAmounts ? (
-            <EmptyChart label="Sin egresos en los ultimos meses." />
+            <EmptyChart label="Sin egresos en los últimos meses." />
           ) : (
             <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">

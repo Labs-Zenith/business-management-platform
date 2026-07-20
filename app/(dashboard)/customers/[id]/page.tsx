@@ -92,8 +92,8 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
         <CardContent className="flex flex-col gap-2">
           <CardRow label="Documento">{customer.documentNumber ?? "-"}</CardRow>
           <CardRow label="Email">{customer.email ?? "-"}</CardRow>
-          <CardRow label="Telefono">{customer.phone ?? "-"}</CardRow>
-          <CardRow label="Direccion">{customer.address ?? "-"}</CardRow>
+          <CardRow label="Teléfono">{customer.phone ?? "-"}</CardRow>
+          <CardRow label="Dirección">{customer.address ?? "-"}</CardRow>
           <CardRow label="Notas">{customer.notes ?? "-"}</CardRow>
         </CardContent>
       </Card>
@@ -109,7 +109,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
             <Table className="min-w-[680px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Numero</TableHead>
+                  <TableHead>Número</TableHead>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Saldo</TableHead>
@@ -148,7 +148,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
                   <TableHead>Fecha</TableHead>
                   <TableHead>Factura</TableHead>
                   <TableHead>Monto</TableHead>
-                  <TableHead>Metodo</TableHead>
+                  <TableHead>Método</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

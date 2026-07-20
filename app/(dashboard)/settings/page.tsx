@@ -49,7 +49,7 @@ export default async function SettingsPage() {
       <Card className="w-full max-w-lg">
         <CardHeader>
           <CardTitle>Negocio</CardTitle>
-          <CardDescription>Datos basicos de tu negocio.</CardDescription>
+          <CardDescription>Datos básicos de tu negocio.</CardDescription>
         </CardHeader>
         <CardContent>
           <BusinessProfileForm

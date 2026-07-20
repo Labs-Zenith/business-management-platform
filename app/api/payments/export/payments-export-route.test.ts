@@ -66,7 +66,7 @@ describe("GET /api/payments/export", () => {
       "Cliente",
       "Factura",
       "Monto",
-      "Metodo",
+      "Método",
       "Notas",
     ]);
     expect(sheet!.rowCount).toBeGreaterThan(1);

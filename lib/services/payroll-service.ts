@@ -72,7 +72,7 @@ export async function createPayrollPayment(session: Session, input: PayrollPayme
   const parsed = expenseCreateSchema.safeParse({
     category: "nomina",
     expenseDate: input.paymentDate,
-    description: `Nomina ${employee.name} (${periodStart} - ${periodEnd})`,
+    description: `Nómina ${employee.name} (${periodStart} - ${periodEnd})`,
     amount: input.amount,
     notes: input.notes ?? undefined,
   });

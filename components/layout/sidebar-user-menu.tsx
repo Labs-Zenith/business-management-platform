@@ -60,7 +60,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const GENERIC_ERROR_MESSAGE = "No se pudo cerrar sesion. Intenta de nuevo.";
+const GENERIC_ERROR_MESSAGE = "No se pudo cerrar sesión. Intenta de nuevo.";
 
 type SidebarUserMenuProps = {
   email: string;
@@ -103,7 +103,7 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
-        {isLoggingOut ? "Cerrando sesion..." : "Cerrar sesion"}
+        {isLoggingOut ? "Cerrando sesión..." : "Cerrar sesión"}
       </DropdownMenuItem>
     </DropdownMenuContent>
   );

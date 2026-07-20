@@ -83,7 +83,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
             <TableHead>Cliente</TableHead>
             <TableHead>Factura</TableHead>
             <TableHead>Monto</TableHead>
-            <TableHead>Metodo</TableHead>
+            <TableHead>Método</TableHead>
             <TableHead>Comprobante</TableHead>
           </TableRow>
         </TableHeader>

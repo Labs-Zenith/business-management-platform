@@ -119,7 +119,7 @@ describe("DashboardLayout (shared navigation shell)", () => {
     expect(screen.getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();
   });
 
-  it("exposes Cerrar sesion inside the opened bottom-of-sidebar user menu", async () => {
+  it("exposes Cerrar sesión inside the opened bottom-of-sidebar user menu", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
@@ -129,7 +129,7 @@ describe("DashboardLayout (shared navigation shell)", () => {
 
     await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
 
-    expect(await screen.findByRole("menuitem", { name: /cerrar sesion/i })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: /cerrar sesión/i })).toBeInTheDocument();
   });
 
   /**

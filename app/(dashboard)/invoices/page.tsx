@@ -127,7 +127,7 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
       <Table className="min-w-[900px]">
         <TableHeader>
           <TableRow>
-            <TableHead>Numero</TableHead>
+            <TableHead>Número</TableHead>
             <TableHead>Cliente</TableHead>
             <TableHead>Fecha</TableHead>
             <TableHead>Vencimiento</TableHead>

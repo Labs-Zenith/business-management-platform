@@ -177,7 +177,7 @@ export default function ExpenseFormDialog({ categories, trigger }: ExpenseFormDi
         </DialogHeader>
         <form className="flex flex-col gap-4" noValidate onSubmit={onSubmit}>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="expense-category">Categoria</Label>
+            <Label htmlFor="expense-category">Categoría</Label>
             <Select
               items={categories.map((category) => ({ value: category.code, label: category.label }))}
               value={values.category}
@@ -187,7 +187,7 @@ export default function ExpenseFormDialog({ categories, trigger }: ExpenseFormDi
               }}
             >
               <SelectTrigger id="expense-category" className="h-9 w-full">
-                <SelectValue placeholder="Selecciona una categoria" />
+                <SelectValue placeholder="Selecciona una categoría" />
               </SelectTrigger>
               <SelectContent>
                 {categories.map((category) => (
@@ -202,7 +202,7 @@ export default function ExpenseFormDialog({ categories, trigger }: ExpenseFormDi
             ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="expense-description">Descripcion</Label>
+            <Label htmlFor="expense-description">Descripción</Label>
             <Input
               id="expense-description"
               value={values.description}

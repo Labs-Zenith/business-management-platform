@@ -96,9 +96,9 @@ export type BusinessProfileFormProps = {
 
 const READ_ONLY_FIELDS: ReadonlyArray<{ label: string; key: keyof BusinessProfileFormValues }> = [
   { label: "Nombre", key: "name" },
-  { label: "Telefono", key: "phone" },
+  { label: "Teléfono", key: "phone" },
   { label: "Email", key: "email" },
-  { label: "Direccion", key: "address" },
+  { label: "Dirección", key: "address" },
   { label: "Moneda", key: "currency" },
 ];
 
@@ -213,7 +213,7 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
         {touched.name && errors.name ? <p className="text-xs text-destructive">{errors.name}</p> : null}
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="business-phone">Telefono</Label>
+        <Label htmlFor="business-phone">Teléfono</Label>
         <Input
           id="business-phone"
           name="phone"
@@ -238,7 +238,7 @@ export default function BusinessProfileForm({ business, canEdit }: BusinessProfi
         {touched.email && errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="business-address">Direccion</Label>
+        <Label htmlFor="business-address">Dirección</Label>
         <Input
           id="business-address"
           name="address"

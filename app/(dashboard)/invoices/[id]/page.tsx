@@ -118,7 +118,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
         </CardHeader>
         <CardContent className="flex flex-col gap-2">
           <CardRow label="Cliente">{invoice.customer.name}</CardRow>
-          <CardRow label="Fecha de emision">{invoice.issueDate}</CardRow>
+          <CardRow label="Fecha de emisión">{invoice.issueDate}</CardRow>
           <CardRow label="Fecha de vencimiento">{invoice.dueDate ?? "Sin fecha"}</CardRow>
           <CardRow label="Nota">{invoice.notes ?? "-"}</CardRow>
         </CardContent>
@@ -132,7 +132,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           <Table className="min-w-[680px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Descripcion</TableHead>
+                <TableHead>Descripción</TableHead>
                 <TableHead>Cantidad</TableHead>
                 <TableHead>Valor unitario</TableHead>
                 <TableHead>Total item</TableHead>
@@ -176,7 +176,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Monto</TableHead>
-                  <TableHead>Metodo</TableHead>
+                  <TableHead>Método</TableHead>
                   <TableHead>Comprobante</TableHead>
                 </TableRow>
               </TableHeader>

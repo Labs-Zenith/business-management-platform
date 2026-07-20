@@ -8,7 +8,7 @@ import { z } from "zod";
  * `invoice-form-content.tsx`), since typing raw cents would be unusable UX.
  */
 export const invoiceItemFormSchema = z.object({
-  description: z.string().trim().min(1, "Descripcion requerida"),
+  description: z.string().trim().min(1, "Descripción requerida"),
   // Plain `z.number()` (not `z.coerce.number()`): the corresponding inputs
   // are registered with `{ valueAsNumber: true }` in
   // `invoice-item-fields.tsx`, so react-hook-form already produces a
@@ -34,7 +34,7 @@ export const invoiceItemFormSchema = z.object({
 
 export const invoiceFormSchema = z.object({
   customerId: z.string().trim().min(1, "Selecciona un cliente"),
-  issueDate: z.string().trim().min(1, "Fecha de emision requerida"),
+  issueDate: z.string().trim().min(1, "Fecha de emisión requerida"),
   dueDate: z.string().trim().optional(),
   notes: z.string().trim().optional(),
   // Optional at THIS (client) validation level — required/pre-filled in

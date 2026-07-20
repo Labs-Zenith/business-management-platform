@@ -237,7 +237,7 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
             {touched.email && errors.email ? <p className="text-xs text-destructive">{errors.email}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="customer-phone">Telefono</Label>
+            <Label htmlFor="customer-phone">Teléfono</Label>
             <Input
               id="customer-phone"
               name="phone"
@@ -249,7 +249,7 @@ export default function CustomerFormDialog({ mode, customer, trigger }: Customer
             {touched.phone && errors.phone ? <p className="text-xs text-destructive">{errors.phone}</p> : null}
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="customer-address">Direccion</Label>
+            <Label htmlFor="customer-address">Dirección</Label>
             <Input
               id="customer-address"
               name="address"

@@ -52,7 +52,7 @@ describe("CustomerFormDialog (create mode)", () => {
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
-  it("includes optional fields (documento, email, telefono, direccion, notas) once filled", async () => {
+  it("includes optional fields (documento, email, teléfono, dirección, notas) once filled", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -66,8 +66,8 @@ describe("CustomerFormDialog (create mode)", () => {
     await user.type(await screen.findByLabelText(/nombre/i), "Nuevo Cliente");
     await user.type(screen.getByLabelText(/documento/i), "1234567890");
     await user.type(screen.getByLabelText(/email/i), "cliente@example.com");
-    await user.type(screen.getByLabelText(/telefono/i), "3009998888");
-    await user.type(screen.getByLabelText(/direccion/i), "Calle 1");
+    await user.type(screen.getByLabelText(/teléfono/i), "3009998888");
+    await user.type(screen.getByLabelText(/dirección/i), "Calle 1");
     await user.type(screen.getByLabelText(/notas/i), "Paga siempre a tiempo");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 

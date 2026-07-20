@@ -59,13 +59,13 @@ describe("SidebarUserMenu", () => {
     expect(screen.getByRole("button", { name: EMAIL })).toBeInTheDocument();
   });
 
-  it("opens to reveal the session email and a Cerrar sesion action", async () => {
+  it("opens to reveal the session email and a Cerrar sesión action", async () => {
     const user = userEvent.setup();
     render(<SidebarUserMenu email={EMAIL} />);
 
     await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
 
-    expect(await screen.findByRole("menuitem", { name: /cerrar sesion/i })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: /cerrar sesión/i })).toBeInTheDocument();
     expect(screen.getAllByText(EMAIL).length).toBeGreaterThan(0);
   });
 
@@ -80,7 +80,7 @@ describe("SidebarUserMenu", () => {
     render(<SidebarUserMenu email={EMAIL} />);
 
     await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
-    await user.click(await screen.findByRole("menuitem", { name: /cerrar sesion/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /cerrar sesión/i }));
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/auth/logout",
@@ -102,7 +102,7 @@ describe("SidebarUserMenu", () => {
     render(<SidebarUserMenu email={EMAIL} />);
 
     await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
-    await user.click(await screen.findByRole("menuitem", { name: /cerrar sesion/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /cerrar sesión/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
@@ -115,7 +115,7 @@ describe("SidebarUserMenu", () => {
     render(<SidebarUserMenu email={EMAIL} />);
 
     await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
-    await user.click(await screen.findByRole("menuitem", { name: /cerrar sesion/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /cerrar sesión/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
@@ -141,7 +141,7 @@ describe("SidebarUserMenu", () => {
     render(<SidebarUserMenu email={EMAIL} />);
 
     await user.click(screen.getByRole("button", { name: "Opciones de cuenta" }));
-    await user.click(await screen.findByRole("menuitem", { name: /cerrar sesion/i }));
+    await user.click(await screen.findByRole("menuitem", { name: /cerrar sesión/i }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();

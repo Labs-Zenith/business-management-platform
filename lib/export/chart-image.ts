@@ -116,7 +116,7 @@ export async function renderMonthlyPaymentsPng(data: DashboardCharts["monthlyPay
 /** Amber palette (chart4/chart5), matching `expense-chart-cards.tsx`'s category card. */
 export async function renderExpensesByCategoryPng(data: ExpensesByCategoryDatum[]): Promise<Buffer> {
   const svg = renderBarChartSvg({
-    title: "Gastos por categoria",
+    title: "Gastos por categoría",
     data: data.map((datum, index) => ({
       label: datum.label,
       value: datum.total,

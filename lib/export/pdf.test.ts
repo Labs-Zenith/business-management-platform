@@ -262,7 +262,7 @@ describe("renderDashboardExportPdf", () => {
       "Pagos por mes",
       "Facturas vencidas",
       "Pagos recientes",
-      "Gastos por categoria",
+      "Gastos por categoría",
       "Gastos por mes",
       "Gastos recientes",
     ];
@@ -284,7 +284,7 @@ describe("renderDashboardExportPdf", () => {
       "Pagos por mes": 1,
       "Facturas vencidas": 2,
       "Pagos recientes": 1,
-      "Gastos por categoria": 1,
+      "Gastos por categoría": 1,
       "Gastos por mes": 1,
       "Gastos recientes": 1,
     };
@@ -438,7 +438,7 @@ describe("renderDashboardExportPdf", () => {
       "Pagos por mes",
       "Facturas vencidas",
       "Pagos recientes",
-      "Gastos por categoria",
+      "Gastos por categoría",
       "Gastos por mes",
       "Gastos recientes",
     ];
@@ -451,9 +451,9 @@ describe("renderDashboardExportPdf", () => {
     // table's header row should repeat on the new page.
     expect(facturasVencidasSlice.filter((value) => value === "Facturas vencidas").length).toBe(1);
 
-    // `writeTable`'s header row ("Numero"/"Estado", etc.) must repeat once
+    // `writeTable`'s header row ("Número"/"Estado", etc.) must repeat once
     // the table continues onto a new page.
-    expect(facturasVencidasSlice.filter((value) => value === "Numero").length).toBeGreaterThanOrEqual(2);
+    expect(facturasVencidasSlice.filter((value) => value === "Número").length).toBeGreaterThanOrEqual(2);
     expect(facturasVencidasSlice.filter((value) => value === "Estado").length).toBeGreaterThanOrEqual(2);
 
     // The last row's data must still have rendered after the page break.

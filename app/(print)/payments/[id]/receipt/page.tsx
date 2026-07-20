@@ -55,7 +55,7 @@ export default async function PaymentReceiptPage({ params }: PaymentReceiptPageP
         <Field label="Cliente" value={payment.customer.name} />
         <Field label="Factura" value={payment.invoice.number} />
         <Field label="Fecha de pago" value={payment.paymentDate} />
-        <Field label="Metodo" value={payment.method ?? "-"} />
+        <Field label="Método" value={payment.method ?? "-"} />
       </dl>
 
       <dl className="ml-auto grid w-full max-w-xs gap-2 sm:max-w-64">

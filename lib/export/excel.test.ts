@@ -10,9 +10,9 @@ const SHEET_NAMES = [
   "Pagos por mes",
   "Facturas vencidas",
   "Pagos recientes",
-  "Gastos por categoria",
+  "Gastos por categoría",
   "Gastos recientes",
-  "Graficos",
+  "Gráficos",
 ];
 
 /** 1x1 transparent PNG — smallest valid PNG buffer, good enough for `addImage`'s extension detection. */
@@ -253,7 +253,7 @@ describe("renderDashboardWorkbook", () => {
     const facturasVencidas = workbook.getWorksheet("Facturas vencidas")!;
     expect(facturasVencidas.getRow(1).values).toEqual([
       undefined,
-      "Numero",
+      "Número",
       "Fecha",
       "Vencimiento",
       "Total",
@@ -291,7 +291,7 @@ describe("renderDashboardWorkbook", () => {
       "Cliente",
       "Factura",
       "Monto",
-      "Metodo",
+      "Método",
       "Notas",
     ]);
     expect(pagosRecientes.rowCount).toBe(3);
@@ -316,8 +316,8 @@ describe("renderDashboardWorkbook", () => {
       "Pago parcial",
     ]);
 
-    const gastosPorCategoria = workbook.getWorksheet("Gastos por categoria")!;
-    expect(gastosPorCategoria.getRow(1).values).toEqual([undefined, "Categoria", "Total"]);
+    const gastosPorCategoria = workbook.getWorksheet("Gastos por categoría")!;
+    expect(gastosPorCategoria.getRow(1).values).toEqual([undefined, "Categoría", "Total"]);
     expect(gastosPorCategoria.getRow(2).values).toEqual([undefined, "Nómina", formatCOP(100_000)]);
     expect(gastosPorCategoria.getRow(3).values).toEqual([undefined, "Otro", formatCOP(50_000)]);
 
@@ -325,8 +325,8 @@ describe("renderDashboardWorkbook", () => {
     expect(gastosRecientes.getRow(1).values).toEqual([
       undefined,
       "Fecha",
-      "Categoria",
-      "Descripcion",
+      "Categoría",
+      "Descripción",
       "Monto",
       "Notas",
     ]);
@@ -350,11 +350,11 @@ describe("renderDashboardWorkbook", () => {
     expect(headerValues).not.toContain("Cliente");
   });
 
-  it("embeds all 5 chart PNGs into the Graficos sheet, without altering the 8 data sheets", async () => {
+  it("embeds all 5 chart PNGs into the Gráficos sheet, without altering the 8 data sheets", async () => {
     const buffer = await renderDashboardWorkbook(buildDashboardData(), buildChartImages());
     const workbook = await loadWorkbook(buffer);
 
-    const graficos = workbook.getWorksheet("Graficos")!;
+    const graficos = workbook.getWorksheet("Gráficos")!;
     expect(graficos).toBeDefined();
 
     // `workbook.model.media` holds every embedded image across the whole
@@ -366,7 +366,7 @@ describe("renderDashboardWorkbook", () => {
     }
 
     // The 8 pre-existing data sheets are untouched.
-    const dataSheetNames = SHEET_NAMES.filter((name) => name !== "Graficos");
+    const dataSheetNames = SHEET_NAMES.filter((name) => name !== "Gráficos");
     expect(dataSheetNames.every((name) => workbook.getWorksheet(name) !== undefined)).toBe(true);
     expect(workbook.getWorksheet("Resumen")!.rowCount).toBe(5);
   });
@@ -383,7 +383,7 @@ describe("renderDashboardWorkbook", () => {
     expect(saldoPorEstado.getRow(2).values).toEqual([undefined, "Pendiente", 0, formatCOP(0), formatCOP(0)]);
     expect(saldoPorEstado.getRow(5).values).toEqual([undefined, "Vencida", 0, formatCOP(0), formatCOP(0)]);
 
-    const gastosPorCategoria = workbook.getWorksheet("Gastos por categoria")!;
+    const gastosPorCategoria = workbook.getWorksheet("Gastos por categoría")!;
     expect(gastosPorCategoria.rowCount).toBe(3);
     expect(gastosPorCategoria.getRow(2).values).toEqual([undefined, "Nómina", formatCOP(0)]);
     expect(gastosPorCategoria.getRow(3).values).toEqual([undefined, "Otro", formatCOP(0)]);

@@ -57,14 +57,14 @@ export default async function InvoiceReceiptPage({ params }: InvoiceReceiptPageP
 
       <dl className="grid gap-3 sm:grid-cols-2">
         <Field label="Cliente" value={invoice.customer.name} />
-        <Field label="Fecha de emision" value={invoice.issueDate} />
+        <Field label="Fecha de emisión" value={invoice.issueDate} />
         <Field label="Fecha de vencimiento" value={invoice.dueDate ?? "Sin fecha"} />
       </dl>
 
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Descripcion</TableHead>
+            <TableHead>Descripción</TableHead>
             <TableHead>Cantidad</TableHead>
             <TableHead>Valor unitario</TableHead>
             <TableHead>Total item</TableHead>

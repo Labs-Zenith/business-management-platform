@@ -62,9 +62,9 @@ const SHEET_NAMES = [
   "Pagos por mes",
   "Facturas vencidas",
   "Pagos recientes",
-  "Gastos por categoria",
+  "Gastos por categoría",
   "Gastos recientes",
-  "Graficos",
+  "Gráficos",
 ];
 
 async function signIn(): Promise<void> {
@@ -164,7 +164,7 @@ describe("GET /api/dashboard/export", () => {
     expect(workbook.getWorksheet("Pagos recientes")!.rowCount).toBe(1);
     expect(workbook.getWorksheet("Gastos recientes")!.rowCount).toBe(1);
     // Charts still render (as "Sin datos" placeholders) without throwing.
-    expect(workbook.getWorksheet("Graficos")).toBeDefined();
+    expect(workbook.getWorksheet("Gráficos")).toBeDefined();
     expect(workbook.model.media.length).toBe(5);
 
     const pdfResponse = await GET(new Request("http://localhost:3000/api/dashboard/export?format=pdf"));

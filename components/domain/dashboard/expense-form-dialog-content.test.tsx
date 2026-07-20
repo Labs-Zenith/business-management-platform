@@ -41,7 +41,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
@@ -70,10 +70,10 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
-    await selectOption(user, /categoria/i, "Nómina");
+    await selectOption(user, /categoría/i, "Nómina");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
@@ -95,7 +95,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     // amount left at its default ("") — invalid, must be > 0
     await user.click(screen.getByLabelText(/monto/i));
     await user.tab();
@@ -115,7 +115,7 @@ describe("ExpenseFormDialog", () => {
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
     await user.clear(await screen.findByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
-    await user.click(screen.getByLabelText(/descripcion/i));
+    await user.click(screen.getByLabelText(/descripción/i));
     await user.tab();
 
     expect(await screen.findByText(/demasiado peque/i)).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.click(screen.getByLabelText(/monto/i));
     await user.tab();
 
@@ -155,7 +155,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
@@ -164,7 +164,7 @@ describe("ExpenseFormDialog", () => {
     expect(refreshMock).not.toHaveBeenCalled();
     // The dialog must remain open and usable — not silently closed on error.
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByLabelText(/descripcion/i)).toHaveValue("Papeleria");
+    expect(screen.getByLabelText(/descripción/i)).toHaveValue("Papeleria");
     expect(screen.getByLabelText(/monto/i)).toHaveValue("500");
   });
 
@@ -175,7 +175,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
@@ -202,7 +202,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
@@ -237,7 +237,7 @@ describe("ExpenseFormDialog", () => {
       render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
       await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-      await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+      await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
       await user.clear(screen.getByLabelText(/monto/i));
       await user.type(screen.getByLabelText(/monto/i), typed);
       await user.click(screen.getByRole("button", { name: /guardar/i }));
@@ -295,7 +295,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
 
@@ -329,7 +329,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
 
@@ -360,7 +360,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
     await user.type(screen.getByLabelText(/nota/i), "   ");
@@ -383,7 +383,7 @@ describe("ExpenseFormDialog", () => {
     render(<ExpenseFormDialog categories={CATEGORIES} trigger={<button type="button">Crear gasto</button>} />);
 
     await user.click(screen.getByRole("button", { name: /crear gasto/i }));
-    await user.type(await screen.findByLabelText(/descripcion/i), "Papeleria");
+    await user.type(await screen.findByLabelText(/descripción/i), "Papeleria");
     await user.clear(screen.getByLabelText(/monto/i));
     await user.type(screen.getByLabelText(/monto/i), "500");
     await user.type(screen.getByLabelText(/nota/i), "  Pagado en efectivo  ");

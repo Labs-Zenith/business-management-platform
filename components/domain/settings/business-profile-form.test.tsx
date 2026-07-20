@@ -43,9 +43,9 @@ describe("BusinessProfileForm", () => {
     await user.click(screen.getByRole("button", { name: /editar/i }));
 
     expect(screen.getByLabelText(/nombre/i)).toHaveValue(BUSINESS.name);
-    expect(screen.getByLabelText(/telefono/i)).toHaveValue(BUSINESS.phone);
+    expect(screen.getByLabelText(/teléfono/i)).toHaveValue(BUSINESS.phone);
     expect(screen.getByLabelText(/^email/i)).toHaveValue(BUSINESS.email);
-    expect(screen.getByLabelText(/direccion/i)).toHaveValue(BUSINESS.address);
+    expect(screen.getByLabelText(/dirección/i)).toHaveValue(BUSINESS.address);
     expect(screen.getByLabelText(/moneda/i)).toHaveValue(BUSINESS.currency);
   });
 

@@ -288,7 +288,7 @@ export default function InvoiceFormContent({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="invoice-issue-date">Fecha de emision</Label>
+          <Label htmlFor="invoice-issue-date">Fecha de emisión</Label>
           <Controller
             control={control}
             name="issueDate"

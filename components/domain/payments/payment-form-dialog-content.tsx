@@ -225,7 +225,7 @@ export default function PaymentFormDialog({ invoiceId, balance, trigger }: Payme
             ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="payment-method">Metodo</Label>
+            <Label htmlFor="payment-method">Método</Label>
             <Input
               id="payment-method"
               name="method"

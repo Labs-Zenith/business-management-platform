@@ -53,7 +53,7 @@ export function TablePagination({
   const isLastPage = page >= totalPages;
 
   return (
-    <nav aria-label="Paginacion" className="flex flex-wrap items-center justify-between gap-3">
+    <nav aria-label="Paginación" className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-1">
         {isFirstPage ? (
           <span

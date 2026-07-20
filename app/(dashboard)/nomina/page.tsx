@@ -75,8 +75,8 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
   return (
     <PageShell>
       <PageHeader
-        title="Nomina"
-        description="Gestiona empleados y registra pagos de nomina."
+        title="Nómina"
+        description="Gestiona empleados y registra pagos de nómina."
         actions={
           <>
             <EmployeeFormDialog
@@ -105,7 +105,7 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
       <Tabs defaultValue={activeTab}>
         <TabsList>
           <TabsTab value="empleados">Empleados</TabsTab>
-          <TabsTab value="pagos">Pagos de nomina</TabsTab>
+          <TabsTab value="pagos">Pagos de nómina</TabsTab>
         </TabsList>
 
         {/* keepMounted is required: do not remove, matches dashboard/page.tsx's
@@ -183,7 +183,7 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
               {paymentsResult.data.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No se encontraron pagos de nomina.
+                    No se encontraron pagos de nómina.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -210,7 +210,7 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
             pathname="/nomina"
             paramName="paymentsPage"
             params={{ employeesPage: params.employeesPage, paymentsPage: params.paymentsPage, tab: "pagos" }}
-            itemLabel="pagos de nomina"
+            itemLabel="pagos de nómina"
           />
         </TabsPanel>
       </Tabs>
