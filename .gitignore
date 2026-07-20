@@ -45,3 +45,6 @@ next-env.d.ts
 test-results/
 playwright-report/
 /playwright/.cache/
+
+# personal data — Google Contacts exports + generated review sheets (never commit, PII)
+/docs/contactos-printing/
