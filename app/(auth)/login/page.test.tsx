@@ -99,18 +99,21 @@ describe("LoginPage", () => {
     expect(pushMock).not.toHaveBeenCalledWith(malicious);
   });
 
-  it("shows an inline error only when the input looks like a malformed email (has @), and keeps submit disabled", async () => {
+  it("does not enforce email format — the username field only requires a non-empty value", async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
     const submitButton = screen.getByRole("button", { name: /ingresar/i });
-    expect(submitButton).toBeDisabled();
+    expect(submitButton).toBeDisabled(); // empty on mount
 
+    // An `@`-containing value is NOT rejected: no "correo válido" error appears,
+    // and with a password the form becomes submittable.
     await user.type(screen.getByLabelText(/usuario/i), "usuario@");
     await user.tab(); // blur the field
+    expect(screen.queryByText(/correo v[aá]lido/i)).not.toBeInTheDocument();
 
-    expect(await screen.findByText(/correo v[aá]lido/i)).toBeInTheDocument();
-    expect(submitButton).toBeDisabled();
+    await user.type(screen.getByLabelText(/contrase/i, { selector: "input" }), "demo1234");
+    expect(submitButton).toBeEnabled();
   });
 
   it("accepts a plain username (no @) and enables submit; on success it maps the username to the internal email", async () => {

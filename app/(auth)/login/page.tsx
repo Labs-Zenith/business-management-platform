@@ -19,20 +19,16 @@ import {
 const GENERIC_ERROR_MESSAGE = "No se pudo iniciar sesion. Verifica tus datos e intenta de nuevo.";
 
 /**
- * The login field accepts a plain USERNAME (no `@`) or a full email: Supabase
- * Auth is email-based, so `usernameToEmail` appends the internal domain to a
- * username before submit (see `lib/auth/username.ts`); an input that already
- * has `@` passes through. Client-side UX only (inline errors + disabling the
- * button); the API route re-validates server-side (source of truth). Required,
- * and if it looks like an email it must be a valid one.
+ * Login is USERNAME + password — no email validation. Supabase Auth is
+ * email-based under the hood, so `usernameToEmail` appends the internal domain
+ * to a plain username before submit (see `lib/auth/username.ts`); a value that
+ * already contains `@` (e.g. the legacy `demo@negociodemo.test`) passes
+ * through unchanged, so both still work. The field only requires a non-empty
+ * value — we intentionally do NOT enforce email format, since users sign in
+ * with a bare username. Client-side UX only (inline error + disabling the
+ * button); the API route re-validates server-side (source of truth).
  */
-const identifierSchema = z
-  .string()
-  .trim()
-  .min(1, "El usuario es obligatorio.")
-  .refine((value) => !value.includes("@") || z.string().email().safeParse(value).success, {
-    message: "Ingresa un correo válido.",
-  });
+const identifierSchema = z.string().trim().min(1, "El usuario es obligatorio.");
 const passwordSchema = z.string().min(1, "La contraseña es obligatoria.");
 
 /**
