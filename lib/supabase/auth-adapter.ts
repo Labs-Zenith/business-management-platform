@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { openJson, sealJson } from "@/lib/server/cookie-crypto";
 import type { AuthPort, BusinessMembership, Role, SavedAccount, Session } from "@/lib/services/ports";
 import { createServerSupabaseClient } from "./server";
 
@@ -72,6 +73,15 @@ import { createServerSupabaseClient } from "./server";
 const ACTIVE_BUSINESS_COOKIE_NAME = "active_business_id";
 const SAVED_ACCOUNTS_COOKIE_NAME = "saved_accounts";
 
+/**
+ * Part C3 — both `active_business_id` and `saved_accounts` were session
+ * cookies (cleared on browser close), which caused spurious re-logins on tab
+ * reopen. 400 days matches the lifetime Chrome/browsers already cap
+ * `Set-Cookie` `Max-Age`/`Expires` at, and mirrors `sb-*`'s own effective
+ * cookie lifetime managed by `@supabase/ssr`.
+ */
+const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 400;
+
 async function setActiveBusinessCookie(businessId: string): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set(ACTIVE_BUSINESS_COOKIE_NAME, businessId, {
@@ -79,6 +89,7 @@ async function setActiveBusinessCookie(businessId: string): Promise<void> {
     sameSite: "lax",
     path: "/",
     secure: process.env.NODE_ENV === "production",
+    maxAge: COOKIE_MAX_AGE_SECONDS,
   });
 }
 
@@ -114,33 +125,35 @@ function isStoredAccount(value: unknown): value is StoredAccount {
   );
 }
 
+/**
+ * Part C1 — `saved_accounts` carries refresh tokens, so its value is
+ * AES-256-GCM encrypted at rest via `lib/server/cookie-crypto.ts` (on top of
+ * `httpOnly`, which already blocks JS access). `openJson` is fail-safe
+ * (returns `null` on any decryption/parse error), so a malformed/tampered/
+ * pre-encryption-era (plaintext) cookie is treated as "no saved accounts" —
+ * same posture as the old plaintext `JSON.parse` try/catch it replaces.
+ */
 async function readSavedAccounts(): Promise<StoredAccount[]> {
   const cookieStore = await cookies();
   const raw = cookieStore.get(SAVED_ACCOUNTS_COOKIE_NAME)?.value;
   if (!raw) {
     return [];
   }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter(isStoredAccount);
-  } catch {
-    // Malformed/tampered cookie — treat as no saved accounts rather than
-    // crashing (same fail-safe posture as `lib/mock/auth-adapter.ts`'s
-    // `decodeSession`).
+  const parsed = openJson<unknown>(raw);
+  if (!Array.isArray(parsed)) {
     return [];
   }
+  return parsed.filter(isStoredAccount);
 }
 
 async function writeSavedAccounts(accounts: StoredAccount[]): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(SAVED_ACCOUNTS_COOKIE_NAME, JSON.stringify(accounts), {
+  cookieStore.set(SAVED_ACCOUNTS_COOKIE_NAME, sealJson(accounts), {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     secure: process.env.NODE_ENV === "production",
+    maxAge: COOKIE_MAX_AGE_SECONDS,
   });
 }
 

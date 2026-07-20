@@ -21,9 +21,17 @@ import { ApiError } from "@/lib/server/api-error";
  * Throws `VALIDATION_ERROR` if the request's `Content-Type` is not
  * `application/json`, or `FORBIDDEN` if neither the `Origin` nor `Referer`
  * header (in that preference order) starts with the configured
- * `APP_ORIGIN`. If `APP_ORIGIN` is not configured (e.g. local dev without a
- * `.env`), this fails OPEN — the origin check is skipped entirely rather
- * than blocking every mutation — since there is nothing to validate against.
+ * `APP_ORIGIN`.
+ *
+ * If `APP_ORIGIN` is not configured, behavior depends on the environment:
+ * in production it throws (fails CLOSED) — `switch-account` now authorizes on
+ * cookie-possession + this origin check alone (no prior session), so silently
+ * skipping the Origin/Referer check in prod would weaken CSRF protection to
+ * just the Content-Type gate + SameSite=Lax; `APP_ORIGIN` is therefore a
+ * required production env var (same posture as `COOKIE_SECRET`/
+ * `SESSION_SECRET`). In non-production (local dev without a `.env`) it fails
+ * OPEN — skipped rather than blocking every mutation — since there is nothing
+ * to validate against.
  */
 export function checkOrigin(request: Request): void {
   const contentType = request.headers.get("content-type") ?? "";
@@ -33,6 +41,12 @@ export function checkOrigin(request: Request): void {
 
   const expectedOrigin = process.env.APP_ORIGIN;
   if (!expectedOrigin) {
+    if (process.env.NODE_ENV === "production") {
+      throw new ApiError(
+        "INTERNAL_ERROR",
+        "APP_ORIGIN must be configured in production (CSRF origin check cannot fail open)."
+      );
+    }
     return;
   }
 

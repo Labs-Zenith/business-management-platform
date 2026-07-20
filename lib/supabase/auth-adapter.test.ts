@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { openJson, sealJson } from "@/lib/server/cookie-crypto";
 import type { BusinessMembership } from "@/lib/services/ports";
 
 /**
@@ -197,7 +198,7 @@ describe("supabaseAuthAdapter.signOut", () => {
     const B_ID = "user-b";
     mockCookieJar.set(
       "saved_accounts",
-      JSON.stringify([
+      sealJson([
         { userId: A_ID, email: "a@x.test", label: "a@x.test", refreshToken: "tok-a" },
         { userId: B_ID, email: "b@x.test", label: "b@x.test", refreshToken: "tok-b" },
       ])
@@ -222,7 +223,7 @@ describe("supabaseAuthAdapter.signOut", () => {
     await supabaseAuthAdapter.signOut();
 
     const raw = mockCookieJar.get("saved_accounts")!.value;
-    const saved = JSON.parse(raw) as Array<{ userId: string }>;
+    const saved = openJson<Array<{ userId: string }>>(raw)!;
     const ids = saved.map((a) => a.userId);
     expect(ids).not.toContain(A_ID); // the signed-out account is gone
     expect(ids).toContain(B_ID); // and we stayed logged in as the next one

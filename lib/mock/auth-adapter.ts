@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { openJson, sealJson } from "@/lib/server/cookie-crypto";
 import type { AuthPort, Role, SavedAccount, Session } from "@/lib/services/ports";
 import { store as defaultStore, listProfilesForUser, type MockStore } from "./store";
 
@@ -24,6 +25,13 @@ const SESSION_COOKIE_NAME = "session";
  */
 const SAVED_ACCOUNTS_COOKIE_NAME = "saved_accounts";
 
+/**
+ * Part C3 — `saved_accounts` was a session cookie (cleared on browser
+ * close), causing spurious re-logins on tab reopen. 400 days matches the
+ * lifetime `lib/supabase/auth-adapter.ts` uses for the same cookie.
+ */
+const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 400;
+
 type MockStoredAccount = { userId: string; email: string; label: string };
 
 function isMockStoredAccount(value: unknown): value is MockStoredAccount {
@@ -36,30 +44,35 @@ function isMockStoredAccount(value: unknown): value is MockStoredAccount {
   );
 }
 
+/**
+ * Part C1 — sealed with the same `lib/server/cookie-crypto.ts` AES-256-GCM
+ * scheme as the real Supabase adapter, for consistency, even though the
+ * mock's stored shape carries no secret (no refresh token — see
+ * `MockStoredAccount`). `openJson` is fail-safe (`null` on any error), so a
+ * malformed/tampered/pre-encryption-era (plaintext) cookie is treated as "no
+ * saved accounts".
+ */
 async function readSavedAccounts(): Promise<MockStoredAccount[]> {
   const cookieStore = await cookies();
   const raw = cookieStore.get(SAVED_ACCOUNTS_COOKIE_NAME)?.value;
   if (!raw) {
     return [];
   }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter(isMockStoredAccount);
-  } catch {
+  const parsed = openJson<unknown>(raw);
+  if (!Array.isArray(parsed)) {
     return [];
   }
+  return parsed.filter(isMockStoredAccount);
 }
 
 async function writeSavedAccounts(accounts: MockStoredAccount[]): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(SAVED_ACCOUNTS_COOKIE_NAME, JSON.stringify(accounts), {
+  cookieStore.set(SAVED_ACCOUNTS_COOKIE_NAME, sealJson(accounts), {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     secure: process.env.NODE_ENV === "production",
+    maxAge: COOKIE_MAX_AGE_SECONDS,
   });
 }
 

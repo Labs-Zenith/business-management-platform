@@ -78,14 +78,19 @@ export interface AuthPort {
   listSavedAccounts(): Promise<SavedAccount[]>;
   /**
    * Instantly activates a DIFFERENT saved account's session — no password
-   * re-entry. SECURITY CONTRACT: the caller (the ONLY sanctioned one is
+   * re-entry, and (Part B) no prior active session is required either.
+   * SECURITY CONTRACT: the caller (the ONLY sanctioned one is
    * `app/api/auth/switch-account/route.ts`) MUST first verify `userId` is
    * present in `listSavedAccounts()`'s result for THIS request's own
-   * cookies — the presence of a matching stored (server-side, httpOnly)
-   * refresh token IS the authorization; a client can never supply or forge
-   * one. Returns `null` if `userId` isn't a saved account, or if its stored
-   * token turns out to be stale/invalid (in which case the account is
-   * dropped from `saved_accounts`, requiring a fresh login for it).
+   * cookies, AND enforce `checkOrigin` (anti-CSRF) — together, those two
+   * checks (not a pre-existing session) ARE the authorization: the presence
+   * of a matching stored (server-side, httpOnly, and — since Part C1 —
+   * AES-256-GCM encrypted, see `lib/server/cookie-crypto.ts`) refresh token
+   * IS equivalent to being able to log in as that account; a client can
+   * never supply or forge one. Returns `null` if `userId` isn't a saved
+   * account, or if its stored token turns out to be stale/invalid (in which
+   * case the account is dropped from `saved_accounts`, requiring a fresh
+   * login for it).
    */
   switchAccount(userId: string): Promise<Session | null>;
 }

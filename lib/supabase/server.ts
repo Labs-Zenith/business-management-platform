@@ -35,6 +35,17 @@ export async function createServerSupabaseClient(): Promise<SupabaseClient> {
         }
       },
     },
+    // Part C2 — `lib/supabase/client.ts` (the browser Supabase client) is
+    // unused; ALL auth is server-side. That makes it safe to mark the
+    // `sb-*` auth cookies httpOnly, closing the XSS token-theft vector
+    // (default `@supabase/ssr` behavior is `httpOnly: false`). Must match
+    // `lib/supabase/middleware.ts`'s `cookieOptions` exactly — otherwise the
+    // flags diverge whichever site last rewrote the cookie.
+    cookieOptions: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+    },
   });
 }
 
