@@ -31,10 +31,17 @@
  * `SIDEBAR_COLLAPSED_COOKIE` (review-fix pass) is single-sourced in
  * `nav-items.ts` — see that file's doc comment — rather than duplicated
  * here.
+ *
+ * `TooltipProvider` (Plan Part C) wraps the whole rail so every collapsed
+ * `NavLink`'s tooltip shares one hover-delay group: once the first icon's
+ * tooltip has opened, moving to an adjacent icon shows its tooltip
+ * instantly instead of re-running the open delay. Harmless when expanded
+ * (no `NavLink` renders a tooltip in that state).
  */
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { SIDEBAR_COLLAPSED_COOKIE } from "./nav-items";
 import SidebarContent from "./sidebar-content";
 import type { BusinessMembership, Role, SavedAccount } from "@/lib/services/ports";
@@ -78,16 +85,18 @@ export default function DashboardSidebar({
         collapsed ? "w-14 items-center p-2" : "w-60 px-2 py-4"
       )}
     >
-      <SidebarContent
-        role={role}
-        currentBusinessId={currentBusinessId}
-        memberships={memberships}
-        savedAccounts={savedAccounts}
-        email={email}
-        collapsed={collapsed}
-        showCollapseToggle
-        onToggleCollapse={toggleCollapsed}
-      />
+      <TooltipProvider>
+        <SidebarContent
+          role={role}
+          currentBusinessId={currentBusinessId}
+          memberships={memberships}
+          savedAccounts={savedAccounts}
+          email={email}
+          collapsed={collapsed}
+          showCollapseToggle
+          onToggleCollapse={toggleCollapsed}
+        />
+      </TooltipProvider>
     </aside>
   );
 }
