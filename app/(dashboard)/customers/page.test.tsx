@@ -90,6 +90,23 @@ describe("CustomersPage", () => {
     });
   });
 
+  it("renders TablePagination page links that preserve the current q/status filters", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 2, pageSize: 20, total: 45 });
+
+    render(
+      await CustomersPage({
+        searchParams: Promise.resolve({ q: "Ana", status: "active", page: "2" }),
+      }),
+    );
+
+    expect(screen.getByRole("link", { name: /siguiente/i })).toHaveAttribute(
+      "href",
+      "/customers?q=Ana&status=active&page=3",
+    );
+    expect(screen.getByText("45 clientes")).toBeInTheDocument();
+  });
+
   it("shows an empty state when there are no customers", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListCustomers.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });

@@ -4,6 +4,7 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listEmployees } from "@/lib/services/employee-service";
 import { listPayrollPayments } from "@/lib/services/payroll-service";
 import { listPayrollPeriodTypes } from "@/lib/services/catalog-service";
+import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MoneyAmount } from "@/components/domain/money-amount";
+import { TablePagination } from "@/components/domain/table-pagination";
 import EmployeeFormDialog from "@/components/domain/nomina/employee-form-dialog";
 import PayrollPaymentFormDialog from "@/components/domain/nomina/payroll-payment-form-dialog";
 
@@ -34,24 +36,35 @@ import PayrollPaymentFormDialog from "@/components/domain/nomina/payroll-payment
  * "Registrar pago" only offers ACTIVE employees in its select (an inactive
  * employee should not receive new payroll payments), computed here via a
  * plain filter over the already-fetched Empleados list — no second query.
+ *
+ * Empleados/Pagos each paginate independently via their own
+ * `?employeesPage=`/`?paymentsPage=` search params (real pagination — see
+ * `components/domain/table-pagination.tsx`). The active tab is persisted in
+ * `?tab=` so a page-link click (a full GET navigation) doesn't bounce the
+ * user back to the Empleados tab: each `<TablePagination>` below hardcodes
+ * the `tab` value for the panel it lives in (omitted for the default
+ * Empleados tab, `"pagos"` for the Pagos one) rather than echoing back
+ * whatever `tab` the current URL happened to carry.
  */
+const PAGE_SIZE = 20;
 
-/**
- * Intentional MVP limitation: this is a hard display cap, NOT real
- * pagination — unlike `customers`/`payments`/`invoices`, this page has no
- * `searchParams`, no page navigation UI, and always fetches `page: 1`.
- * Businesses with more than this many employees or payroll payments will not
- * see the excess rows. Real pagination for Nomina is a future feature.
- */
-const MAX_DISPLAYED_ROWS = 50;
+type NominaPageProps = {
+  searchParams: Promise<{ employeesPage?: string; paymentsPage?: string; tab?: string }>;
+};
 
-export default async function NominaPage() {
+function parseTabParam(raw: string | undefined): "empleados" | "pagos" {
+  return raw === "pagos" ? "pagos" : "empleados";
+}
+
+export default async function NominaPage({ searchParams }: NominaPageProps) {
   await loadStoreFromCookie();
   const session = await requireCapabilityOrNotFound("viewPayroll");
+  const params = await searchParams;
+  const activeTab = parseTabParam(params.tab);
 
   const [employeesResult, paymentsResult, periodTypes] = await Promise.all([
-    listEmployees(session, { page: 1, pageSize: MAX_DISPLAYED_ROWS }),
-    listPayrollPayments(session, { page: 1, pageSize: MAX_DISPLAYED_ROWS }),
+    listEmployees(session, { page: parsePageParam(params.employeesPage), pageSize: PAGE_SIZE }),
+    listPayrollPayments(session, { page: parsePageParam(params.paymentsPage), pageSize: PAGE_SIZE }),
     listPayrollPeriodTypes(),
   ]);
 
@@ -89,7 +102,7 @@ export default async function NominaPage() {
         }
       />
 
-      <Tabs defaultValue="empleados">
+      <Tabs defaultValue={activeTab}>
         <TabsList>
           <TabsTab value="empleados">Empleados</TabsTab>
           <TabsTab value="pagos">Pagos de nomina</TabsTab>
@@ -143,6 +156,16 @@ export default async function NominaPage() {
               )}
             </TableBody>
           </Table>
+
+          <TablePagination
+            page={employeesResult.page}
+            pageSize={employeesResult.pageSize}
+            total={employeesResult.total}
+            pathname="/nomina"
+            paramName="employeesPage"
+            params={{ employeesPage: params.employeesPage, paymentsPage: params.paymentsPage, tab: undefined }}
+            itemLabel="empleados"
+          />
         </TabsPanel>
 
         {/* keepMounted is required: do not remove — see the Empleados panel's comment above. */}
@@ -179,6 +202,16 @@ export default async function NominaPage() {
               )}
             </TableBody>
           </Table>
+
+          <TablePagination
+            page={paymentsResult.page}
+            pageSize={paymentsResult.pageSize}
+            total={paymentsResult.total}
+            pathname="/nomina"
+            paramName="paymentsPage"
+            params={{ employeesPage: params.employeesPage, paymentsPage: params.paymentsPage, tab: "pagos" }}
+            itemLabel="pagos de nomina"
+          />
         </TabsPanel>
       </Tabs>
     </PageShell>

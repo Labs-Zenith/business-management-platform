@@ -127,9 +127,11 @@ describe("InventarioPage", () => {
     mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT, HEALTHY_PRODUCT], page: 1, pageSize: 50, total: 2 });
     mockListMovements.mockResolvedValue({ data: [MOVEMENT], page: 1, pageSize: 50, total: 1 });
 
-    render(await InventarioPage());
+    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     expect(mockRequireSessionOrRedirect).toHaveBeenCalledTimes(1);
+    expect(mockListProducts).toHaveBeenCalledWith(SESSION, { page: 1, pageSize: 20 });
+    expect(mockListMovements).toHaveBeenCalledWith(SESSION, { page: 1, pageSize: 20 });
 
     // Productos tab (active by default). "Tornillos 1/4" appears TWICE — once
     // as the product row (active panel) and once as the movement row's
@@ -148,7 +150,7 @@ describe("InventarioPage", () => {
     mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT, HEALTHY_PRODUCT], page: 1, pageSize: 50, total: 2 });
     mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
-    render(await InventarioPage());
+    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     const lowStockRow = screen.getByText("Tornillos 1/4").closest("tr");
     expect(lowStockRow).not.toBeNull();
@@ -164,7 +166,7 @@ describe("InventarioPage", () => {
     mockListProducts.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
     mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
-    render(await InventarioPage());
+    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText(/no se encontraron productos/i)).toBeInTheDocument();
     expect(screen.getByText(/no se encontraron movimientos/i)).toBeInTheDocument();
@@ -175,7 +177,7 @@ describe("InventarioPage", () => {
     mockListProducts.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
     mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
-    render(await InventarioPage());
+    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("button", { name: "Nuevo producto" })).toBeInTheDocument();
     // "Registrar movimiento" lives in the (keepMounted but currently inactive)
@@ -200,7 +202,7 @@ describe("InventarioPage", () => {
     });
     mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
-    render(await InventarioPage());
+    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     const productsProp = JSON.parse(screen.getByTestId("movement-dialog-products").textContent ?? "[]") as Array<{
       id: string;
@@ -221,12 +223,40 @@ describe("InventarioPage", () => {
     });
     mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
-    render(await InventarioPage());
+    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     const productsProp = JSON.parse(screen.getByTestId("movement-dialog-products").textContent ?? "[]") as Array<{
       id: string;
       name: string;
     }>;
     expect(productsProp).toEqual([]);
+  });
+
+  it("parses productsPage/movementsPage independently and threads them to their own service call", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT], page: 3, pageSize: 20, total: 100 });
+    mockListMovements.mockResolvedValue({ data: [MOVEMENT], page: 2, pageSize: 20, total: 45 });
+
+    render(
+      await InventarioPage({
+        searchParams: Promise.resolve({ productsPage: "3", movementsPage: "2", tab: "movimientos" }),
+      }),
+    );
+
+    expect(mockListProducts).toHaveBeenCalledWith(SESSION, { page: 3, pageSize: 20 });
+    expect(mockListMovements).toHaveBeenCalledWith(SESSION, { page: 2, pageSize: 20 });
+
+    // Both panels' "Siguiente" links exist (keepMounted, one panel hidden);
+    // disambiguate by href — each hardcodes the `tab` value for its own
+    // panel rather than echoing back the incoming `?tab=movimientos`.
+    const allNextLinks = screen.getAllByRole("link", { name: /siguiente/i, hidden: true });
+    const productsHref = allNextLinks.find((link) => link.getAttribute("href")?.includes("productsPage=4"));
+    const movementsHref = allNextLinks.find((link) => link.getAttribute("href")?.includes("movementsPage=3"));
+
+    expect(productsHref).toBeDefined();
+    expect(productsHref!.getAttribute("href")).toBe("/inventario?movementsPage=2&productsPage=4");
+
+    expect(movementsHref).toBeDefined();
+    expect(movementsHref!.getAttribute("href")).toBe("/inventario?productsPage=3&tab=movimientos&movementsPage=3");
   });
 });

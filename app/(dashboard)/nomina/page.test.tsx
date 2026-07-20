@@ -113,9 +113,11 @@ describe("NominaPage", () => {
     mockListEmployees.mockResolvedValue({ data: [EMPLOYEE], page: 1, pageSize: 50, total: 1 });
     mockListPayrollPayments.mockResolvedValue({ data: [PAYMENT], page: 1, pageSize: 50, total: 1 });
 
-    render(await NominaPage());
+    render(await NominaPage({ searchParams: Promise.resolve({}) }));
 
     expect(mockRequireCapabilityOrNotFound).toHaveBeenCalledWith("viewPayroll");
+    expect(mockListEmployees).toHaveBeenCalledWith(ADMIN_SESSION, { page: 1, pageSize: 20 });
+    expect(mockListPayrollPayments).toHaveBeenCalledWith(ADMIN_SESSION, { page: 1, pageSize: 20 });
 
     // Empleados tab (active by default). "Ana Empleada" appears TWICE — once
     // as the employee row (active panel) and once as the payment row's
@@ -139,7 +141,7 @@ describe("NominaPage", () => {
       }),
     );
 
-    await expect(NominaPage()).rejects.toMatchObject({
+    await expect(NominaPage({ searchParams: Promise.resolve({}) })).rejects.toMatchObject({
       digest: "NEXT_HTTP_ERROR_FALLBACK;404",
     });
 
@@ -152,7 +154,7 @@ describe("NominaPage", () => {
     mockListEmployees.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
     mockListPayrollPayments.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
-    render(await NominaPage());
+    render(await NominaPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText(/no se encontraron empleados/i)).toBeInTheDocument();
     expect(screen.getByText(/no se encontraron pagos de nomina/i)).toBeInTheDocument();
@@ -163,7 +165,7 @@ describe("NominaPage", () => {
     mockListEmployees.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
     mockListPayrollPayments.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
-    render(await NominaPage());
+    render(await NominaPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("button", { name: "Nuevo empleado" })).toBeInTheDocument();
     // "Registrar pago" lives in the (keepMounted but currently inactive) Pagos
@@ -184,12 +186,40 @@ describe("NominaPage", () => {
     });
     mockListPayrollPayments.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
-    render(await NominaPage());
+    render(await NominaPage({ searchParams: Promise.resolve({}) }));
 
     const employeesProp = JSON.parse(screen.getByTestId("payroll-dialog-employees").textContent ?? "[]") as Array<{
       id: string;
       name: string;
     }>;
     expect(employeesProp).toEqual([{ id: EMPLOYEE.id, name: EMPLOYEE.name }]);
+  });
+
+  it("parses employeesPage/paymentsPage independently and threads them to their own service call", async () => {
+    mockRequireCapabilityOrNotFound.mockResolvedValue(ADMIN_SESSION);
+    mockListEmployees.mockResolvedValue({ data: [EMPLOYEE], page: 3, pageSize: 20, total: 100 });
+    mockListPayrollPayments.mockResolvedValue({ data: [PAYMENT], page: 2, pageSize: 20, total: 45 });
+
+    render(
+      await NominaPage({
+        searchParams: Promise.resolve({ employeesPage: "3", paymentsPage: "2", tab: "pagos" }),
+      }),
+    );
+
+    expect(mockListEmployees).toHaveBeenCalledWith(ADMIN_SESSION, { page: 3, pageSize: 20 });
+    expect(mockListPayrollPayments).toHaveBeenCalledWith(ADMIN_SESSION, { page: 2, pageSize: 20 });
+
+    // Both panels' "Siguiente" links exist (keepMounted, one panel hidden);
+    // disambiguate by href — each hardcodes the `tab` value for its own
+    // panel rather than echoing back the incoming `?tab=pagos`.
+    const allNextLinks = screen.getAllByRole("link", { name: /siguiente/i, hidden: true });
+    const employeesHref = allNextLinks.find((link) => link.getAttribute("href")?.includes("employeesPage=4"));
+    const paymentsHref = allNextLinks.find((link) => link.getAttribute("href")?.includes("paymentsPage=3"));
+
+    expect(employeesHref).toBeDefined();
+    expect(employeesHref!.getAttribute("href")).toBe("/nomina?paymentsPage=2&employeesPage=4");
+
+    expect(paymentsHref).toBeDefined();
+    expect(paymentsHref!.getAttribute("href")).toBe("/nomina?employeesPage=3&tab=pagos&paymentsPage=3");
   });
 });

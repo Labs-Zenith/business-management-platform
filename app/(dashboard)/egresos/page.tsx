@@ -5,10 +5,12 @@ import { listExpenses } from "@/lib/services/expense-service";
 import { getCategoryLabel } from "@/lib/services/expense-dashboard-service";
 import { listExpenseCategories } from "@/lib/services/catalog-service";
 import { formatCOP } from "@/lib/money";
+import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TablePagination } from "@/components/domain/table-pagination";
 import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog";
 
 /**
@@ -37,11 +39,6 @@ type EgresosPageProps = {
   searchParams: Promise<{ page?: string }>;
 };
 
-function parsePageParam(raw: string | undefined): number {
-  const value = Number(raw);
-  return Number.isInteger(value) && value >= 1 ? value : 1;
-}
-
 export default async function EgresosPage({ searchParams }: EgresosPageProps) {
   await loadStoreFromCookie();
   const session = await requireSessionOrRedirect();
@@ -54,8 +51,6 @@ export default async function EgresosPage({ searchParams }: EgresosPageProps) {
     }),
     listExpenseCategories(),
   ]);
-
-  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 
   return (
     <PageShell>
@@ -104,9 +99,14 @@ export default async function EgresosPage({ searchParams }: EgresosPageProps) {
         </TableBody>
       </Table>
 
-      <p className="text-sm text-muted-foreground">
-        Pagina {result.page} de {totalPages} - {result.total} egresos
-      </p>
+      <TablePagination
+        page={result.page}
+        pageSize={result.pageSize}
+        total={result.total}
+        pathname="/egresos"
+        params={params}
+        itemLabel="egresos"
+      />
     </PageShell>
   );
 }

@@ -4,6 +4,7 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listProducts } from "@/lib/services/product-service";
 import { listMovements } from "@/lib/services/inventory-service";
 import { listMovementTypes } from "@/lib/services/catalog-service";
+import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MoneyAmount } from "@/components/domain/money-amount";
+import { TablePagination } from "@/components/domain/table-pagination";
 import ProductFormDialog from "@/components/domain/inventario/product-form-dialog";
 import MovementFormDialog from "@/components/domain/inventario/movement-form-dialog";
 
@@ -34,21 +36,36 @@ import MovementFormDialog from "@/components/domain/inventario/movement-form-dia
  * second query. Each product row's low-stock flag (`product.isLowStock`) is
  * computed server-side from a FIXED rule (`1 <= currentQuantity <= 3`, see
  * `lib/services/inventory-stock.ts`) — no per-product threshold anymore.
+ *
+ * Productos/Movimientos each paginate independently via their own
+ * `?productsPage=`/`?movementsPage=` search params (real pagination — see
+ * `components/domain/table-pagination.tsx`). The active tab is persisted in
+ * `?tab=` so a page-link click (a full GET navigation) doesn't bounce the
+ * user back to the Productos tab: each `<TablePagination>` below hardcodes
+ * the `tab` value for the panel it lives in (omitted for the default
+ * Productos tab, `"movimientos"` for the Movimientos one) rather than
+ * echoing back whatever `tab` the current URL happened to carry — the tab
+ * that panel's controls belong to.
  */
+const PAGE_SIZE = 20;
 
-/**
- * Intentional MVP limitation: this is a hard display cap, NOT real
- * pagination — mirrors Nomina's `MAX_DISPLAYED_ROWS` precedent exactly.
- */
-const MAX_DISPLAYED_ROWS = 50;
+type InventarioPageProps = {
+  searchParams: Promise<{ productsPage?: string; movementsPage?: string; tab?: string }>;
+};
 
-export default async function InventarioPage() {
+function parseTabParam(raw: string | undefined): "productos" | "movimientos" {
+  return raw === "movimientos" ? "movimientos" : "productos";
+}
+
+export default async function InventarioPage({ searchParams }: InventarioPageProps) {
   await loadStoreFromCookie();
   const session = await requireSessionOrRedirect();
+  const params = await searchParams;
+  const activeTab = parseTabParam(params.tab);
 
   const [productsResult, movementsResult, movementTypes] = await Promise.all([
-    listProducts(session, { page: 1, pageSize: MAX_DISPLAYED_ROWS }),
-    listMovements(session, { page: 1, pageSize: MAX_DISPLAYED_ROWS }),
+    listProducts(session, { page: parsePageParam(params.productsPage), pageSize: PAGE_SIZE }),
+    listMovements(session, { page: parsePageParam(params.movementsPage), pageSize: PAGE_SIZE }),
     listMovementTypes(),
   ]);
 
@@ -86,7 +103,7 @@ export default async function InventarioPage() {
         }
       />
 
-      <Tabs defaultValue="productos">
+      <Tabs defaultValue={activeTab}>
         <TabsList>
           <TabsTab value="productos">Productos</TabsTab>
           <TabsTab value="movimientos">Movimientos</TabsTab>
@@ -153,6 +170,16 @@ export default async function InventarioPage() {
               )}
             </TableBody>
           </Table>
+
+          <TablePagination
+            page={productsResult.page}
+            pageSize={productsResult.pageSize}
+            total={productsResult.total}
+            pathname="/inventario"
+            paramName="productsPage"
+            params={{ productsPage: params.productsPage, movementsPage: params.movementsPage, tab: undefined }}
+            itemLabel="productos"
+          />
         </TabsPanel>
 
         {/* keepMounted is required: do not remove — see the Productos panel's comment above. */}
@@ -191,6 +218,16 @@ export default async function InventarioPage() {
               )}
             </TableBody>
           </Table>
+
+          <TablePagination
+            page={movementsResult.page}
+            pageSize={movementsResult.pageSize}
+            total={movementsResult.total}
+            pathname="/inventario"
+            paramName="movementsPage"
+            params={{ productsPage: params.productsPage, movementsPage: params.movementsPage, tab: "movimientos" }}
+            itemLabel="movimientos"
+          />
         </TabsPanel>
       </Tabs>
     </PageShell>

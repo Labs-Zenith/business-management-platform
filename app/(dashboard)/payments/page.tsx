@@ -3,12 +3,14 @@ import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listPayments } from "@/lib/services/payment-service";
+import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateFilterField } from "@/components/domain/filters/date-filter-field";
 import { ExportMenu } from "@/components/domain/export-menu";
+import { TablePagination } from "@/components/domain/table-pagination";
 
 /**
  * Pagos screen, per `docs/ui-ux-flow.md`'s "Navegacion principal" ("Pagos"
@@ -36,11 +38,6 @@ type PaymentsPageProps = {
   }>;
 };
 
-function parsePageParam(raw: string | undefined): number {
-  const value = Number(raw);
-  return Number.isInteger(value) && value >= 1 ? value : 1;
-}
-
 export default async function PaymentsPage({ searchParams }: PaymentsPageProps) {
   await loadStoreFromCookie();
   const session = await requireSessionOrRedirect();
@@ -55,7 +52,6 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
     pageSize: PAGE_SIZE,
   });
 
-  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
   const exportParams = {
     customerId: params.customerId,
     invoiceId: params.invoiceId,
@@ -130,9 +126,14 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
         </TableBody>
       </Table>
 
-      <p className="text-sm text-muted-foreground">
-        Pagina {result.page} de {totalPages} - {result.total} pagos
-      </p>
+      <TablePagination
+        page={result.page}
+        pageSize={result.pageSize}
+        total={result.total}
+        pathname="/payments"
+        params={params}
+        itemLabel="ingresos"
+      />
     </PageShell>
   );
 }

@@ -157,6 +157,24 @@ describe("InvoicesPage", () => {
     expect(screen.getByLabelText(/hasta/i)).toHaveTextContent(displayDate("2026-07-31"));
   });
 
+  it("renders TablePagination page links that preserve the current filters", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListInvoices.mockResolvedValue({ data: [INVOICE], page: 2, pageSize: 20, total: 45 });
+    mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 1, pageSize: 50, total: 1 });
+
+    render(
+      await InvoicesPage({
+        searchParams: Promise.resolve({ from: "2026-07-01", to: "2026-07-31", page: "2" }),
+      }),
+    );
+
+    expect(screen.getByRole("link", { name: /siguiente/i })).toHaveAttribute(
+      "href",
+      "/invoices?from=2026-07-01&to=2026-07-31&page=3",
+    );
+    expect(screen.getByText("45 facturas")).toBeInTheDocument();
+  });
+
   it("shows an empty state when there are no invoices", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListInvoices.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });

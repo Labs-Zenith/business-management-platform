@@ -80,6 +80,16 @@ describe("EgresosPage", () => {
     expect(mockListExpenses).toHaveBeenCalledWith(SESSION, { page: 2, pageSize: 20 });
   });
 
+  it("renders TablePagination page links for the current page", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListExpenses.mockResolvedValue({ data: [EXPENSE], page: 2, pageSize: 20, total: 45 });
+
+    render(await EgresosPage({ searchParams: Promise.resolve({ page: "2" }) }));
+
+    expect(screen.getByRole("link", { name: /siguiente/i })).toHaveAttribute("href", "/egresos?page=3");
+    expect(screen.getByText("45 egresos")).toBeInTheDocument();
+  });
+
   it("shows an empty state when there are no expenses", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListExpenses.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });

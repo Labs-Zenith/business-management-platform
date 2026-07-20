@@ -95,6 +95,23 @@ describe("PaymentsPage", () => {
     });
   });
 
+  it("renders TablePagination page links that preserve the current filters", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListPayments.mockResolvedValue({ data: [PAYMENT], page: 2, pageSize: 20, total: 45 });
+
+    render(
+      await PaymentsPage({
+        searchParams: Promise.resolve({ from: "2026-07-01", to: "2026-07-31", page: "2" }),
+      }),
+    );
+
+    expect(screen.getByRole("link", { name: /siguiente/i })).toHaveAttribute(
+      "href",
+      "/payments?from=2026-07-01&to=2026-07-31&page=3",
+    );
+    expect(screen.getByText("45 ingresos")).toBeInTheDocument();
+  });
+
   it("wires DateFilterField into the filter form's from/to fields with defaultValue coming from searchParams", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListPayments.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });

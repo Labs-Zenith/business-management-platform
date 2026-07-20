@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
+import { parsePageParam } from "@/lib/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { PageHeader } from "@/components/domain/page-header";
+import { TablePagination } from "@/components/domain/table-pagination";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 
 /**
@@ -31,11 +33,6 @@ type CustomersPageProps = {
   searchParams: Promise<{ q?: string; status?: string; page?: string }>;
 };
 
-function parsePageParam(raw: string | undefined): number {
-  const value = Number(raw);
-  return Number.isInteger(value) && value >= 1 ? value : 1;
-}
-
 function parseStatusParam(raw: string | undefined): "active" | "inactive" | undefined {
   return raw === "active" || raw === "inactive" ? raw : undefined;
 }
@@ -52,8 +49,6 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
     page: parsePageParam(params.page),
     pageSize: PAGE_SIZE,
   });
-
-  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
 
   return (
     <PageShell>
@@ -157,9 +152,14 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         </TableBody>
       </Table>
 
-      <p className="text-sm text-muted-foreground">
-        Pagina {result.page} de {totalPages} - {result.total} clientes
-      </p>
+      <TablePagination
+        page={result.page}
+        pageSize={result.pageSize}
+        total={result.total}
+        pathname="/customers"
+        params={params}
+        itemLabel="clientes"
+      />
     </PageShell>
   );
 }

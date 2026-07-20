@@ -6,6 +6,7 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { listInvoices } from "@/lib/services/invoice-service";
 import type { InvoiceStatus } from "@/lib/services/status";
+import { parsePageParam } from "@/lib/pagination";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,6 +15,7 @@ import { SelectFilterField } from "@/components/domain/filters/select-filter-fie
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 import { ExportMenu } from "@/components/domain/export-menu";
 import { PageHeader } from "@/components/domain/page-header";
+import { TablePagination } from "@/components/domain/table-pagination";
 
 /**
  * Facturas screen, per `docs/ui-ux-flow.md`'s "Facturas" section and
@@ -45,11 +47,6 @@ type InvoicesPageProps = {
   }>;
 };
 
-function parsePageParam(raw: string | undefined): number {
-  const value = Number(raw);
-  return Number.isInteger(value) && value >= 1 ? value : 1;
-}
-
 function parseStatusParam(raw: string | undefined): InvoiceStatus | undefined {
   return raw && (VALID_STATUSES as string[]).includes(raw) ? (raw as InvoiceStatus) : undefined;
 }
@@ -72,7 +69,6 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
     listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE }),
   ]);
 
-  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
   const customerNameById = new Map(customersResult.data.map((customer) => [customer.id, customer.name]));
   const exportParams = {
     customerId: params.customerId,
@@ -169,9 +165,14 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
         </TableBody>
       </Table>
 
-      <p className="text-sm text-muted-foreground">
-        Pagina {result.page} de {totalPages} - {result.total} facturas
-      </p>
+      <TablePagination
+        page={result.page}
+        pageSize={result.pageSize}
+        total={result.total}
+        pathname="/invoices"
+        params={params}
+        itemLabel="facturas"
+      />
     </PageShell>
   );
 }
