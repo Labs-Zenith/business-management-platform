@@ -8,7 +8,7 @@ import { TablePagination } from "./table-pagination";
  * page tests' `render(await Page(...))` shape, but this one is fully sync).
  */
 describe("TablePagination", () => {
-  it("renders page links preserving the current filters", () => {
+  it("renders Anterior/Siguiente links preserving the current filters, with the total below", () => {
     render(
       <TablePagination
         page={2}
@@ -20,18 +20,19 @@ describe("TablePagination", () => {
       />,
     );
 
-    // Page 3 link (next) must preserve q/status, and use "page" (default paramName).
+    // Next → page 3, preserving q/status, using "page" (default paramName).
     const nextLink = screen.getByRole("link", { name: /siguiente/i });
     expect(nextLink).toHaveAttribute("href", "/customers?q=Ana&status=active&page=3");
 
-    // Page 1 link (prev) omits `page` entirely (clean URL for page 1).
+    // Prev → page 1, which omits `page` entirely (clean URL for page 1).
     const prevLink = screen.getByRole("link", { name: /anterior/i });
     expect(prevLink).toHaveAttribute("href", "/customers?q=Ana&status=active");
 
-    expect(screen.getByText("100 clientes")).toBeInTheDocument();
+    // The total count is shown below, alongside the page context.
+    expect(screen.getByText(/Página 2 de 5 · 100 clientes/)).toBeInTheDocument();
   });
 
-  it("renders the current page as a non-link with aria-current, and other numbers as links", () => {
+  it("renders no numbered page links — just Anterior/Siguiente plus the page context text", () => {
     render(
       <TablePagination
         page={2}
@@ -43,11 +44,10 @@ describe("TablePagination", () => {
       />,
     );
 
-    const current = screen.getByText("2", { selector: "span" });
-    expect(current).toHaveAttribute("aria-current", "page");
-
-    const pageOneLink = screen.getByRole("link", { name: "1" });
-    expect(pageOneLink).toHaveAttribute("href", "/customers");
+    // The numbered-window UI is gone: no link named just "1"/"3"/etc.
+    expect(screen.queryByRole("link", { name: "1" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "3" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Página 2 de 5/)).toBeInTheDocument();
   });
 
   it("disables Anterior (no link, aria-disabled) on page 1", () => {

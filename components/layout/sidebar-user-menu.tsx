@@ -97,9 +97,14 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
   const initial = avatarInitial(email);
 
   const menuContent = (
-    <DropdownMenuContent align="start" side="top">
+    // `w-64` (+ align="end") overrides DropdownMenuContent's default
+    // `w-(--anchor-width)`: the trigger here is a ~32px icon button (⋯ / the
+    // rail avatar), so anchoring the menu to the trigger width would shrink it
+    // to an unreadable sliver that clips the email. A fixed width + `align="end"`
+    // keeps it inside the viewport instead of overflowing off the right edge.
+    <DropdownMenuContent align="end" side="top" className="w-64 max-w-[calc(100vw-1rem)]">
       <DropdownMenuGroup>
-        <DropdownMenuLabel>{email}</DropdownMenuLabel>
+        <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>

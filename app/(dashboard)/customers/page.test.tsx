@@ -104,7 +104,7 @@ describe("CustomersPage", () => {
       "href",
       "/customers?q=Ana&status=active&page=3",
     );
-    expect(screen.getByText("45 clientes")).toBeInTheDocument();
+    expect(screen.getByText(/45 clientes/)).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no customers", async () => {

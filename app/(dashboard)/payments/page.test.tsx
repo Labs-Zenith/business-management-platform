@@ -109,7 +109,7 @@ describe("PaymentsPage", () => {
       "href",
       "/payments?from=2026-07-01&to=2026-07-31&page=3",
     );
-    expect(screen.getByText("45 ingresos")).toBeInTheDocument();
+    expect(screen.getByText(/45 ingresos/)).toBeInTheDocument();
   });
 
   it("wires DateFilterField into the filter form's from/to fields with defaultValue coming from searchParams", async () => {

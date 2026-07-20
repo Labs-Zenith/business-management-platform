@@ -87,7 +87,7 @@ describe("EgresosPage", () => {
     render(await EgresosPage({ searchParams: Promise.resolve({ page: "2" }) }));
 
     expect(screen.getByRole("link", { name: /siguiente/i })).toHaveAttribute("href", "/egresos?page=3");
-    expect(screen.getByText("45 egresos")).toBeInTheDocument();
+    expect(screen.getByText(/45 egresos/)).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no expenses", async () => {

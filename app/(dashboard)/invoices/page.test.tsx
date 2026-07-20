@@ -172,7 +172,7 @@ describe("InvoicesPage", () => {
       "href",
       "/invoices?from=2026-07-01&to=2026-07-31&page=3",
     );
-    expect(screen.getByText("45 facturas")).toBeInTheDocument();
+    expect(screen.getByText(/45 facturas/)).toBeInTheDocument();
   });
 
   it("shows an empty state when there are no invoices", async () => {
