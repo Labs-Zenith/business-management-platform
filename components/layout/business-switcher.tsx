@@ -7,10 +7,12 @@
  * inline `Collapsible` panel (Vercel-style, not a floating popup) with three
  * sections:
  *   1. the CURRENT account's OTHER businesses → `POST /api/auth/switch-business`
- *      (same-user, instant, keeps you on the current route via `router.refresh()`).
+ *      (same-user, instant, then a FULL reload landing on `/dashboard` — see
+ *      the `post()` helper below for why `router.refresh()` isn't enough).
  *   2. "Otras cuentas" — other accounts saved on this device (Wave 3,
  *      Instagram-style) → `POST /api/auth/switch-account { userId }` (instant,
- *      no re-login: the server activates that account's saved Supabase session).
+ *      no re-login: the server activates that account's saved Supabase session,
+ *      then the same full reload applies).
  *   3. "Agregar cuenta" → navigates to `/login?next=<current path>` so a new
  *      login is appended to the saved accounts and returns here.
  *
@@ -88,7 +90,13 @@ export default function BusinessSwitcher({
         setError(parsed?.error?.message ?? fallbackError);
         return;
       }
-      router.refresh();
+      // Deliberately a hard navigation, NOT `router.refresh()`: refresh only
+      // clears the Client Router Cache for the CURRENT route, so every other
+      // prefetched sidebar link would keep serving the previous business's
+      // RSC payload until re-visited. A full-document navigation discards
+      // the entire client cache, so every route re-fetches scoped to the
+      // newly-active business/account.
+      window.location.assign("/dashboard");
     } catch {
       setError(fallbackError);
     } finally {

@@ -14,6 +14,23 @@ vi.mock("next/navigation", () => ({
 
 import BusinessSwitcher from "./business-switcher";
 
+// Fase X: switching business/account now does a hard navigation
+// (`window.location.assign("/dashboard")`) instead of `router.refresh()`, so
+// every prefetched sidebar route drops its previous-business RSC payload
+// (see `post()` in `business-switcher.tsx` for the full rationale). jsdom's
+// `window.location` isn't directly assignable, so we replace the whole
+// object with a spy-backed stand-in before every test.
+const assignMock = vi.fn();
+
+beforeEach(() => {
+  assignMock.mockReset();
+  Object.defineProperty(window, "location", {
+    value: { ...window.location, assign: assignMock },
+    writable: true,
+    configurable: true,
+  });
+});
+
 const SINGLE: BusinessMembership[] = [
   { businessId: "biz-1", businessName: "Negocio Demo", role: "admin" },
 ];
@@ -87,7 +104,7 @@ describe("BusinessSwitcher", () => {
     expect(screen.queryByRole("button", { name: "Negocio Demo 2" })).not.toBeInTheDocument();
   });
 
-  it("POSTs to /api/auth/switch-business and refreshes on success when a different business is selected", async () => {
+  it("POSTs to /api/auth/switch-business and hard-navigates to /dashboard on success when a different business is selected", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -109,7 +126,7 @@ describe("BusinessSwitcher", () => {
         body: JSON.stringify({ businessId: "biz-2" }),
       })
     );
-    expect(refreshMock).toHaveBeenCalled();
+    expect(assignMock).toHaveBeenCalledWith("/dashboard");
   });
 
   it("shows an inline error and does not crash when the switch request fails (e.g. 403 not-a-member race)", async () => {
@@ -132,7 +149,7 @@ describe("BusinessSwitcher", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "You are not a member of this business."
     );
-    expect(refreshMock).not.toHaveBeenCalled();
+    expect(assignMock).not.toHaveBeenCalled();
   });
 
   it("shows a generic inline error on a network failure without crashing", async () => {
@@ -145,7 +162,7 @@ describe("BusinessSwitcher", () => {
     await user.click(await screen.findByRole("button", { name: "Negocio Demo 2" }));
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(refreshMock).not.toHaveBeenCalled();
+    expect(assignMock).not.toHaveBeenCalled();
   });
 
   it("disables the trigger and updates its accessible name while the switch request is in flight", async () => {
@@ -190,14 +207,15 @@ describe("BusinessSwitcher", () => {
       }),
     });
 
-    // `currentBusinessId` is still "biz-1" here — this component doesn't
-    // own that value, its parent does via `session.businessId` after
-    // `router.refresh()` re-fetches Server Component data — so the trigger
-    // reverts to its original accessible name once `isSwitching` clears.
+    // `currentBusinessId` is still "biz-1" here — in the real app the
+    // subsequent `window.location.assign("/dashboard")` hard-navigates away
+    // before `isSwitching` matters, but the mocked `assign` here is a no-op,
+    // so `finally { setIsSwitching(false) }` still runs and the trigger
+    // reverts to its original accessible name.
     const settledTrigger = await screen.findByRole("button", { name: "Negocio Demo" });
     expect(settledTrigger).not.toHaveAttribute("aria-disabled", "true");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(refreshMock).toHaveBeenCalled();
+    expect(assignMock).toHaveBeenCalledWith("/dashboard");
   });
 
   it("falls back to '?' (never a blank avatar) when the current membership's business name is empty", () => {
@@ -253,7 +271,7 @@ describe("BusinessSwitcher — saved accounts (Wave 3)", () => {
     active: false,
   };
 
-  it("lists other saved accounts and switches to one via POST /api/auth/switch-account + refresh", async () => {
+  it("lists other saved accounts and switches to one via POST /api/auth/switch-account + hard navigation", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
     vi.stubGlobal("fetch", fetchMock);
@@ -276,7 +294,7 @@ describe("BusinessSwitcher — saved accounts (Wave 3)", () => {
       "/api/auth/switch-account",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ userId: "user-2" }) })
     );
-    expect(refreshMock).toHaveBeenCalled();
+    expect(assignMock).toHaveBeenCalledWith("/dashboard");
   });
 
   it("navigates to /login?next=<current path> when 'Agregar cuenta' is clicked", async () => {
