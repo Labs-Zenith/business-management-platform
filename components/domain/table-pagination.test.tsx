@@ -32,7 +32,7 @@ describe("TablePagination", () => {
     expect(screen.getByText(/Página 2 de 5 · 100 clientes/)).toBeInTheDocument();
   });
 
-  it("renders no numbered page links — just Anterior/Siguiente plus the page context text", () => {
+  it("renders the current page as a highlighted non-link, with the other page numbers as links", () => {
     render(
       <TablePagination
         page={2}
@@ -44,9 +44,15 @@ describe("TablePagination", () => {
       />,
     );
 
-    // The numbered-window UI is gone: no link named just "1"/"3"/etc.
-    expect(screen.queryByRole("link", { name: "1" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "3" })).not.toBeInTheDocument();
+    // Current page (2) is a non-link span marked aria-current.
+    const current = screen.getByText("2", { selector: "span" });
+    expect(current).toHaveAttribute("aria-current", "page");
+
+    // Page 1 is a link back to the clean URL (page param omitted).
+    const pageOneLink = screen.getByRole("link", { name: "1" });
+    expect(pageOneLink).toHaveAttribute("href", "/customers");
+
+    // The page context + total still show below.
     expect(screen.getByText(/Página 2 de 5/)).toBeInTheDocument();
   });
 
