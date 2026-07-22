@@ -35,6 +35,7 @@ import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronsUpDown, Plus } from "lucide-react";
 import type { BusinessMembership, SavedAccount } from "@/lib/services/ports";
+import { MAX_SAVED_ACCOUNTS } from "@/lib/auth/saved-accounts";
 import { avatarInitial, cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
@@ -72,6 +73,7 @@ export default function BusinessSwitcher({
   );
   // Other accounts saved on this device (never the currently-active one).
   const otherAccounts = savedAccounts.filter((account) => !account.active);
+  const isAtMaxSavedAccounts = savedAccounts.length >= MAX_SAVED_ACCOUNTS;
 
   async function post(url: string, body: Record<string, string>, fallbackError: string) {
     if (isSwitching) return;
@@ -192,7 +194,8 @@ export default function BusinessSwitcher({
 
           <button
             type="button"
-            disabled={isSwitching}
+            disabled={isSwitching || isAtMaxSavedAccounts}
+            title={isAtMaxSavedAccounts ? "Máximo 2 cuentas" : undefined}
             onClick={handleAddAccount}
             className="mt-1 flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { MAX_SAVED_ACCOUNTS } from "@/lib/auth/saved-accounts";
 import { openJson, sealJson } from "@/lib/server/cookie-crypto";
 import type { AuthPort, Role, SavedAccount, Session } from "@/lib/services/ports";
 import { store as defaultStore, listProfilesForUser, type MockStore } from "./store";
@@ -24,14 +25,6 @@ const SESSION_COOKIE_NAME = "session";
  * re-authenticating with a password.
  */
 const SAVED_ACCOUNTS_COOKIE_NAME = "saved_accounts";
-
-/**
- * Part 1b — caps `saved_accounts` at 2 device-local profiles, mirroring
- * `lib/supabase/auth-adapter.ts`'s `MAX_SAVED_ACCOUNTS`. Applied in `signIn`
- * via `.slice(-MAX_SAVED_ACCOUNTS)` AFTER the upsert: the just-signed-in
- * account is appended last, so it's always kept.
- */
-const MAX_SAVED_ACCOUNTS = 2;
 
 /**
  * Part C3 — `saved_accounts` was a session cookie (cleared on browser
@@ -361,6 +354,20 @@ export function createAuthAdapter(store: MockStore): AuthPort {
     async removeSavedAccount(userId: string): Promise<void> {
       const accounts = await readSavedAccounts();
       await writeSavedAccounts(accounts.filter((account) => account.userId !== userId));
+
+      // If the removed entry IS the currently-active session, also end that
+      // session — leaving it live after its saved-account entry is gone
+      // would let it keep silently loading protected pages. Resolved AFTER
+      // the write above (never before), same ordering as the Supabase
+      // adapter. There is no separate "active business" cookie here (unlike
+      // Supabase's `active_business_id`) — `businessId` lives inside the
+      // signed `session` cookie itself, so deleting it clears both at once.
+      const cookieStore = await cookies();
+      const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+      const current = token ? decodeSession(token) : null;
+      if (current?.userId === userId) {
+        cookieStore.delete(SESSION_COOKIE_NAME);
+      }
     },
   };
 }

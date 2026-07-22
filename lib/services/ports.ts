@@ -94,13 +94,18 @@ export interface AuthPort {
    */
   switchAccount(userId: string): Promise<Session | null>;
   /**
-   * Removes `userId`'s entry from `saved_accounts` on this device only.
-   * Does NOT end any currently-active `sb-*`/session cookie — if the caller
-   * happens to be removing the currently-active account, that account stays
-   * logged in on THIS tab/session until it explicitly signs out (`signOut`);
-   * this method purely forgets the device-local "instant switch" shortcut
-   * for it. The only sanctioned caller is
-   * `app/api/auth/remove-account/route.ts`.
+   * Removes `userId`'s entry from `saved_accounts` on this device.
+   *
+   * If `userId` is the CURRENTLY-active session, this ALSO ends that
+   * session (Supabase: `signOut({ scope: "local" })` + clears
+   * `active_business_id`; mock: clears the signed `session` cookie) — so a
+   * removed active profile can no longer silently keep loading protected
+   * pages. It does NOT auto-switch to another remaining saved account; the
+   * caller (the picker UI) reloads and lets the user pick one explicitly.
+   *
+   * If `userId` is NOT the active session, only its `saved_accounts` entry
+   * is forgotten — the current session is left completely untouched. The
+   * only sanctioned caller is `app/api/auth/remove-account/route.ts`.
    */
   removeSavedAccount(userId: string): Promise<void>;
 }

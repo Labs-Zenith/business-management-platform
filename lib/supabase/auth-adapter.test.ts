@@ -241,6 +241,60 @@ describe("supabaseAuthAdapter.signOut", () => {
   });
 });
 
+describe("supabaseAuthAdapter.removeSavedAccount", () => {
+  beforeEach(() => {
+    mockCookieJar.clear();
+    mockSupabaseAuth.getUser.mockReset();
+    mockSupabaseAuth.signOut.mockReset();
+  });
+
+  it("ends the session when the removed account IS the currently-active one", async () => {
+    const A_ID = "user-a";
+    const B_ID = "user-b";
+    mockCookieJar.set(
+      "saved_accounts",
+      sealJson([
+        { userId: A_ID, email: "a@x.test", label: "a@x.test", refreshToken: "tok-a" },
+        { userId: B_ID, email: "b@x.test", label: "b@x.test", refreshToken: "tok-b" },
+      ])
+    );
+    mockCookieJar.set("active_business_id", sealJson(BUSINESS_A));
+    mockSupabaseAuth.getUser.mockResolvedValue({ data: { user: { id: A_ID, email: "a@x.test" } } });
+    mockSupabaseAuth.signOut.mockResolvedValue({ error: null });
+
+    await supabaseAuthAdapter.removeSavedAccount(A_ID);
+
+    const saved = openJson<Array<{ userId: string }>>(mockCookieJar.get("saved_accounts")!.value)!;
+    expect(saved.map((a) => a.userId)).not.toContain(A_ID);
+    expect(mockSupabaseAuth.signOut).toHaveBeenCalledTimes(1);
+    expect(mockSupabaseAuth.signOut).toHaveBeenCalledWith({ scope: "local" });
+    expect(mockCookieJar.get("active_business_id")).toBeUndefined();
+  });
+
+  it("leaves the session untouched when the removed account is NOT the active one", async () => {
+    const A_ID = "user-a";
+    const B_ID = "user-b";
+    mockCookieJar.set(
+      "saved_accounts",
+      sealJson([
+        { userId: A_ID, email: "a@x.test", label: "a@x.test", refreshToken: "tok-a" },
+        { userId: B_ID, email: "b@x.test", label: "b@x.test", refreshToken: "tok-b" },
+      ])
+    );
+    mockCookieJar.set("active_business_id", sealJson(BUSINESS_A));
+    // Active session belongs to B — removing A must not touch it.
+    mockSupabaseAuth.getUser.mockResolvedValue({ data: { user: { id: B_ID, email: "b@x.test" } } });
+
+    await supabaseAuthAdapter.removeSavedAccount(A_ID);
+
+    const saved = openJson<Array<{ userId: string }>>(mockCookieJar.get("saved_accounts")!.value)!;
+    expect(saved.map((a) => a.userId)).not.toContain(A_ID);
+    expect(saved.map((a) => a.userId)).toContain(B_ID);
+    expect(mockSupabaseAuth.signOut).not.toHaveBeenCalled();
+    expect(openJson<string>(mockCookieJar.get("active_business_id")!.value)).toBe(BUSINESS_A);
+  });
+});
+
 describe("supabaseAuthAdapter.switchBusiness", () => {
   beforeEach(() => {
     mockCookieJar.clear();

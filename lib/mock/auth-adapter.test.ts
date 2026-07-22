@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetStore } from "@/lib/mock/store";
 import { BUSINESS_ID, BUSINESS_ID_2 } from "@/lib/mock/fixtures/data";
+import { openJson, sealJson } from "@/lib/server/cookie-crypto";
 
 /**
  * `next/headers`'s `cookies()` only works inside a real Next.js request
@@ -138,6 +139,55 @@ describe("authAdapter.switchBusiness", () => {
     // The re-issued cookie reflects the switch on the very next read.
     const persisted = await authAdapter.getSession();
     expect(persisted).toEqual(switched);
+  });
+});
+
+describe("authAdapter.removeSavedAccount", () => {
+  beforeEach(() => {
+    resetStore();
+    mockCookieJar.clear();
+  });
+
+  it("ends the session when the removed account IS the currently-active one", async () => {
+    const session = await authAdapter.signIn(DEMO_EMAIL, DEMO_PASSWORD);
+    expect(session).not.toBeNull();
+    // Seed a saved_accounts entry matching the active session, plus another
+    // non-active one, so the filter+session-clear can be observed together.
+    const activeUserId = session!.userId;
+    const otherUserId = "20000000-0000-4000-8000-0000000000ff";
+    const savedAccountsPayload = [
+      { userId: activeUserId, email: DEMO_EMAIL, label: DEMO_EMAIL },
+      { userId: otherUserId, email: "other@x.test", label: "other@x.test" },
+    ];
+    mockCookieJar.set("saved_accounts", sealJson(savedAccountsPayload));
+
+    await authAdapter.removeSavedAccount(activeUserId);
+
+    const saved = openJson<Array<{ userId: string }>>(mockCookieJar.get("saved_accounts")!.value)!;
+    expect(saved.map((a) => a.userId)).not.toContain(activeUserId);
+    expect(mockCookieJar.get("session")).toBeUndefined();
+    expect(await authAdapter.getSession()).toBeNull();
+  });
+
+  it("leaves the session untouched when the removed account is NOT the active one", async () => {
+    const session = await authAdapter.signIn(DEMO_EMAIL, DEMO_PASSWORD);
+    expect(session).not.toBeNull();
+    const activeUserId = session!.userId;
+    const otherUserId = "20000000-0000-4000-8000-0000000000ff";
+    const savedAccountsPayload = [
+      { userId: activeUserId, email: DEMO_EMAIL, label: DEMO_EMAIL },
+      { userId: otherUserId, email: "other@x.test", label: "other@x.test" },
+    ];
+    mockCookieJar.set("saved_accounts", sealJson(savedAccountsPayload));
+
+    await authAdapter.removeSavedAccount(otherUserId);
+
+    const saved = openJson<Array<{ userId: string }>>(mockCookieJar.get("saved_accounts")!.value)!;
+    expect(saved.map((a) => a.userId)).not.toContain(otherUserId);
+    expect(saved.map((a) => a.userId)).toContain(activeUserId);
+    expect(mockCookieJar.get("session")).toBeDefined();
+    const persisted = await authAdapter.getSession();
+    expect(persisted).toEqual(session);
   });
 });
 

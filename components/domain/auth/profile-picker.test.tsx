@@ -9,6 +9,10 @@ const ACCOUNTS: SavedAccount[] = [
   { userId: "u2", email: "otra@negociodemo.test", label: "Otra cuenta", active: false },
 ];
 
+const SINGLE_ACCOUNT: SavedAccount[] = [
+  { userId: "u1", email: "demo@negociodemo.test", label: "Demo", active: true },
+];
+
 const assignMock = vi.fn();
 
 describe("ProfilePicker", () => {
@@ -74,8 +78,8 @@ describe("ProfilePicker", () => {
     expect(assignMock).not.toHaveBeenCalled();
   });
 
-  it('"Usar otra cuenta" links to /login?add=1', () => {
-    render(<ProfilePicker accounts={ACCOUNTS} />);
+  it('"Usar otra cuenta" links to /login?add=1 when below the saved-accounts cap', () => {
+    render(<ProfilePicker accounts={SINGLE_ACCOUNT} />);
 
     expect(screen.getByRole("link", { name: /usar otra cuenta/i })).toHaveAttribute(
       "href",
@@ -84,12 +88,21 @@ describe("ProfilePicker", () => {
   });
 
   it('"Usar otra cuenta" preserves a `next` path when present', () => {
-    render(<ProfilePicker accounts={ACCOUNTS} next="/invoices" />);
+    render(<ProfilePicker accounts={SINGLE_ACCOUNT} next="/invoices" />);
 
     expect(screen.getByRole("link", { name: /usar otra cuenta/i })).toHaveAttribute(
       "href",
       `/login?add=1&next=${encodeURIComponent("/invoices")}`
     );
+  });
+
+  it('hides "Usar otra cuenta" and shows a max-accounts hint once MAX_SAVED_ACCOUNTS is reached', () => {
+    render(<ProfilePicker accounts={ACCOUNTS} />);
+
+    expect(screen.queryByRole("link", { name: /usar otra cuenta/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/máximo 2 cuentas guardadas\. elimina una para agregar otra\./i)
+    ).toBeInTheDocument();
   });
 
   it("the trash icon opens the confirm modal without triggering account selection", async () => {

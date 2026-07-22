@@ -11,9 +11,11 @@ import { repositories } from "@/lib/services/repositories";
  * authorization is (1) `checkOrigin` (anti-CSRF) AND (2) possession of
  * `userId`'s entry in THIS request's own `saved_accounts` cookie — no prior
  * active session (`requireSession()`) is required, matching
- * `switch-account`'s Part B contract. This endpoint only forgets the
- * device-local shortcut for `userId`; it never ends an active `sb-*`/session
- * cookie (see `AuthPort.removeSavedAccount`'s JSDoc, `lib/services/ports.ts`).
+ * `switch-account`'s Part B contract. When `userId` IS the currently-active
+ * session, removing it ALSO ends that session (its `sb-*`/`session` cookie
+ * is cleared) — see `AuthPort.removeSavedAccount`'s JSDoc
+ * (`lib/services/ports.ts`) for the full contract. Removing a non-active
+ * saved account leaves the current session untouched.
  *
  * `.strict()` rejects any unknown field.
  */

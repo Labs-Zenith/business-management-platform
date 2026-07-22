@@ -17,6 +17,7 @@
 
 import { useState } from "react";
 import type { SavedAccount } from "@/lib/services/ports";
+import { MAX_SAVED_ACCOUNTS } from "@/lib/auth/saved-accounts";
 import { avatarInitial } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Building2, Trash2 } from "lucide-react";
@@ -168,12 +169,18 @@ export default function ProfilePicker({ accounts, next }: ProfilePickerProps) {
               </p>
             ) : null}
 
-            <a
-              href={addAccountHref}
-              className="mt-3 text-center text-sm font-medium text-primary hover:underline"
-            >
-              Usar otra cuenta
-            </a>
+            {accounts.length >= MAX_SAVED_ACCOUNTS ? (
+              <p className="mt-3 text-center text-xs text-muted-foreground">
+                Máximo 2 cuentas guardadas. Elimina una para agregar otra.
+              </p>
+            ) : (
+              <a
+                href={addAccountHref}
+                className="mt-3 text-center text-sm font-medium text-primary hover:underline"
+              >
+                Usar otra cuenta
+              </a>
+            )}
           </div>
         </CardContent>
       </Card>

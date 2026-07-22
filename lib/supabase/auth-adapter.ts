@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { MAX_SAVED_ACCOUNTS } from "@/lib/auth/saved-accounts";
 import { openJson, sealJson } from "@/lib/server/cookie-crypto";
 import type { AuthPort, BusinessMembership, Role, SavedAccount, Session } from "@/lib/services/ports";
 import { createServerSupabaseClient } from "./server";
@@ -72,15 +73,6 @@ import { createServerSupabaseClient } from "./server";
 
 const ACTIVE_BUSINESS_COOKIE_NAME = "active_business_id";
 const SAVED_ACCOUNTS_COOKIE_NAME = "saved_accounts";
-
-/**
- * Part 1b — caps `saved_accounts` at 2 device-local profiles (Instagram-style
- * "add another account" is meant for a couple of accounts, not an unbounded
- * list). Applied in `signIn` via `.slice(-MAX_SAVED_ACCOUNTS)` AFTER the
- * upsert(s): the just-signed-in account is always appended last, so it is
- * always kept — a 3rd distinct login evicts the OLDEST of the other two.
- */
-const MAX_SAVED_ACCOUNTS = 2;
 
 /**
  * Part C3 — both `active_business_id` and `saved_accounts` were session
@@ -443,5 +435,18 @@ export const supabaseAuthAdapter: AuthPort = {
   async removeSavedAccount(userId: string): Promise<void> {
     const accounts = await readSavedAccounts();
     await writeSavedAccounts(accounts.filter((account) => account.userId !== userId));
+
+    // If the removed entry IS the currently-active session, also end that
+    // session — leaving it live after its saved-account entry is gone would
+    // let it keep silently loading protected pages. Resolved AFTER the write
+    // above (never before) so a signOut that reads the current session finds
+    // the pruned `saved_accounts` already in place. `scope: "local"` only
+    // clears this device's session, mirroring `signOut`'s own semantics.
+    const supabase = await createServerSupabaseClient();
+    const { data } = await supabase.auth.getUser();
+    if (data.user?.id === userId) {
+      await supabase.auth.signOut({ scope: "local" });
+      await deleteActiveBusinessCookie();
+    }
   },
 };
