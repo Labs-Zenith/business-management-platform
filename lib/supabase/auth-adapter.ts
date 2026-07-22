@@ -74,6 +74,15 @@ const ACTIVE_BUSINESS_COOKIE_NAME = "active_business_id";
 const SAVED_ACCOUNTS_COOKIE_NAME = "saved_accounts";
 
 /**
+ * Part 1b — caps `saved_accounts` at 2 device-local profiles (Instagram-style
+ * "add another account" is meant for a couple of accounts, not an unbounded
+ * list). Applied in `signIn` via `.slice(-MAX_SAVED_ACCOUNTS)` AFTER the
+ * upsert(s): the just-signed-in account is always appended last, so it is
+ * always kept — a 3rd distinct login evicts the OLDEST of the other two.
+ */
+const MAX_SAVED_ACCOUNTS = 2;
+
+/**
  * Part C3 — both `active_business_id` and `saved_accounts` were session
  * cookies (cleared on browser close), which caused spurious re-logins on tab
  * reopen. 400 days matches the lifetime Chrome/browsers already cap
@@ -82,9 +91,18 @@ const SAVED_ACCOUNTS_COOKIE_NAME = "saved_accounts";
  */
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 400;
 
+/**
+ * Part 2 — `active_business_id` is encrypted at rest (same AES-256-GCM
+ * scheme as `saved_accounts`, `lib/server/cookie-crypto.ts`) for consistency,
+ * even though its value isn't secret (it's always re-validated against
+ * `BusinessRepository.listMembershipsForUser` on every read — see
+ * `getSession` below; an attacker who somehow forged/edited it could at most
+ * trigger the existing "fall back to memberships[0]" path, never fabricate a
+ * membership/role that doesn't exist).
+ */
 async function setActiveBusinessCookie(businessId: string): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(ACTIVE_BUSINESS_COOKIE_NAME, businessId, {
+  cookieStore.set(ACTIVE_BUSINESS_COOKIE_NAME, sealJson(businessId), {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
@@ -98,9 +116,19 @@ async function deleteActiveBusinessCookie(): Promise<void> {
   cookieStore.delete(ACTIVE_BUSINESS_COOKIE_NAME);
 }
 
+/**
+ * Fail-safe: `openJson` returns `null` for a malformed/tampered/unreadable
+ * (including pre-encryption-era plaintext) cookie, which this maps to
+ * `undefined` — identical to "cookie absent" — so `getSession` falls back to
+ * `memberships[0]`, already the existing behavior for a missing cookie.
+ */
 async function readActiveBusinessCookie(): Promise<string | undefined> {
   const cookieStore = await cookies();
-  return cookieStore.get(ACTIVE_BUSINESS_COOKIE_NAME)?.value;
+  const raw = cookieStore.get(ACTIVE_BUSINESS_COOKIE_NAME)?.value;
+  if (!raw) {
+    return undefined;
+  }
+  return openJson<string>(raw) ?? undefined;
 }
 
 /**
@@ -317,6 +345,10 @@ export const supabaseAuthAdapter: AuthPort = {
       label: data.user.email!,
       refreshToken: data.session.refresh_token,
     });
+    // Part 1b: cap at MAX_SAVED_ACCOUNTS — the just-signed-in account was
+    // appended last above, so it's always kept; the slice only evicts the
+    // OLDEST of any others beyond the cap.
+    accounts = accounts.slice(-MAX_SAVED_ACCOUNTS);
     await writeSavedAccounts(accounts);
 
     return {
@@ -406,5 +438,10 @@ export const supabaseAuthAdapter: AuthPort = {
 
   async switchAccount(userId: string): Promise<Session | null> {
     return performSwitchAccount(userId);
+  },
+
+  async removeSavedAccount(userId: string): Promise<void> {
+    const accounts = await readSavedAccounts();
+    await writeSavedAccounts(accounts.filter((account) => account.userId !== userId));
   },
 };

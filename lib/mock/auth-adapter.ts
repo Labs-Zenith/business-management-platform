@@ -26,6 +26,14 @@ const SESSION_COOKIE_NAME = "session";
 const SAVED_ACCOUNTS_COOKIE_NAME = "saved_accounts";
 
 /**
+ * Part 1b — caps `saved_accounts` at 2 device-local profiles, mirroring
+ * `lib/supabase/auth-adapter.ts`'s `MAX_SAVED_ACCOUNTS`. Applied in `signIn`
+ * via `.slice(-MAX_SAVED_ACCOUNTS)` AFTER the upsert: the just-signed-in
+ * account is appended last, so it's always kept.
+ */
+const MAX_SAVED_ACCOUNTS = 2;
+
+/**
  * Part C3 — `saved_accounts` was a session cookie (cleared on browser
  * close), causing spurious re-logins on tab reopen. 400 days matches the
  * lifetime `lib/supabase/auth-adapter.ts` uses for the same cookie.
@@ -266,13 +274,14 @@ export function createAuthAdapter(store: MockStore): AuthPort {
       // it's instantly reachable via `switchAccount` afterwards, mirroring
       // `lib/supabase/auth-adapter.ts#signIn`.
       const savedAccounts = await readSavedAccounts();
-      await writeSavedAccounts(
-        upsertAccount(savedAccounts, {
-          userId: defaultProfile.userId,
-          email: defaultProfile.email,
-          label: defaultProfile.email,
-        })
-      );
+      const updatedAccounts = upsertAccount(savedAccounts, {
+        userId: defaultProfile.userId,
+        email: defaultProfile.email,
+        label: defaultProfile.email,
+      });
+      // Part 1b: cap at MAX_SAVED_ACCOUNTS — the just-signed-in account was
+      // appended last above, so it's always kept.
+      await writeSavedAccounts(updatedAccounts.slice(-MAX_SAVED_ACCOUNTS));
 
       return session;
     },
@@ -347,6 +356,11 @@ export function createAuthAdapter(store: MockStore): AuthPort {
 
     async switchAccount(userId: string): Promise<Session | null> {
       return performSwitchAccount(store, userId);
+    },
+
+    async removeSavedAccount(userId: string): Promise<void> {
+      const accounts = await readSavedAccounts();
+      await writeSavedAccounts(accounts.filter((account) => account.userId !== userId));
     },
   };
 }

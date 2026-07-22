@@ -19,7 +19,9 @@ import { useState } from "react";
 import type { SavedAccount } from "@/lib/services/ports";
 import { avatarInitial } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Building2 } from "lucide-react";
+import { Building2, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Card,
   CardContent,
@@ -29,6 +31,7 @@ import {
 } from "@/components/ui/card";
 
 const ACCOUNT_ERROR_MESSAGE = "No se pudo entrar a ese perfil. Inicia sesión de nuevo.";
+const REMOVE_ERROR_MESSAGE = "No se pudo eliminar ese perfil. Intenta de nuevo.";
 
 type ProfilePickerProps = {
   accounts: SavedAccount[];
@@ -38,8 +41,10 @@ type ProfilePickerProps = {
 export default function ProfilePicker({ accounts, next }: ProfilePickerProps) {
   const [error, setError] = useState<string | null>(null);
   const [switchingUserId, setSwitchingUserId] = useState<string | null>(null);
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
 
   const isSwitching = switchingUserId !== null;
+  const isRemoving = removingUserId !== null;
   const addAccountHref = next ? `/login?add=1&next=${encodeURIComponent(next)}` : "/login?add=1";
 
   async function handleSelectAccount(userId: string) {
@@ -68,11 +73,39 @@ export default function ProfilePicker({ accounts, next }: ProfilePickerProps) {
     }
   }
 
+  /**
+   * Part 1f — removes a saved profile from this device via `POST
+   * /api/auth/remove-account`. On success, reloads the page: the server gate
+   * (`app/(auth)/login/page.tsx`) re-reads `saved_accounts` fresh, so if this
+   * was the last saved profile the plain `<LoginForm>` renders instead.
+   */
+  async function handleRemoveAccount(userId: string) {
+    if (isRemoving) return;
+    setError(null);
+    setRemovingUserId(userId);
+    try {
+      const response = await fetch("/api/auth/remove-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      if (!response.ok) {
+        setError(REMOVE_ERROR_MESSAGE);
+        setRemovingUserId(null);
+        return;
+      }
+      window.location.reload();
+    } catch {
+      setError(REMOVE_ERROR_MESSAGE);
+      setRemovingUserId(null);
+    }
+  }
+
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <div className="mb-1 flex items-center justify-center gap-2">
+          <div className="mb-3 flex items-center justify-center gap-2">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
               <Building2 className="size-4" />
             </div>
@@ -84,29 +117,49 @@ export default function ProfilePicker({ accounts, next }: ProfilePickerProps) {
         <CardContent>
           <div className="flex flex-col gap-1">
             {accounts.map((account) => (
-              <button
-                key={account.userId}
-                type="button"
-                disabled={isSwitching}
-                onClick={() => handleSelectAccount(account.userId)}
-                className="flex items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Avatar size="sm" className="shrink-0">
-                  <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-                    {avatarInitial(account.label || account.email)}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="min-w-0 flex-1 truncate">
-                  {account.label || account.email}
-                </span>
-                {account.active ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {switchingUserId === account.userId ? "Entrando..." : "Activa"}
+              <div key={account.userId} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={isSwitching || isRemoving}
+                  onClick={() => handleSelectAccount(account.userId)}
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Avatar size="sm" className="shrink-0">
+                    <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                      {avatarInitial(account.label || account.email)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="min-w-0 flex-1 truncate">
+                    {account.label || account.email}
                   </span>
-                ) : switchingUserId === account.userId ? (
-                  <span className="shrink-0 text-xs text-muted-foreground">Entrando...</span>
-                ) : null}
-              </button>
+                  {account.active ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {switchingUserId === account.userId ? "Entrando..." : "Activa"}
+                    </span>
+                  ) : switchingUserId === account.userId ? (
+                    <span className="shrink-0 text-xs text-muted-foreground">Entrando...</span>
+                  ) : null}
+                </button>
+                {/* Sibling of (NOT nested in) the select button above, so
+                    clicking the trash never triggers `handleSelectAccount`. */}
+                <ConfirmDialog
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Eliminar perfil de ${account.label || account.email}`}
+                      disabled={isSwitching || isRemoving}
+                      className="shrink-0 text-muted-foreground hover:text-destructive"
+                    >
+                      <Trash2 />
+                    </Button>
+                  }
+                  title="¿Eliminar este perfil guardado?"
+                  description="Se quitará de este dispositivo; podrás volver a agregarlo iniciando sesión."
+                  onConfirm={() => handleRemoveAccount(account.userId)}
+                  pending={removingUserId === account.userId}
+                />
+              </div>
             ))}
 
             {error ? (

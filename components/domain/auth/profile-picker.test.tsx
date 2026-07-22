@@ -91,4 +91,57 @@ describe("ProfilePicker", () => {
       `/login?add=1&next=${encodeURIComponent("/invoices")}`
     );
   });
+
+  it("the trash icon opens the confirm modal without triggering account selection", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ProfilePicker accounts={ACCOUNTS} />);
+
+    await user.click(screen.getByRole("button", { name: /eliminar perfil de otra cuenta/i }));
+
+    expect(await screen.findByText("¿Eliminar este perfil guardado?")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("confirming removal POSTs the userId to /api/auth/remove-account and reloads", async () => {
+    const user = userEvent.setup();
+    const reloadMock = vi.fn();
+    vi.stubGlobal("location", { ...window.location, assign: assignMock, reload: reloadMock });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { ok: true } }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ProfilePicker accounts={ACCOUNTS} />);
+
+    await user.click(screen.getByRole("button", { name: /eliminar perfil de otra cuenta/i }));
+    await user.click(await screen.findByRole("button", { name: "Eliminar" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/remove-account",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ userId: "u2" }),
+      })
+    );
+    expect(reloadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("selecting the row still POSTs to /api/auth/switch-account (trash does not interfere)", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { session: {} } }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<ProfilePicker accounts={ACCOUNTS} />);
+
+    await user.click(screen.getByText("Otra cuenta"));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/auth/switch-account",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ userId: "u2" }),
+      })
+    );
+  });
 });

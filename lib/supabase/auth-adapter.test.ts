@@ -116,7 +116,7 @@ describe("supabaseAuthAdapter.signIn", () => {
     const session = await supabaseAuthAdapter.signIn(EMAIL, "correct-password");
 
     expect(session).toEqual({ userId: USER_ID, businessId: BUSINESS_A, email: EMAIL, role: "admin" });
-    expect(mockCookieJar.get("active_business_id")?.value).toBe(BUSINESS_A);
+    expect(openJson<string>(mockCookieJar.get("active_business_id")!.value)).toBe(BUSINESS_A);
   });
 });
 
@@ -158,7 +158,7 @@ describe("supabaseAuthAdapter.getSession", () => {
   it("resolves the active business from the active_business_id cookie, with role fresh from memberships", async () => {
     mockSupabaseAuth.getUser.mockResolvedValue({ data: { user: { id: USER_ID, email: EMAIL } } });
     mockListMembershipsForUser.mockResolvedValue(membershipsFixture);
-    mockCookieJar.set("active_business_id", BUSINESS_B);
+    mockCookieJar.set("active_business_id", sealJson(BUSINESS_B));
 
     const session = await supabaseAuthAdapter.getSession();
 
@@ -168,7 +168,17 @@ describe("supabaseAuthAdapter.getSession", () => {
   it("falls back to the first membership when the cookie references a business the user is not a member of", async () => {
     mockSupabaseAuth.getUser.mockResolvedValue({ data: { user: { id: USER_ID, email: EMAIL } } });
     mockListMembershipsForUser.mockResolvedValue(membershipsFixture);
-    mockCookieJar.set("active_business_id", "10000000-0000-4000-8000-00000000dead");
+    mockCookieJar.set("active_business_id", sealJson("10000000-0000-4000-8000-00000000dead"));
+
+    const session = await supabaseAuthAdapter.getSession();
+
+    expect(session).toEqual({ userId: USER_ID, businessId: BUSINESS_A, email: EMAIL, role: "admin" });
+  });
+
+  it("falls back to the first membership when the cookie is old plaintext / unreadable (fail-safe)", async () => {
+    mockSupabaseAuth.getUser.mockResolvedValue({ data: { user: { id: USER_ID, email: EMAIL } } });
+    mockListMembershipsForUser.mockResolvedValue(membershipsFixture);
+    mockCookieJar.set("active_business_id", BUSINESS_B);
 
     const session = await supabaseAuthAdapter.getSession();
 
@@ -257,6 +267,6 @@ describe("supabaseAuthAdapter.switchBusiness", () => {
     const result = await supabaseAuthAdapter.switchBusiness(BUSINESS_B, "worker");
 
     expect(result).toEqual({ userId: USER_ID, businessId: BUSINESS_B, email: EMAIL, role: "worker" });
-    expect(mockCookieJar.get("active_business_id")?.value).toBe(BUSINESS_B);
+    expect(openJson<string>(mockCookieJar.get("active_business_id")!.value)).toBe(BUSINESS_B);
   });
 });
