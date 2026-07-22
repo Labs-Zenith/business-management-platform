@@ -308,7 +308,7 @@ describe("BusinessSwitcher — saved accounts (Wave 3)", () => {
     expect(pushMock).toHaveBeenCalledWith("/login?next=%2Fdashboard");
   });
 
-  it("disables 'Agregar cuenta' once MAX_SAVED_ACCOUNTS is reached", async () => {
+  it("keeps 'Agregar cuenta' enabled even at the 2-account cap (the limit is enforced at /login)", async () => {
     const user = userEvent.setup();
 
     render(
@@ -324,32 +324,10 @@ describe("BusinessSwitcher — saved accounts (Wave 3)", () => {
 
     await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
 
-    // Real native `<button>`, so the actual `disabled` attribute applies
-    // (unlike the `CollapsibleTrigger`'s `aria-disabled` — see file-level
-    // GOTCHA comment).
-    const addAccountButton = await screen.findByRole("button", { name: /agregar cuenta/i });
-    expect(addAccountButton).toBeDisabled();
-    expect(addAccountButton).toHaveAttribute("title", "Máximo 2 cuentas");
-
-    await user.click(addAccountButton);
-    expect(pushMock).not.toHaveBeenCalled();
-  });
-
-  it("keeps 'Agregar cuenta' enabled with fewer than MAX_SAVED_ACCOUNTS saved", async () => {
-    const user = userEvent.setup();
-
-    render(
-      <BusinessSwitcher
-        currentBusinessId="biz-1"
-        memberships={SINGLE}
-        savedAccounts={[{ userId: "u1", email: "demo@test.com", label: "demo@test.com", active: true }]}
-      />
-    );
-
-    await user.click(screen.getByRole("button", { name: "Negocio Demo" }));
-
     const addAccountButton = await screen.findByRole("button", { name: /agregar cuenta/i });
     expect(addAccountButton).not.toBeDisabled();
-    expect(addAccountButton).not.toHaveAttribute("title");
+
+    await user.click(addAccountButton);
+    expect(pushMock).toHaveBeenCalledWith("/login?next=%2Fdashboard");
   });
 });

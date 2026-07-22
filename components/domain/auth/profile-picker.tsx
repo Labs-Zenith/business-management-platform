@@ -170,9 +170,10 @@ export default function ProfilePicker({ accounts, next }: ProfilePickerProps) {
             ) : null}
 
             {accounts.length >= MAX_SAVED_ACCOUNTS ? (
-              <p className="mt-3 text-center text-xs text-muted-foreground">
-                Máximo 2 cuentas guardadas. Elimina una para agregar otra.
-              </p>
+              <div className="mt-3 text-center text-xs text-muted-foreground">
+                <p>Máximo 2 cuentas guardadas.</p>
+                <p>Elimina una para agregar otra.</p>
+              </div>
             ) : (
               <a
                 href={addAccountHref}

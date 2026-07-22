@@ -100,9 +100,8 @@ describe("ProfilePicker", () => {
     render(<ProfilePicker accounts={ACCOUNTS} />);
 
     expect(screen.queryByRole("link", { name: /usar otra cuenta/i })).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/máximo 2 cuentas guardadas\. elimina una para agregar otra\./i)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/máximo 2 cuentas guardadas\./i)).toBeInTheDocument();
+    expect(screen.getByText(/elimina una para agregar otra\./i)).toBeInTheDocument();
   });
 
   it("the trash icon opens the confirm modal without triggering account selection", async () => {
