@@ -3,6 +3,7 @@ import type {
   PipelineCardCreate,
   PipelineCardListQuery,
   PipelineCardUpdate,
+  PipelineReorderItem,
   PipelineRepository,
   PipelineStage,
 } from "@/lib/services/ports";
@@ -30,6 +31,18 @@ function sortCards(cards: PipelineCard[]): PipelineCard[] {
   });
 }
 
+/**
+ * Server-authoritative "append" position for a business+stage — one past the
+ * current MAX (0 for an empty stage). Mirrors `lib/db/pipeline-repo.ts`'s
+ * `nextPositionInStage` exactly (Fix 3 for `create`, Fix 4 for `update`).
+ */
+function nextPositionInStage(store: MockStore, businessId: string, stage: PipelineStage): number {
+  const positions = [...store.pipelineCards.values()]
+    .filter((card) => card.businessId === businessId && card.stage === stage)
+    .map((card) => card.position);
+  return positions.length === 0 ? 0 : Math.max(...positions) + 1;
+}
+
 export function createPipelineRepository(store: MockStore): PipelineRepository {
   return {
     async list(businessId: string, query?: PipelineCardListQuery): Promise<PipelineCard[]> {
@@ -50,8 +63,14 @@ export function createPipelineRepository(store: MockStore): PipelineRepository {
       return card;
     },
 
+    /**
+     * Fix 3: `data.position` undefined means "append" (server-authoritative),
+     * never a hardcoded `0` — a hardcoded default collided with an existing
+     * card already at position 0 of a non-empty stage.
+     */
     async create(businessId: string, data: PipelineCardCreate): Promise<PipelineCard> {
       const now = new Date().toISOString();
+      const position = data.position ?? nextPositionInStage(store, businessId, data.stage);
       const card: PipelineCard = {
         id: generateId(),
         businessId,
@@ -60,7 +79,7 @@ export function createPipelineRepository(store: MockStore): PipelineRepository {
         stage: data.stage,
         amount: data.amount ?? null,
         notes: data.notes ?? null,
-        position: data.position ?? 0,
+        position,
         createdAt: now,
         updatedAt: now,
       };
@@ -68,15 +87,26 @@ export function createPipelineRepository(store: MockStore): PipelineRepository {
       return card;
     },
 
+    /**
+     * Fix 4: an edit that changes `stage` WITHOUT an explicit `position`
+     * appends to the destination stage rather than keeping the old stage's
+     * position value — see `lib/db/pipeline-repo.ts#update`'s matching doc
+     * comment.
+     */
     async update(businessId: string, id: string, data: PipelineCardUpdate): Promise<PipelineCard | null> {
       const existing = store.pipelineCards.get(id);
       if (!existing || existing.businessId !== businessId) {
         return null;
       }
 
+      const isStageChange = data.stage !== undefined && data.stage !== existing.stage;
+      const position =
+        data.position ?? (isStageChange ? nextPositionInStage(store, businessId, data.stage!) : existing.position);
+
       const updated: PipelineCard = {
         ...existing,
         ...data,
+        position,
         updatedAt: new Date().toISOString(),
       };
       store.pipelineCards.set(id, updated);
@@ -90,6 +120,30 @@ export function createPipelineRepository(store: MockStore): PipelineRepository {
       }
       store.pipelineCards.delete(id);
       return true;
+    },
+
+    /**
+     * Fix 1 (the BLOCKER): bulk, atomic (validate-then-apply) reorder — see
+     * `lib/db/pipeline-repo.ts#reorder`'s doc comment for the full bug this
+     * fixes. Business-scoped per item: an id belonging to a different
+     * business (or missing entirely) is silently skipped, never touched.
+     */
+    async reorder(businessId: string, items: PipelineReorderItem[]): Promise<void> {
+      const now = new Date().toISOString();
+      const updates: Array<{ id: string; card: PipelineCard }> = [];
+
+      for (const item of items) {
+        const existing = store.pipelineCards.get(item.id);
+        if (!existing || existing.businessId !== businessId) continue;
+        updates.push({
+          id: item.id,
+          card: { ...existing, stage: item.stage, position: item.position, updatedAt: now },
+        });
+      }
+
+      for (const { id, card } of updates) {
+        store.pipelineCards.set(id, card);
+      }
     },
   };
 }

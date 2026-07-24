@@ -41,6 +41,7 @@ vi.mock("next/headers", () => ({
 
 const { GET: listGet, POST: listPost } = await import("./route");
 const { PATCH: detailPatch, DELETE: detailDelete } = await import("./[id]/route");
+const { POST: reorderPost } = await import("./reorder/route");
 
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_BUSINESS_ID = "10000000-0000-4000-8000-000000000099";
@@ -451,5 +452,156 @@ describe("DELETE /api/ventas/{id}", () => {
 
     expect(response.status).toBe(403);
     expect(store.pipelineCards.has(card.id)).toBe(true);
+  });
+});
+
+describe("POST /api/ventas/reorder", () => {
+  beforeEach(() => {
+    resetStore();
+    mockCookieJar.clear();
+    process.env.APP_ORIGIN = "http://localhost:3000";
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_APP_ORIGIN === undefined) {
+      delete process.env.APP_ORIGIN;
+    } else {
+      process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
+    }
+    if (ORIGINAL_PIPELINE_ENABLED === undefined) {
+      delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
+    } else {
+      process.env.PIPELINE_ENABLED_BUSINESS_IDS = ORIGINAL_PIPELINE_ENABLED;
+    }
+  });
+
+  function reorderRequest(body: unknown, headers: Record<string, string> = {}) {
+    return new Request("http://localhost:3000/api/ventas/reorder", {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://localhost:3000", ...headers },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("rejects unauthenticated requests with 401 UNAUTHENTICATED", async () => {
+    enablePipelineForSessionBusiness();
+
+    const response = await reorderPost(
+      reorderRequest({ items: [{ id: "80000000-0000-4000-8000-000000000001", stage: "ganado", position: 0 }] }),
+    );
+
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects with 403 FORBIDDEN when the feature is disabled for the business, applying no change", async () => {
+    disablePipeline();
+    await signIn();
+    const card = seedCard();
+
+    const response = await reorderPost(
+      reorderRequest({ items: [{ id: card.id, stage: "ganado", position: 0 }] }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(store.pipelineCards.get(card.id)?.stage).toBe("nuevo");
+  });
+
+  it("200 happy path — applies the FULL renumbered set for multiple cards atomically", async () => {
+    enablePipelineForSessionBusiness();
+    await signIn();
+    const a = seedCard({ id: "80000000-0000-4000-8000-000000000001", title: "A", stage: "nuevo", position: 0 });
+    const b = seedCard({ id: "80000000-0000-4000-8000-000000000002", title: "B", stage: "nuevo", position: 1 });
+
+    const response = await reorderPost(
+      reorderRequest({
+        items: [
+          { id: b.id, stage: "nuevo", position: 0 },
+          { id: a.id, stage: "nuevo", position: 1 },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.ok).toBe(true);
+    expect(store.pipelineCards.get(b.id)?.position).toBe(0);
+    expect(store.pipelineCards.get(a.id)?.position).toBe(1);
+  });
+
+  it("rejects (via strict schema) an empty items array with 400 VALIDATION_ERROR", async () => {
+    enablePipelineForSessionBusiness();
+    await signIn();
+
+    const response = await reorderPost(reorderRequest({ items: [] }));
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects (via strict schema) an unknown field on an item with 400 VALIDATION_ERROR, applying no change", async () => {
+    enablePipelineForSessionBusiness();
+    await signIn();
+    const card = seedCard();
+
+    const response = await reorderPost(
+      reorderRequest({ items: [{ id: card.id, stage: "ganado", position: 0, businessId: OTHER_BUSINESS_ID }] }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(store.pipelineCards.get(card.id)?.stage).toBe("nuevo");
+  });
+
+  it("rejects an invalid stage with 400 VALIDATION_ERROR", async () => {
+    enablePipelineForSessionBusiness();
+    await signIn();
+    const card = seedCard();
+
+    const response = await reorderPost(
+      reorderRequest({ items: [{ id: card.id, stage: "no-existe", position: 0 }] }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects a mismatched Origin header with 403 FORBIDDEN", async () => {
+    enablePipelineForSessionBusiness();
+    await signIn();
+    const card = seedCard();
+
+    const response = await reorderPost(
+      reorderRequest(
+        { items: [{ id: card.id, stage: "ganado", position: 0 }] },
+        { origin: "http://evil.test" },
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    expect(store.pipelineCards.get(card.id)?.stage).toBe("nuevo");
+  });
+
+  it("is business-scoped: silently skips a foreign id, applying the rest of the batch", async () => {
+    enablePipelineForSessionBusiness();
+    await signIn();
+    const own = seedCard({ id: "80000000-0000-4000-8000-000000000001", stage: "nuevo", position: 0 });
+    const foreign = seedCard({
+      id: "80000000-0000-4000-8000-000000000099",
+      businessId: OTHER_BUSINESS_ID,
+      stage: "nuevo",
+      position: 0,
+    });
+
+    const response = await reorderPost(
+      reorderRequest({
+        items: [
+          { id: own.id, stage: "ganado", position: 0 },
+          { id: foreign.id, stage: "ganado", position: 1 },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(store.pipelineCards.get(own.id)?.stage).toBe("ganado");
+    expect(store.pipelineCards.get(foreign.id)?.stage).toBe("nuevo");
   });
 });

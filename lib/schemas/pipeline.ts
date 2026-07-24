@@ -38,3 +38,28 @@ export const pipelineCardUpdateSchema = z
 
 export type PipelineCardCreateInput = z.infer<typeof pipelineCardCreateSchema>;
 export type PipelineCardUpdateInput = z.infer<typeof pipelineCardUpdateSchema>;
+
+/**
+ * Bulk reorder payload (Fix 1) — the board sends the FULL renumbered
+ * `0..n-1` position set for every card in each affected stage, not just the
+ * single moved card. `.strict()` on both the outer object and each item
+ * rejects any forged/unknown field (defense-in-depth, same convention as the
+ * create/update schemas above).
+ */
+export const pipelineReorderSchema = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            id: z.string().uuid(),
+            stage: z.enum(PIPELINE_STAGES),
+            position: z.number().int().nonnegative(),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
+
+export type PipelineReorderInput = z.infer<typeof pipelineReorderSchema>;

@@ -7,6 +7,7 @@ import {
   deletePipelineCard,
   getPipelineCard,
   listPipelineCards,
+  reorderPipelineCards,
   updatePipelineCard,
 } from "./pipeline-service";
 
@@ -122,6 +123,24 @@ describe("updatePipelineCard (pipeline-service)", () => {
     expect(updated.position).toBe(1);
     expect(updated.title).toBe("Original");
     expect(updated.amount).toBe(500000);
+  });
+});
+
+describe("reorderPipelineCards (pipeline-service)", () => {
+  it("ALWAYS derives businessId from the session, ignoring a foreign id in the payload", async () => {
+    resetStore();
+    const own = await createPipelineCard(SESSION, { title: "Propia", stage: "nuevo" });
+    const otherSession: Session = { ...SESSION, businessId: OTHER_BUSINESS_ID };
+    const foreign = await createPipelineCard(otherSession, { title: "Ajena", stage: "nuevo" });
+
+    await reorderPipelineCards(SESSION, [
+      { id: own.id, stage: "ganado", position: 0 },
+      { id: foreign.id, stage: "ganado", position: 1 },
+    ]);
+
+    expect(store.pipelineCards.get(own.id)!.stage).toBe("ganado");
+    // Foreign card, scoped to a different business, is untouched.
+    expect(store.pipelineCards.get(foreign.id)!.stage).toBe("nuevo");
   });
 });
 

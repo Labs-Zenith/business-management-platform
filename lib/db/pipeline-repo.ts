@@ -3,11 +3,12 @@ import type {
   PipelineCardCreate,
   PipelineCardListQuery,
   PipelineCardUpdate,
+  PipelineReorderItem,
   PipelineRepository,
   PipelineStage,
 } from "@/lib/services/ports";
 import { PIPELINE_STAGES } from "@/lib/services/ports";
-import { sql } from "./client";
+import { runTransaction, sql } from "./client";
 
 /**
  * Mirrors `db/employee-repo.ts`'s strategy: fetch business-scoped rows via a
@@ -58,6 +59,22 @@ function sortCards(cards: PipelineCard[]): PipelineCard[] {
   });
 }
 
+/**
+ * Server-authoritative "append" position for a business+stage — one past the
+ * current MAX (0 for an empty stage). Used by BOTH `create` (Fix 3: a new
+ * card must never collide with position 0 of a non-empty stage) and `update`
+ * (Fix 4: moving a card to a different stage via the detail dialog, without
+ * an explicit `position`, must append rather than keep the old stage's
+ * position value).
+ */
+async function nextPositionInStage(businessId: string, stage: PipelineStage): Promise<number> {
+  const rows = (await sql`
+    SELECT COALESCE(MAX(position), -1) + 1 AS next_position
+    FROM pipeline_cards WHERE business_id = ${businessId} AND stage = ${stage}
+  `) as unknown as { next_position: number }[];
+  return Number(rows[0]!.next_position);
+}
+
 export const pipelineRepo: PipelineRepository = {
   async list(businessId: string, query?: PipelineCardListQuery): Promise<PipelineCard[]> {
     const rows = (await sql`
@@ -79,26 +96,48 @@ export const pipelineRepo: PipelineRepository = {
     return toPipelineCard(row);
   },
 
+  /**
+   * Fix 3: `data.position` undefined means "append" (server-authoritative),
+   * NEVER a hardcoded `0` — a hardcoded default collided with an existing
+   * card already at position 0 of a non-empty stage, producing duplicate
+   * positions on the very first drag reorder.
+   */
   async create(businessId: string, data: PipelineCardCreate): Promise<PipelineCard> {
+    const position = data.position ?? (await nextPositionInStage(businessId, data.stage));
+
     const rows = (await sql`
       INSERT INTO pipeline_cards (
         id, business_id, customer_id, title, stage, amount, notes, position
       )
       VALUES (
         gen_random_uuid(), ${businessId}, ${data.customerId ?? null}, ${data.title}, ${data.stage},
-        ${data.amount ?? null}, ${data.notes ?? null}, ${data.position ?? 0}
+        ${data.amount ?? null}, ${data.notes ?? null}, ${position}
       )
       RETURNING *
     `) as unknown as PipelineCardRow[];
     return toPipelineCard(rows[0]!);
   },
 
+  /**
+   * Fix 4: an edit that changes `stage` WITHOUT an explicit `position` (e.g.
+   * the detail dialog's stage `<Select>`) appends to the destination stage
+   * rather than silently keeping the old stage's position value — which
+   * previously could either collide with an existing card at that position
+   * in the new stage, or leave the card buried mid-column instead of at the
+   * end. A drag (which always sends an explicit `position` via `reorder`) is
+   * unaffected by this rule.
+   */
   async update(businessId: string, id: string, data: PipelineCardUpdate): Promise<PipelineCard | null> {
     const existingRows = (await sql`SELECT * FROM pipeline_cards WHERE id = ${id}`) as unknown as PipelineCardRow[];
     const existing = existingRows[0];
     if (!existing || existing.business_id !== businessId) return null;
 
-    const merged = { ...toPipelineCard(existing), ...data };
+    const existingCard = toPipelineCard(existing);
+    const isStageChange = data.stage !== undefined && data.stage !== existingCard.stage;
+    const position =
+      data.position ?? (isStageChange ? await nextPositionInStage(businessId, data.stage!) : existingCard.position);
+
+    const merged = { ...existingCard, ...data, position };
     const rows = (await sql`
       UPDATE pipeline_cards SET
         customer_id = ${merged.customerId},
@@ -121,5 +160,33 @@ export const pipelineRepo: PipelineRepository = {
 
     await sql`DELETE FROM pipeline_cards WHERE id = ${id}`;
     return true;
+  },
+
+  /**
+   * Fix 1 (the BLOCKER): a single-card PATCH on drag only ever persisted the
+   * MOVED card's own `{stage, position}` — every SIBLING's client-recomputed
+   * position was discarded, so a reload showed duplicate positions within a
+   * stage. This bulk `reorder` persists the FULL renumbered set the board
+   * sends (every card in every affected stage) atomically, in ONE
+   * `runTransaction` — either all of it lands, or none of it does.
+   *
+   * Business-scoped per-item (not a single bulk `WHERE id IN (...)`): each
+   * `UPDATE` carries its own `AND business_id = ${businessId}` guard, so an
+   * id that doesn't belong to this business is silently a 0-row no-op rather
+   * than a cross-business write — matching every other repository method's
+   * scoping convention.
+   */
+  async reorder(businessId: string, items: PipelineReorderItem[]): Promise<void> {
+    await runTransaction(async (tx) => {
+      for (const item of items) {
+        await tx`
+          UPDATE pipeline_cards SET
+            stage = ${item.stage},
+            position = ${item.position},
+            updated_at = now()
+          WHERE id = ${item.id} AND business_id = ${businessId}
+        `;
+      }
+    });
   },
 };

@@ -16,6 +16,7 @@ import type {
   PipelineCardCreate,
   PipelineCardListQuery,
   PipelineCardUpdate,
+  PipelineReorderItem,
   Session,
 } from "@/lib/services/ports";
 
@@ -68,4 +69,16 @@ export async function deletePipelineCard(session: Session, id: string): Promise<
   if (!deleted) {
     throw new ApiError("NOT_FOUND", "Pipeline card not found.");
   }
+}
+
+/**
+ * Bulk reorder (Fix 1 — the drag-and-drop position bug): `businessId` is
+ * resolved from `session` ONLY, matching every other function in this file —
+ * never trusted from the client payload. Cross-business ids are silently
+ * skipped by the repository (see `PipelineRepository.reorder`'s doc
+ * comment), never surfaced as an error, so a stale/forged id in the payload
+ * can't reveal cross-business existence.
+ */
+export async function reorderPipelineCards(session: Session, items: PipelineReorderItem[]): Promise<void> {
+  await repositories.pipeline.reorder(session.businessId, items);
 }

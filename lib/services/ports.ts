@@ -661,12 +661,27 @@ export type PipelineCardListQuery = {
  * bounded and the board groups them by `stage` client-side. Cards ARE
  * deletable (unlike most entities), so this repo has a `delete`.
  */
+export type PipelineReorderItem = { id: string; stage: PipelineStage; position: number };
+
 export interface PipelineRepository {
   list(businessId: string, query?: PipelineCardListQuery): Promise<PipelineCard[]>;
   getById(businessId: string, id: string): Promise<PipelineCard | null>;
   create(businessId: string, data: PipelineCardCreate): Promise<PipelineCard>;
   update(businessId: string, id: string, data: PipelineCardUpdate): Promise<PipelineCard | null>;
   delete(businessId: string, id: string): Promise<boolean>;
+  /**
+   * Bulk, server-authoritative reorder: persists `{stage, position}` for
+   * EVERY item in ONE atomic call. Fixes the drag-and-drop bug where only the
+   * moved card's own position was PATCHed while its siblings' recomputed
+   * positions were dropped client-side — reloading the board would then show
+   * duplicate positions within a stage. Business-scoped: any `id` not
+   * belonging to `businessId` is silently skipped (validate-then-apply, never
+   * a leaked cross-business write), matching every other repository method's
+   * convention. Callers (the board's drag handler) are expected to pass the
+   * FULL renumbered `0..n-1` position set for every affected stage, not just
+   * the single moved card.
+   */
+  reorder(businessId: string, items: PipelineReorderItem[]): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

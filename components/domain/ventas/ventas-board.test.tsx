@@ -161,6 +161,41 @@ describe("moveCardWithinBoard", () => {
     const cards = [makeCard({ id: "a" })];
     expect(moveCardWithinBoard(cards, "missing", "ganado", null)).toBe(cards);
   });
+
+  it("Fix 2 — is a true no-op (reference-equal input untouched) when activeId === overId", () => {
+    const cards = [
+      makeCard({ id: "a", stage: "nuevo", position: 0 }),
+      makeCard({ id: "b", stage: "nuevo", position: 1 }),
+    ];
+    expect(moveCardWithinBoard(cards, "a", "nuevo", "a")).toBe(cards);
+  });
+
+  it("Fix 1 support — renumbers the SOURCE stage's remaining cards (closes the gap) on a cross-stage move", () => {
+    const cards = [
+      makeCard({ id: "a", stage: "nuevo", position: 0 }),
+      makeCard({ id: "b", stage: "nuevo", position: 1 }),
+      makeCard({ id: "c", stage: "nuevo", position: 2 }),
+      makeCard({ id: "d", stage: "ganado", position: 0 }),
+    ];
+
+    const result = moveCardWithinBoard(cards, "b", "ganado", "ganado");
+
+    const nuevoOrder = result
+      .filter((card) => card.stage === "nuevo")
+      .sort((x, y) => x.position - y.position)
+      .map((card) => ({ id: card.id, position: card.position }));
+    // "a" and "c" remain in "nuevo", renumbered sequentially (no gap at the
+    // old position 1 the moved card "b" left behind).
+    expect(nuevoOrder).toEqual([
+      { id: "a", position: 0 },
+      { id: "c", position: 1 },
+    ]);
+    const ganadoOrder = result
+      .filter((card) => card.stage === "ganado")
+      .sort((x, y) => x.position - y.position)
+      .map((card) => card.id);
+    expect(ganadoOrder).toEqual(["d", "b"]);
+  });
 });
 
 describe("<VentasBoard />", () => {
@@ -200,42 +235,81 @@ describe("<VentasBoard />", () => {
     expect(within(screen.getByTestId("ventas-column-interesado")).getByText("Lead C")).toBeInTheDocument();
   });
 
-  it("PATCHes the moved card's new stage/position on a successful drop", async () => {
-    const cards = [makeCard({ id: "a", stage: "nuevo", position: 0 })];
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: {} }) });
+  it("Fix 1 — POSTs /api/ventas/reorder with the FULL renumbered set for every card in the affected stage, not a single-card PATCH", async () => {
+    const cards = [
+      makeCard({ id: "a", stage: "nuevo", title: "A", position: 0 }),
+      makeCard({ id: "b", stage: "nuevo", title: "B", position: 1 }),
+      makeCard({ id: "c", stage: "nuevo", title: "C", position: 2 }),
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { ok: true } }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<VentasBoard initialCards={cards} customers={CUSTOMERS} />);
+
+    // Drag "c" to just before "a" — a reorder among siblings within the SAME stage.
+    await act(async () => {
+      capturedHandlers.onDragStart?.({ active: { id: "c" } } as DragStartEvent);
+      await capturedHandlers.onDragEnd?.({ active: { id: "c" }, over: { id: "a" } } as DragEndEvent);
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/ventas/reorder", expect.objectContaining({ method: "POST" }));
+    const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+    const body = JSON.parse(options.body) as { items: Array<{ id: string; stage: string; position: number }> };
+    // ALL three siblings are present, renumbered 0..n-1 — not just the moved card.
+    expect(body.items.sort((x, y) => x.position - y.position)).toEqual([
+      { id: "c", stage: "nuevo", position: 0 },
+      { id: "a", stage: "nuevo", position: 1 },
+      { id: "b", stage: "nuevo", position: 2 },
+    ]);
+  });
+
+  it("Fix 1 — a cross-stage move sends BOTH the source and target stages' full renumbered sets", async () => {
+    const cards = [
+      makeCard({ id: "a", stage: "nuevo", title: "A", position: 0 }),
+      makeCard({ id: "b", stage: "nuevo", title: "B", position: 1 }),
+      makeCard({ id: "d", stage: "ganado", title: "D", position: 0 }),
+    ];
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { ok: true } }) });
     vi.stubGlobal("fetch", fetchMock);
 
     render(<VentasBoard initialCards={cards} customers={CUSTOMERS} />);
 
     await act(async () => {
-      capturedHandlers.onDragStart?.({ active: { id: "a" } } as DragStartEvent);
-      await capturedHandlers.onDragEnd?.({ active: { id: "a" }, over: { id: "interesado" } } as DragEndEvent);
+      await capturedHandlers.onDragEnd?.({ active: { id: "a" }, over: { id: "ganado" } } as DragEndEvent);
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/ventas/a",
-      expect.objectContaining({ method: "PATCH" }),
-    );
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
-    expect(JSON.parse(options.body)).toEqual({ stage: "interesado", position: 0 });
+    const body = JSON.parse(options.body) as { items: Array<{ id: string; stage: string; position: number }> };
+    expect(body.items.sort((x, y) => (x.stage === y.stage ? x.position - y.position : x.stage.localeCompare(y.stage))))
+      .toEqual([
+        { id: "d", stage: "ganado", position: 0 },
+        { id: "a", stage: "ganado", position: 1 },
+        { id: "b", stage: "nuevo", position: 0 },
+      ]);
   });
 
-  it("reverts the optimistic move and shows a toast when the PATCH fails", async () => {
-    const cards = [makeCard({ id: "a", stage: "nuevo", position: 0 })];
+  it("reverts the optimistic move (order restored) and shows a toast when the reorder request fails", async () => {
+    const cards = [
+      makeCard({ id: "a", stage: "nuevo", title: "A", position: 0 }),
+      makeCard({ id: "b", stage: "nuevo", title: "B", position: 1 }),
+    ];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
 
     render(<VentasBoard initialCards={cards} customers={CUSTOMERS} />);
 
     await act(async () => {
-      await capturedHandlers.onDragEnd?.({ active: { id: "a" }, over: { id: "interesado" } } as DragEndEvent);
+      await capturedHandlers.onDragEnd?.({ active: { id: "b" }, over: { id: "a" } } as DragEndEvent);
     });
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-    // Reverted: the card is back under "Nuevo", not "Interesado".
-    expect(screen.getByText("Card")).toBeInTheDocument();
+    // Reverted: original order ("A" then "B") restored within the column.
+    const nuevoColumn = screen.getByTestId("ventas-column-nuevo");
+    const titles = within(nuevoColumn).getAllByText(/^[AB]$/).map((el) => el.textContent);
+    expect(titles).toEqual(["A", "B"]);
   });
 
-  it("does not PATCH when dropped back in its original spot (no-op)", async () => {
+  it("does not send a reorder request when dropped back in its original spot (no-op)", async () => {
     const cards = [makeCard({ id: "a", stage: "nuevo", position: 0 })];
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -247,6 +321,26 @@ describe("<VentasBoard />", () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("Fix 2 — a drop-on-self is a TRUE no-op: no request, no state change", async () => {
+    const cards = [
+      makeCard({ id: "a", stage: "nuevo", title: "A", position: 0 }),
+      makeCard({ id: "b", stage: "nuevo", title: "B", position: 1 }),
+    ];
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<VentasBoard initialCards={cards} customers={CUSTOMERS} />);
+
+    await act(async () => {
+      await capturedHandlers.onDragEnd?.({ active: { id: "a" }, over: { id: "a" } } as DragEndEvent);
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const nuevoColumn = screen.getByTestId("ventas-column-nuevo");
+    const titles = within(nuevoColumn).getAllByText(/^[AB]$/).map((el) => el.textContent);
+    expect(titles).toEqual(["A", "B"]);
   });
 
   it("ignores a drop with no `over` target (dropped outside any column)", async () => {

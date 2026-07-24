@@ -23,16 +23,25 @@
  * arrow keys to move, Space to drop) per dnd-kit's built-in accessibility
  * story — no extra work needed here beyond wiring the sensor.
  *
- * MOVE PERSISTENCE: `handleDragEnd` computes the new `{stage, position}`
- * PURELY from local state (`moveCardWithinBoard`, exported for direct unit
- * testing without simulating real pointer/keyboard drag events — per this
- * change's test-plan note), applies it OPTIMISTICALLY via `setCards`, then
- * `PATCH`es `/api/ventas/{id}`. A failed PATCH reverts to the pre-drag
- * snapshot and surfaces a `sonner` `toast.error` (mounted globally by
- * `app/layout.tsx`) — the user sees the card visually snap back with an
- * explanation, rather than a silent desync between the board and the server.
- * A drop that doesn't actually change `{stage, position}` (e.g. dropped back
- * in its original spot) skips the network call entirely.
+ * MOVE PERSISTENCE (Fix 1 — bulk, server-authoritative reorder):
+ * `handleDragEnd` computes the new `{stage, position}` for EVERY card in the
+ * AFFECTED stage(s) PURELY from local state (`moveCardWithinBoard`, exported
+ * for direct unit testing without simulating real pointer/keyboard drag
+ * events — per this change's test-plan note), applies it OPTIMISTICALLY via
+ * `setCards`, then `POST`s the FULL renumbered set to `/api/ventas/reorder`
+ * — NOT a single-card `PATCH` (which previously discarded every sibling's
+ * recomputed position, producing duplicate positions within a stage on
+ * reload). "Affected stage(s)" is the target stage alone for a same-stage
+ * reorder, or BOTH the source and target stages for a cross-stage move (the
+ * source stage's remaining cards are renumbered too, closing the gap left by
+ * the moved card — see `moveCardWithinBoard`'s doc comment). A failed
+ * request reverts to the pre-drag snapshot and surfaces a `sonner`
+ * `toast.error` (mounted globally by `app/layout.tsx`) — the user sees the
+ * cards visually snap back with an explanation, rather than a silent desync
+ * between the board and the server. A drop that doesn't actually change
+ * `{stage, position}` (e.g. dropped back in its original spot), OR a
+ * drop-on-self (Fix 2 — `active.id === over.id`, previously reordered
+ * instead of no-op'ing), skips the network call entirely.
  */
 
 import { useMemo, useState } from "react";
@@ -75,8 +84,14 @@ export function resolveTargetStage(cards: PipelineCard[], overId: string | null)
  * `overId` (another card's id — inserted just before it — or the target
  * stage's own droppable id / `null`, meaning "append at the end"), and
  * recomputes sequential `0..n-1` `position` values for every card left in
- * `targetStage`. Cards in every OTHER stage are untouched (their `position`
- * values are not renumbered — only the destination stage's order matters).
+ * `targetStage`. When the move is CROSS-stage (the card's original stage
+ * differs from `targetStage`), the SOURCE stage's remaining cards are ALSO
+ * renumbered sequentially (Fix 1 support — closes the gap left by the moved
+ * card, so the bulk `/api/ventas/reorder` payload built from this result
+ * carries a correct, gapless `0..n-1` sequence for BOTH affected stages).
+ * Every OTHER stage (neither source nor target) is left completely
+ * untouched. Fix 2: a drop-on-self (`activeId === overId`) is a true no-op —
+ * returns `cards` unchanged, reference-equal, before any other logic runs.
  * Exported so `ventas-board.test.tsx` can exercise the drop logic directly
  * without simulating a real pointer drag.
  */
@@ -86,12 +101,15 @@ export function moveCardWithinBoard(
   targetStage: PipelineStage,
   overId: string | null,
 ): PipelineCard[] {
+  if (activeId === overId) return cards;
+
   const active = cards.find((card) => card.id === activeId);
   if (!active) return cards;
 
+  const sourceStage = active.stage;
   const withoutActive = cards.filter((card) => card.id !== activeId);
   const targetStageCards = withoutActive.filter((card) => card.stage === targetStage).sort((a, b) => a.position - b.position);
-  const otherCards = withoutActive.filter((card) => card.stage !== targetStage);
+  const untouchedCards = withoutActive.filter((card) => card.stage !== targetStage && card.stage !== sourceStage);
 
   let insertIndex = targetStageCards.length;
   if (overId && overId !== targetStage) {
@@ -100,9 +118,18 @@ export function moveCardWithinBoard(
   }
 
   const reordered = [...targetStageCards.slice(0, insertIndex), active, ...targetStageCards.slice(insertIndex)];
-  const withPositions = reordered.map((card, index) => ({ ...card, stage: targetStage, position: index }));
+  const withTargetPositions = reordered.map((card, index) => ({ ...card, stage: targetStage, position: index }));
 
-  return [...otherCards, ...withPositions];
+  if (sourceStage === targetStage) {
+    return [...untouchedCards, ...withTargetPositions];
+  }
+
+  const withSourcePositions = withoutActive
+    .filter((card) => card.stage === sourceStage)
+    .sort((a, b) => a.position - b.position)
+    .map((card, index) => ({ ...card, position: index }));
+
+  return [...untouchedCards, ...withSourcePositions, ...withTargetPositions];
 }
 
 function VentasColumn({
@@ -149,7 +176,13 @@ export default function VentasBoard({ initialCards, customers }: VentasBoardProp
     () =>
       STAGE_ORDER.map((stage) => ({
         stage,
-        cards: cards.filter((card) => card.stage === stage).sort((a, b) => a.position - b.position),
+        // Fix 5: `createdAt` tiebreak matches the repos' `sortCards` — keeps
+        // client render order deterministic when two cards share a
+        // `position` (e.g. between an optimistic update and the server's
+        // authoritative re-render).
+        cards: cards
+          .filter((card) => card.stage === stage)
+          .sort((a, b) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)),
       })),
     [cards],
   );
@@ -163,7 +196,10 @@ export default function VentasBoard({ initialCards, customers }: VentasBoardProp
   async function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setActiveId(null);
+    // Fix 2: no drop target, or dropped on itself, is a true no-op — no
+    // state change, no request.
     if (!over) return;
+    if (String(active.id) === String(over.id)) return;
 
     const activeCardBeforeMove = cards.find((card) => card.id === active.id);
     if (!activeCardBeforeMove) return;
@@ -173,6 +209,8 @@ export default function VentasBoard({ initialCards, customers }: VentasBoardProp
 
     const previousCards = cards;
     const nextCards = moveCardWithinBoard(cards, String(active.id), targetStage, String(over.id));
+    if (nextCards === previousCards) return;
+
     const movedCard = nextCards.find((card) => card.id === active.id);
     if (!movedCard) return;
     if (movedCard.stage === activeCardBeforeMove.stage && movedCard.position === activeCardBeforeMove.position) {
@@ -181,11 +219,21 @@ export default function VentasBoard({ initialCards, customers }: VentasBoardProp
 
     setCards(nextCards);
 
+    // Fix 1: send the FULL renumbered position set for every card in every
+    // AFFECTED stage (source + target when they differ; just the target for
+    // a same-stage reorder) — not just the single moved card — so siblings'
+    // recomputed positions are persisted atomically instead of being
+    // silently discarded.
+    const affectedStages = new Set<PipelineStage>([targetStage, activeCardBeforeMove.stage]);
+    const items = nextCards
+      .filter((card) => affectedStages.has(card.stage))
+      .map((card) => ({ id: card.id, stage: card.stage, position: card.position }));
+
     try {
-      const response = await fetch(`/api/ventas/${movedCard.id}`, {
-        method: "PATCH",
+      const response = await fetch("/api/ventas/reorder", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stage: movedCard.stage, position: movedCard.position }),
+        body: JSON.stringify({ items }),
       });
       if (!response.ok) {
         throw new Error("Request failed");
