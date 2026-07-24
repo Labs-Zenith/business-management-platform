@@ -48,3 +48,6 @@ playwright-report/
 
 # personal data — Google Contacts exports + generated review sheets (never commit, PII)
 /docs/contactos-printing/
+
+# client inventory data (xlsx) — not committed
+/docs/inventario/

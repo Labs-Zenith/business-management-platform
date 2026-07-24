@@ -1,29 +1,20 @@
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type {
-  InventoryMovementListQuery,
-  InventoryMovementWithProduct,
-  Paged,
-  ProductListQuery,
-  ProductWithStock,
-  Session,
-} from "@/lib/services/ports";
+import type { Paged, ProductListQuery, ProductWithStock, Session } from "@/lib/services/ports";
 
 /**
  * `app/(dashboard)/inventario/page.tsx`, per
  * `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s "No Role
- * Gating on Inventory" requirement — unlike `nomina/page.test.tsx`'s
- * `notFound()`-for-a-denied-role test, there is no role check here at all:
- * any authenticated session renders full page content. Mirrors
- * `nomina/page.test.tsx`'s Tabs+keepMounted assertions and lazy-dialog stub
- * conventions otherwise.
+ * Gating on Inventory" requirement — any authenticated session renders full
+ * page content, no capability check. Products-only (the former
+ * Movimientos tab and its "Registrar movimiento" dialog were removed —
+ * quantity is now adjusted inline via the product form's "Cantidad" field,
+ * see `product-form-dialog-content.tsx`).
  */
 
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockListProducts = vi.fn<(session: Session, query: ProductListQuery) => Promise<Paged<ProductWithStock>>>();
-const mockListMovements =
-  vi.fn<(session: Session, query: InventoryMovementListQuery) => Promise<Paged<InventoryMovementWithProduct>>>();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
@@ -42,28 +33,12 @@ vi.mock("@/lib/services/product-service", () => ({
   listProducts: (session: Session, query: ProductListQuery) => mockListProducts(session, query),
 }));
 
-vi.mock("@/lib/services/inventory-service", () => ({
-  listMovements: (session: Session, query: InventoryMovementListQuery) => mockListMovements(session, query),
-}));
-
-// Dialogs are lazy (`dynamic(..., {ssr:false})`) via `./product-form-dialog`
-// / `./movement-form-dialog` — stubbed to their trigger only, mirroring
-// `nomina/page.test.tsx`'s "sections aren't rendered/DOM-tested individually"
-// convention; the dialogs have their own `.test.tsx` files.
+// The dialog is lazy (`dynamic(..., {ssr:false})`) via `./product-form-dialog`
+// — stubbed to its trigger only, mirroring `nomina/page.test.tsx`'s
+// "sections aren't rendered/DOM-tested individually" convention; the dialog
+// has its own `.test.tsx` file.
 vi.mock("@/components/domain/inventario/product-form-dialog", () => ({
   default: ({ trigger }: { trigger: ReactNode }) => trigger,
-}));
-// Renders the trigger AND a hidden marker exposing the `products` prop it
-// received, so this file's "only active products" test can assert on the
-// filtered list actually threaded down from the page, without needing the
-// dialog's own (separately tested) internals.
-vi.mock("@/components/domain/inventario/movement-form-dialog", () => ({
-  default: ({ trigger, products }: { trigger: ReactNode; products: Array<{ id: string; name: string }> }) => (
-    <>
-      {trigger}
-      <div data-testid="movement-dialog-products">{JSON.stringify(products)}</div>
-    </>
-  ),
 }));
 
 import InventarioPage from "./page";
@@ -103,52 +78,41 @@ const HEALTHY_PRODUCT: ProductWithStock = {
   isLowStock: false,
 };
 
-const MOVEMENT: InventoryMovementWithProduct = {
-  id: "90000000-0000-4000-8000-000000000001",
-  businessId: SESSION.businessId,
-  productId: LOW_STOCK_PRODUCT.id,
-  type: "out",
-  typeId: "c4000000-0000-4000-8000-000000000002",
-  quantity: 6,
-  note: "Venta mostrador",
-  createdAt: "2026-07-10T00:00:00.000Z",
-  product: { id: LOW_STOCK_PRODUCT.id, name: LOW_STOCK_PRODUCT.name },
-};
-
 describe("InventarioPage", () => {
   beforeEach(() => {
     mockRequireSessionOrRedirect.mockReset();
     mockListProducts.mockReset();
-    mockListMovements.mockReset();
   });
 
-  it("gates on requireSessionOrRedirect() only (no capability check) and renders both Productos/Movimientos tab content (keepMounted) for any session", async () => {
+  it("gates on requireSessionOrRedirect() only (no capability check) and renders the Productos table for any session", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT, HEALTHY_PRODUCT], page: 1, pageSize: 50, total: 2 });
-    mockListMovements.mockResolvedValue({ data: [MOVEMENT], page: 1, pageSize: 50, total: 1 });
 
     render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     expect(mockRequireSessionOrRedirect).toHaveBeenCalledTimes(1);
     expect(mockListProducts).toHaveBeenCalledWith(SESSION, { page: 1, pageSize: 20 });
-    expect(mockListMovements).toHaveBeenCalledWith(SESSION, { page: 1, pageSize: 20 });
 
-    // Productos tab (active by default). "Tornillos 1/4" appears TWICE — once
-    // as the product row (active panel) and once as the movement row's
-    // product name (Movimientos panel, keepMounted) — proving both panels are
-    // genuinely rendered simultaneously, not just the active one. Mirrors
-    // `nomina/page.test.tsx`'s identical "Ana Empleada" duplication rationale.
-    expect(screen.getAllByText("Tornillos 1/4")).toHaveLength(2);
+    expect(screen.getByText("Tornillos 1/4")).toBeInTheDocument();
     expect(screen.getByText("Martillos")).toBeInTheDocument();
+  });
 
-    // Movimientos tab content is ALSO present (keepMounted), even though inactive.
-    expect(screen.getByText("Venta mostrador")).toBeInTheDocument();
+  it("renders a 'Referencia' header (not 'SKU'), and no Tabs/Movimientos content", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT], page: 1, pageSize: 50, total: 1 });
+
+    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Referencia")).toBeInTheDocument();
+    expect(screen.queryByText("SKU")).not.toBeInTheDocument();
+    expect(screen.queryByText("Movimientos")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Registrar movimiento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 
   it("flags a product within the fixed 1-3 low-stock range, and does not flag a healthy one above that range", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT, HEALTHY_PRODUCT], page: 1, pageSize: 50, total: 2 });
-    mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
     render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
@@ -161,102 +125,33 @@ describe("InventarioPage", () => {
     expect(healthyRow!).not.toHaveTextContent("Stock bajo");
   });
 
-  it("shows empty states when there are no products or movements", async () => {
+  it("shows an empty state when there are no products", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListProducts.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
-    mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
     render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText(/no se encontraron productos/i)).toBeInTheDocument();
-    expect(screen.getByText(/no se encontraron movimientos/i)).toBeInTheDocument();
   });
 
-  it("offers the 'Nuevo producto' and 'Registrar movimiento' quick actions", async () => {
+  it("offers the 'Nuevo producto' quick action", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListProducts.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
-    mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
 
     render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("button", { name: "Nuevo producto" })).toBeInTheDocument();
-    // "Registrar movimiento" lives in the (keepMounted but currently inactive)
-    // Movimientos panel — base-ui marks it `hidden`, so it's excluded from
-    // the accessibility tree by default; `{ hidden: true }` proves it is
-    // still genuinely present in the DOM (keepMounted), not discarded.
-    expect(screen.getByRole("button", { name: "Registrar movimiento", hidden: true })).toBeInTheDocument();
   });
 
-  it("only offers ACTIVE products to the Registrar movimiento dialog", async () => {
-    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
-    const inactiveProduct: ProductWithStock = {
-      ...HEALTHY_PRODUCT,
-      id: "80000000-0000-4000-8000-000000000003",
-      active: false,
-    };
-    mockListProducts.mockResolvedValue({
-      data: [LOW_STOCK_PRODUCT, inactiveProduct],
-      page: 1,
-      pageSize: 50,
-      total: 2,
-    });
-    mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
-
-    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
-
-    const productsProp = JSON.parse(screen.getByTestId("movement-dialog-products").textContent ?? "[]") as Array<{
-      id: string;
-      name: string;
-    }>;
-    expect(productsProp).toEqual([{ id: LOW_STOCK_PRODUCT.id, name: LOW_STOCK_PRODUCT.name }]);
-  });
-
-  it("threads an empty products array to the Registrar movimiento dialog when every product is inactive", async () => {
-    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
-    const inactiveLowStock: ProductWithStock = { ...LOW_STOCK_PRODUCT, active: false };
-    const inactiveHealthy: ProductWithStock = { ...HEALTHY_PRODUCT, active: false };
-    mockListProducts.mockResolvedValue({
-      data: [inactiveLowStock, inactiveHealthy],
-      page: 1,
-      pageSize: 50,
-      total: 2,
-    });
-    mockListMovements.mockResolvedValue({ data: [], page: 1, pageSize: 50, total: 0 });
-
-    render(await InventarioPage({ searchParams: Promise.resolve({}) }));
-
-    const productsProp = JSON.parse(screen.getByTestId("movement-dialog-products").textContent ?? "[]") as Array<{
-      id: string;
-      name: string;
-    }>;
-    expect(productsProp).toEqual([]);
-  });
-
-  it("parses productsPage/movementsPage independently and threads them to their own service call", async () => {
+  it("parses productsPage and threads it (and only it) to the Productos pagination links", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT], page: 3, pageSize: 20, total: 100 });
-    mockListMovements.mockResolvedValue({ data: [MOVEMENT], page: 2, pageSize: 20, total: 45 });
 
-    render(
-      await InventarioPage({
-        searchParams: Promise.resolve({ productsPage: "3", movementsPage: "2", tab: "movimientos" }),
-      }),
-    );
+    render(await InventarioPage({ searchParams: Promise.resolve({ productsPage: "3" }) }));
 
     expect(mockListProducts).toHaveBeenCalledWith(SESSION, { page: 3, pageSize: 20 });
-    expect(mockListMovements).toHaveBeenCalledWith(SESSION, { page: 2, pageSize: 20 });
 
-    // Both panels' "Siguiente" links exist (keepMounted, one panel hidden);
-    // disambiguate by href — each hardcodes the `tab` value for its own
-    // panel rather than echoing back the incoming `?tab=movimientos`.
-    const allNextLinks = screen.getAllByRole("link", { name: /siguiente/i, hidden: true });
-    const productsHref = allNextLinks.find((link) => link.getAttribute("href")?.includes("productsPage=4"));
-    const movementsHref = allNextLinks.find((link) => link.getAttribute("href")?.includes("movementsPage=3"));
-
-    expect(productsHref).toBeDefined();
-    expect(productsHref!.getAttribute("href")).toBe("/inventario?movementsPage=2&productsPage=4");
-
-    expect(movementsHref).toBeDefined();
-    expect(movementsHref!.getAttribute("href")).toBe("/inventario?productsPage=3&tab=movimientos&movementsPage=3");
+    const nextLink = screen.getByRole("link", { name: /siguiente/i });
+    expect(nextLink.getAttribute("href")).toBe("/inventario?productsPage=4");
   });
 });
