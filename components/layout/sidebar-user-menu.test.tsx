@@ -39,16 +39,16 @@ describe("SidebarUserMenu", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders a non-interactive avatar + email row, plus an 'Opciones de cuenta' trigger button", () => {
+  it("renders the whole avatar + username row AS the 'Opciones de cuenta' dropdown trigger", () => {
     render(<SidebarUserMenu email={EMAIL} />);
 
-    expect(screen.getByText(EMAIL)).toBeInTheDocument();
     expect(screen.getByText("D")).toBeInTheDocument();
 
+    // The whole row is now a single DropdownMenu trigger button; the avatar +
+    // username live inside it (clicking anywhere on the row opens the menu).
     const trigger = screen.getByRole("button", { name: "Opciones de cuenta" });
     expect(trigger).toBeInTheDocument();
-    // The email row itself is not a button.
-    expect(screen.queryByRole("button", { name: EMAIL })).not.toBeInTheDocument();
+    expect(trigger).toHaveTextContent(EMAIL);
   });
 
   it("hides the email label AND the ⋯ trigger when collapsed, making the avatar itself the trigger", () => {

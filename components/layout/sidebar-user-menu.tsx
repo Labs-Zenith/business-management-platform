@@ -8,20 +8,15 @@
  * `user-menu.tsx` (deleted — this is its direct successor, moved into the
  * sidebar/drawer chrome instead of the topbar).
  *
- * Fase 5.2 F3 restructured the row to match Vercel's own chrome: in
- * expanded mode, `[avatar + email]` is now a plain NON-interactive row on
- * the left, and a small `⋯` icon button sits on the right (`justify-
- * between`) as the actual `DropdownMenuTrigger` (`Button
- * variant="ghost" size="icon-sm"`, `aria-label="Opciones de cuenta"`).
- * Previously the entire row (avatar + email) was itself the trigger; that
- * made the whole row look clickable/navigable when its only action is
- * opening a menu with a single "Cerrar sesion" item, which reads as
- * over-affordance next to `NavLink`'s real navigation rows. In `collapsed`
- * (rail) mode there's no room for a separate `⋯` button, so the avatar
- * itself remains the trigger there (logout must stay reachable).
+ * In expanded mode the WHOLE `[avatar + username]` row is the
+ * `DropdownMenuTrigger` (a single `<button>` with a `ChevronsUpDown` on the
+ * right, `aria-label="Opciones de cuenta"`) — clicking anywhere on the row
+ * opens the menu, Vercel-style. In `collapsed` (rail) mode the avatar itself
+ * is the trigger (logout must stay reachable in the narrow rail).
  *
- * The dropdown content is unchanged: session email (`DropdownMenuLabel`)
- * and a single "Cerrar sesion" `DropdownMenuItem` that runs the same
+ * The dropdown content: the username (`DropdownMenuLabel`, internal
+ * `@zenith.app` domain hidden via `emailToUsername`) and a single
+ * "Cerrar sesión" `DropdownMenuItem` that runs the same
  * `POST /api/auth/logout -> router.push("/login")` logic `user-menu.tsx`
  * used to run. Mirrors `business-switcher.tsx`'s fetch/pending/error shape:
  * a local `error` string rendered as `role="alert"`, and a disabled/pending
@@ -47,10 +42,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ellipsis } from "lucide-react";
-import { avatarInitial } from "@/lib/utils";
+import { avatarInitial, cn } from "@/lib/utils";
 import { emailToUsername } from "@/lib/auth/username";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -101,12 +95,16 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
   const initial = avatarInitial(displayName);
 
   const menuContent = (
-    // `w-64` (+ align="end") overrides DropdownMenuContent's default
-    // `w-(--anchor-width)`: the trigger here is a ~32px icon button (⋯ / the
-    // rail avatar), so anchoring the menu to the trigger width would shrink it
-    // to an unreadable sliver that clips the email. A fixed width + `align="end"`
-    // keeps it inside the viewport instead of overflowing off the right edge.
-    <DropdownMenuContent align="end" side="top" className="w-64 max-w-[calc(100vw-1rem)]">
+    // Expanded: the trigger is the whole row, so the default
+    // `w-(--anchor-width)` makes the menu exactly the sidebar's width and
+    // `align="start"` lines it up with the row (no overflow). Collapsed: the
+    // trigger is the ~w-14 avatar, so anchoring to it would be an unreadable
+    // sliver — pin a fixed `w-56` there instead.
+    <DropdownMenuContent
+      align="start"
+      side="top"
+      className={cn("max-w-[calc(100vw-1rem)]", collapsed && "w-56")}
+    >
       <DropdownMenuGroup>
         <DropdownMenuLabel className="truncate">{displayName}</DropdownMenuLabel>
       </DropdownMenuGroup>
@@ -141,36 +139,34 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
             }
           />
         ) : (
-          // Expanded mode: `[avatar + email]` is a plain, non-interactive
-          // row; the `⋯` button on the right is the actual trigger.
-          <div className="flex w-full items-center justify-between gap-2 rounded-md px-1.5 py-1">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <Avatar size="sm" className="shrink-0">
-                <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-                  {initial}
-                </AvatarFallback>
-              </Avatar>
-              <span
-                title={displayName}
-                className="truncate text-sm font-medium text-sidebar-foreground"
+          // Expanded mode: the whole `[avatar + username]` row IS the shadcn
+          // DropdownMenu trigger (a button); the chevron on the right signals
+          // the menu opens on click.
+          <DropdownMenuTrigger
+            disabled={isLoggingOut}
+            aria-label="Opciones de cuenta"
+            render={
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-sidebar-accent data-disabled:cursor-not-allowed data-disabled:opacity-50"
               >
-                {displayName}
-              </span>
-            </div>
-            <DropdownMenuTrigger
-              disabled={isLoggingOut}
-              aria-label="Opciones de cuenta"
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0 text-sidebar-foreground/60 hover:text-sidebar-foreground"
-                >
-                  <Ellipsis aria-hidden="true" />
-                </Button>
-              }
-            />
-          </div>
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <Avatar size="sm" className="shrink-0">
+                    <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
+                      {initial}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span
+                    title={displayName}
+                    className="truncate text-sm font-medium text-sidebar-foreground"
+                  >
+                    {displayName}
+                  </span>
+                </span>
+                <Ellipsis aria-hidden="true" className="size-4 shrink-0 text-sidebar-foreground/60" />
+              </button>
+            }
+          />
         )}
         {menuContent}
       </DropdownMenu>
