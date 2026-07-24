@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SIDEBAR_COLLAPSED_COOKIE } from "./nav-items";
 import SidebarContent from "./sidebar-content";
+import type { NavFeature } from "./nav-items";
 import type { BusinessMembership, Role, SavedAccount } from "@/lib/services/ports";
 
 const COLLAPSED_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // 1 year
@@ -59,6 +60,7 @@ export default function DashboardSidebar({
   memberships,
   savedAccounts,
   email,
+  enabledFeatures,
   defaultCollapsed = false,
 }: {
   role: Role;
@@ -66,6 +68,7 @@ export default function DashboardSidebar({
   memberships: BusinessMembership[];
   savedAccounts?: SavedAccount[];
   email: string;
+  enabledFeatures: readonly NavFeature[];
   defaultCollapsed?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -92,6 +95,7 @@ export default function DashboardSidebar({
           memberships={memberships}
           savedAccounts={savedAccounts}
           email={email}
+          enabledFeatures={enabledFeatures}
           collapsed={collapsed}
           showCollapseToggle
           onToggleCollapse={toggleCollapsed}

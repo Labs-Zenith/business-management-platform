@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NAV_ITEMS, navItemsFor, navItemsForRole } from "./nav-items";
+import { NAV_ITEMS, navItemsFor, navItemsForRole, resolveEnabledFeatures } from "./nav-items";
 
 const BIZ_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_BIZ_ID = "10000000-0000-4000-8000-000000000002";
@@ -66,29 +66,45 @@ describe("navItemsForRole", () => {
 });
 
 describe("navItemsFor", () => {
+  it("hides the Ventas nav item when the feature list is empty (deny-by-default)", () => {
+    expect(navItemsFor("admin", []).some((item) => item.href === "/ventas")).toBe(false);
+    expect(navItemsFor("worker", []).some((item) => item.href === "/ventas")).toBe(false);
+  });
+
+  it("shows the Ventas nav item when the pipeline feature is enabled", () => {
+    expect(navItemsFor("admin", ["pipeline"]).some((item) => item.href === "/ventas")).toBe(true);
+  });
+
+  it("still applies the role/capability filter on top of the feature filter (Nómina stays gated)", () => {
+    const workerItems = navItemsFor("worker", ["pipeline"]);
+    expect(workerItems.some((item) => item.href === "/ventas")).toBe(true);
+    expect(workerItems.some((item) => item.href === "/nomina")).toBe(false);
+  });
+});
+
+/**
+ * `resolveEnabledFeatures` is the SERVER-only piece that reads
+ * `PIPELINE_ENABLED_BUSINESS_IDS` — `navItemsFor` above is pure and no
+ * longer touches `process.env` at all (that responsibility moved here).
+ */
+describe("resolveEnabledFeatures", () => {
   afterEach(() => {
     delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
   });
 
-  it("hides the Ventas nav item when the feature is disabled (deny-by-default, empty allowlist)", () => {
-    delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-
-    expect(navItemsFor("admin", BIZ_ID).some((item) => item.href === "/ventas")).toBe(false);
-    expect(navItemsFor("worker", BIZ_ID).some((item) => item.href === "/ventas")).toBe(false);
+  it("returns an empty array by default (deny-by-default, empty allowlist)", () => {
+    expect(resolveEnabledFeatures(BIZ_ID)).toEqual([]);
   });
 
-  it("shows the Ventas nav item only for a business in PIPELINE_ENABLED_BUSINESS_IDS", () => {
+  it("returns [\"pipeline\"] for a business in PIPELINE_ENABLED_BUSINESS_IDS", () => {
     process.env.PIPELINE_ENABLED_BUSINESS_IDS = BIZ_ID;
 
-    expect(navItemsFor("admin", BIZ_ID).some((item) => item.href === "/ventas")).toBe(true);
-    expect(navItemsFor("admin", OTHER_BIZ_ID).some((item) => item.href === "/ventas")).toBe(false);
+    expect(resolveEnabledFeatures(BIZ_ID)).toEqual(["pipeline"]);
   });
 
-  it("still applies the role/capability filter on top of the feature filter (Nómina stays gated)", () => {
+  it("returns an empty array for a business NOT in PIPELINE_ENABLED_BUSINESS_IDS", () => {
     process.env.PIPELINE_ENABLED_BUSINESS_IDS = BIZ_ID;
 
-    const workerItems = navItemsFor("worker", BIZ_ID);
-    expect(workerItems.some((item) => item.href === "/ventas")).toBe(true);
-    expect(workerItems.some((item) => item.href === "/nomina")).toBe(false);
+    expect(resolveEnabledFeatures(OTHER_BIZ_ID)).toEqual([]);
   });
 });

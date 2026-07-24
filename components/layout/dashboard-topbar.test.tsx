@@ -37,7 +37,7 @@ const MEMBERSHIPS: BusinessMembership[] = [
  */
 describe("DashboardTopbar", () => {
   it("renders the mobile-nav hamburger button", () => {
-    render(<DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} />);
+    render(<DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} enabledFeatures={[]} />);
 
     expect(screen.getByRole("button", { name: /abrir menú/i })).toBeInTheDocument();
   });
@@ -45,7 +45,7 @@ describe("DashboardTopbar", () => {
   it("threads session.role into the hamburger drawer so a worker session's drawer excludes Nómina", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
-    render(<DashboardTopbar session={WORKER_SESSION} memberships={MEMBERSHIPS} />);
+    render(<DashboardTopbar session={WORKER_SESSION} memberships={MEMBERSHIPS} enabledFeatures={[]} />);
 
     await user.click(screen.getByRole("button", { name: /abrir menú/i }));
 
@@ -58,7 +58,7 @@ describe("DashboardTopbar", () => {
   it("threads memberships + session.email into the drawer, showing the business switcher and the user row with Cerrar sesión once opened", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
-    render(<DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} />);
+    render(<DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} enabledFeatures={[]} />);
 
     await user.click(screen.getByRole("button", { name: /abrir menú/i }));
     await screen.findByRole("dialog");

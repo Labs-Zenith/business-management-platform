@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { BusinessMembership } from "@/lib/services/ports";
@@ -31,6 +31,7 @@ describe("SidebarContent", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -52,6 +53,7 @@ describe("SidebarContent", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -67,6 +69,7 @@ describe("SidebarContent", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -78,6 +81,7 @@ describe("SidebarContent", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
         showCollapseToggle
         onToggleCollapse={() => {}}
       />
@@ -86,19 +90,14 @@ describe("SidebarContent", () => {
     expect(screen.getByRole("button", { name: /colapsar barra lateral/i })).toBeInTheDocument();
   });
 
-  afterEach(() => {
-    delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-  });
-
   it("hides the Ventas nav item by default (pipeline feature disabled for this business)", () => {
-    delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-
     render(
       <SidebarContent
         role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -106,14 +105,13 @@ describe("SidebarContent", () => {
   });
 
   it("shows the Ventas nav item once the pipeline feature is enabled for the current business", () => {
-    process.env.PIPELINE_ENABLED_BUSINESS_IDS = CURRENT_BUSINESS_ID;
-
     render(
       <SidebarContent
         role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={["pipeline"]}
       />
     );
 
@@ -130,6 +128,7 @@ describe("SidebarContent", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
         onNavigate={onNavigate}
       />
     );

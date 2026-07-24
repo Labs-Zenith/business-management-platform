@@ -40,7 +40,7 @@ import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { isActivePath, navItemsFor } from "./nav-items";
+import { isActivePath, navItemsFor, type NavFeature } from "./nav-items";
 import { NavLink } from "./nav-link";
 import BusinessSwitcher from "./business-switcher";
 import SidebarUserMenu from "./sidebar-user-menu";
@@ -52,6 +52,8 @@ type SidebarContentProps = {
   memberships: BusinessMembership[];
   savedAccounts?: SavedAccount[];
   email: string;
+  /** Per-business feature flags, resolved on the SERVER (`app/(dashboard)/layout.tsx`) — must NOT be recomputed here (the env var is server-only). */
+  enabledFeatures: readonly NavFeature[];
   collapsed?: boolean;
   onNavigate?: () => void;
   showCollapseToggle?: boolean;
@@ -64,17 +66,19 @@ export default function SidebarContent({
   memberships,
   savedAccounts = [],
   email,
+  enabledFeatures,
   collapsed = false,
   onNavigate,
   showCollapseToggle = false,
   onToggleCollapse,
 }: SidebarContentProps) {
   const pathname = usePathname();
-  // `navItemsFor` (not `navItemsForRole`) — layers the per-business
-  // "Ventas" feature-flag filter on top of the role filter; `currentBusinessId`
-  // is already threaded to this component for `BusinessSwitcher`, so no
-  // additional prop plumbing through `app/(dashboard)/layout.tsx` was needed.
-  const items = navItemsFor(role, currentBusinessId);
+  // `navItemsFor` layers the per-business `feature` filter on top of the role
+  // filter. `enabledFeatures` is resolved SERVER-side and passed as a prop —
+  // the feature check must NOT run on the client (its env var is absent from
+  // the browser bundle, which would flicker the item on at SSR then off at
+  // hydration).
+  const items = navItemsFor(role, enabledFeatures);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">

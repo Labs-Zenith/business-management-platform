@@ -101,14 +101,31 @@ function isNavFeatureEnabled(feature: NavFeature, businessId: string): boolean {
 }
 
 /**
+ * SERVER-ONLY: resolves which per-business `NavFeature`s are enabled for a
+ * business. MUST be called from a Server Component (e.g. `app/(dashboard)/
+ * layout.tsx`) — `isPipelineEnabled` reads a NON-`NEXT_PUBLIC_` env var
+ * (`PIPELINE_ENABLED_BUSINESS_IDS`) that is undefined in the browser bundle,
+ * so evaluating features on the client would flicker on (SSR) then off
+ * (hydration). The resolved array is a plain, serializable prop that crosses
+ * the RSC → Client boundary safely (see `navItemsFor`).
+ */
+export function resolveEnabledFeatures(businessId: string): NavFeature[] {
+  return NAV_FEATURES.filter((feature) => isNavFeatureEnabled(feature, businessId));
+}
+
+/** All feature codes a nav item can be tagged with — the source of truth `resolveEnabledFeatures` iterates. */
+const NAV_FEATURES: readonly NavFeature[] = ["pipeline"];
+
+/**
  * The real filtering function nav consumers (`sidebar-content.tsx`) call:
  * layers the per-business `feature` filter on top of `navItemsForRole`'s
- * role/capability filter, so a feature-gated item (e.g. "Ventas") is hidden
- * unless BOTH the role allows it (n/a for `pipeline`, which has no
- * `capability`) AND the business has the feature enabled.
+ * role/capability filter. `enabledFeatures` is resolved on the SERVER (via
+ * `resolveEnabledFeatures`) and threaded down as a prop — this function is
+ * PURE and client-safe (it reads no env). A feature-gated item (e.g.
+ * "Ventas") shows only when its role allows it AND its feature is enabled.
  */
-export function navItemsFor(role: Role, businessId: string): NavItem[] {
-  return navItemsForRole(role).filter((item) => !item.feature || isNavFeatureEnabled(item.feature, businessId));
+export function navItemsFor(role: Role, enabledFeatures: readonly NavFeature[]): NavItem[] {
+  return navItemsForRole(role).filter((item) => !item.feature || enabledFeatures.includes(item.feature));
 }
 
 /**

@@ -5,6 +5,7 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { repositories } from "@/lib/services/repositories";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
 import DashboardSidebar from "@/components/layout/dashboard-sidebar";
+import { resolveEnabledFeatures } from "@/components/layout/nav-items";
 import { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
 
 /**
@@ -78,13 +79,23 @@ export default async function DashboardLayout({
   // possible future improvement, not implemented here.
   const memberships = await repositories.business.listMembershipsForUser(session.userId);
   const savedAccounts = await getSavedAccounts();
+  // Resolve per-business feature flags HERE (server) — `isPipelineEnabled`
+  // reads a non-NEXT_PUBLIC env var absent from the client bundle, so this
+  // must not run in the client nav components (it would flicker on at SSR
+  // then off at hydration). Pass the plain string[] down as a prop.
+  const enabledFeatures = resolveEnabledFeatures(session.businessId);
   const cookieStore = await cookies();
   const sidebarDefaultCollapsed =
     cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === "true";
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <DashboardTopbar session={session} memberships={memberships} savedAccounts={savedAccounts} />
+      <DashboardTopbar
+        session={session}
+        memberships={memberships}
+        savedAccounts={savedAccounts}
+        enabledFeatures={enabledFeatures}
+      />
       <div className="flex min-w-0 flex-1 overflow-hidden">
         {/*
           `role` (a plain string, not a pre-filtered `NavItem[]`) is the only
@@ -109,6 +120,7 @@ export default async function DashboardLayout({
           memberships={memberships}
           savedAccounts={savedAccounts}
           email={session.email}
+          enabledFeatures={enabledFeatures}
           defaultCollapsed={sidebarDefaultCollapsed}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">{children}</main>

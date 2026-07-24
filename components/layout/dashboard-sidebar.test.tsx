@@ -57,6 +57,7 @@ describe("DashboardSidebar", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -77,6 +78,7 @@ describe("DashboardSidebar", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -100,6 +102,7 @@ describe("DashboardSidebar", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MULTIPLE_MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -113,6 +116,7 @@ describe("DashboardSidebar", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -127,6 +131,7 @@ describe("DashboardSidebar", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -142,6 +147,7 @@ describe("DashboardSidebar", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
+        enabledFeatures={[]}
         defaultCollapsed
       />
     );
@@ -162,6 +168,7 @@ describe("DashboardSidebar", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -181,6 +188,7 @@ describe("DashboardSidebar", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
+        enabledFeatures={[]}
         defaultCollapsed
       />
     );

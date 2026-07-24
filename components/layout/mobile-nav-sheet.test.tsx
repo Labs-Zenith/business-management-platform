@@ -33,6 +33,7 @@ describe("MobileNavSheet", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -63,6 +64,7 @@ describe("MobileNavSheet", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -82,6 +84,7 @@ describe("MobileNavSheet", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
@@ -101,6 +104,7 @@ describe("MobileNavSheet", () => {
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
+        enabledFeatures={[]}
       />
     );
 
