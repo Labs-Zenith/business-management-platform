@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
+import { listProducts } from "@/lib/services/product-service";
 import { getInvoice } from "@/lib/services/invoice-service";
 import {
   Breadcrumb,
@@ -24,10 +25,13 @@ import InvoiceForm from "@/components/domain/invoices/invoice-form";
  * and this change's PR3 scope ("least structural rework of the existing
  * create flow" — see this change's apply-progress notes). Mirrors
  * `app/(dashboard)/invoices/new/page.tsx` almost exactly: a Server Component
- * resolving the session + customer list, handing them to the SAME
- * lazy-loaded `InvoiceForm` client component, which now also receives the
- * fetched `invoice` (via `getInvoice`) so it pre-fills and PATCHes
- * `/api/invoices/{id}` instead of POSTing.
+ * resolving the session + customer list + active product list, handing them
+ * to the SAME lazy-loaded `InvoiceForm` client component, which now also
+ * receives the fetched `invoice` (via `getInvoice`) so it pre-fills and
+ * PATCHes `/api/invoices/{id}` instead of POSTing. Each item's `productId`
+ * (already present on `InvoiceDetail#items` — see `lib/services/ports.ts`)
+ * flows straight through so the form's product `<Select>` starts on the
+ * right selection per `invoice-form-content.tsx`'s `toItemDefaultValues`.
  *
  * Not-fully-paid UI gate (defense-in-depth nicety, NOT the enforcement — the
  * server's edit-lock in `updateInvoice`/`InvoiceRepository.update` is the
@@ -44,6 +48,8 @@ import InvoiceForm from "@/components/domain/invoices/invoice-form";
  */
 
 const CUSTOMER_LOOKUP_PAGE_SIZE = 50;
+// Mirrors `app/(dashboard)/invoices/new/page.tsx`'s product-lookup page size.
+const PRODUCT_LOOKUP_PAGE_SIZE = 200;
 
 type EditInvoicePageProps = {
   params: Promise<{ id: string }>;
@@ -59,7 +65,15 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
     redirect(`/invoices/${id}`);
   }
 
-  const result = await listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE });
+  const [result, productsResult] = await Promise.all([
+    listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE }),
+    listProducts(session, { page: 1, pageSize: PRODUCT_LOOKUP_PAGE_SIZE }),
+  ]);
+  // Only active products are offered for a NEW pick — an existing line whose
+  // `productId` references an inactive product still prefills correctly via
+  // `invoice-form-content.tsx`'s "Otro" fallback (see that file's
+  // `toItemDefaultValues`), it just can't be re-selected as a fresh choice.
+  const activeProducts = productsResult.data.filter((product) => product.active);
 
   return (
     <PageShell>
@@ -90,6 +104,11 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
         // doc comment), so no catalog fetch is needed here; `[]` satisfies
         // the required prop without an unused query.
         invoiceTypes={[]}
+        products={activeProducts.map((product) => ({
+          id: product.id,
+          name: product.name,
+          currentQuantity: product.currentQuantity,
+        }))}
         invoice={{
           id: invoice.id,
           customerId: invoice.customerId,
@@ -101,6 +120,7 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
             description: item.description,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
+            productId: item.productId,
           })),
         }}
       />

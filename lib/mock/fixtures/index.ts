@@ -107,6 +107,9 @@ export function seedFixtures(store: MockStore): void {
       description: item.description,
       quantity: item.quantity,
       unitPrice: item.unitPrice,
+      // Fixture lines are synthetic/free-text — never linked to a real
+      // inventory product.
+      productId: null,
       lineTotal: lineTotal(item.quantity, item.unitPrice),
     }));
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);

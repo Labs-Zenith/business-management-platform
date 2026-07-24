@@ -13,7 +13,7 @@ const CUSTOMER_ID = customerFixtures[0].id;
 
 function buildInvoicePersist(totalCents: number): InvoicePersist {
   const items = [{ description: "Servicio", quantity: 1, unitPrice: totalCents }];
-  const withTotals = items.map((item) => ({ ...item, lineTotal: lineTotal(item.quantity, item.unitPrice) }));
+  const withTotals = items.map((item) => ({ ...item, productId: null, lineTotal: lineTotal(item.quantity, item.unitPrice) }));
   const subtotal = withTotals.reduce((sum, item) => sum + item.lineTotal, 0);
   const total = subtotal;
   return {

@@ -25,6 +25,11 @@ const INVOICE_TYPES = [
   { id: "f1000000-0000-4000-8000-000000000002", code: "nota_credito", label: "Nota crédito" },
 ];
 
+// Empty by default in most tests below (only "Otro…" is offered) — the
+// dedicated "Selector de producto" describe block further down passes a
+// non-empty `products` list to exercise the real-product path.
+const PRODUCTS: { id: string; name: string; currentQuantity: number }[] = [];
+
 // `getByText`'s default normalizer collapses ALL whitespace (including
 // `formatCOP`'s real NBSP) to a regular space, so the query string must be
 // normalized the same way to match — see
@@ -43,7 +48,13 @@ describe("InvoiceFormContent", () => {
     vi.useRealTimers();
   });
 
+  // Picks "Otro…" on the first item's product Select (always the last/only
+  // option when `products` is empty — see the `PRODUCTS` fixture above),
+  // which reveals the free-text description `<Input>`, then fills it plus
+  // `unitPrice` — mirrors the pre-Select "fill description" step this
+  // helper replaced.
   async function fillFirstItem(user: ReturnType<typeof userEvent.setup>, description: string, unitPrice: string) {
+    await selectOption(user, /producto/i, /otro/i);
     await user.type(screen.getByLabelText(/descripción/i), description);
     await user.clear(screen.getByLabelText(/valor unitario/i));
     await user.type(screen.getByLabelText(/valor unitario/i), unitPrice);
@@ -57,7 +68,7 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
@@ -67,7 +78,7 @@ describe("InvoiceFormContent", () => {
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
     const body = JSON.parse(options.body);
     expect(body.customerId).toBe(CUSTOMER.id);
-    expect(body.items).toEqual([{ description: "Consultoria", quantity: 1, unitPrice: 50000 }]);
+    expect(body.items).toEqual([{ description: "Consultoria", quantity: 1, unitPrice: 50000, productId: null }]);
     // Pre-selected to the `venta` catalog type by `defaultInvoiceTypeId`
     // (never touched by the user in this test) — see the dedicated
     // "Tipo de factura" tests below for the explicit-pick case.
@@ -85,7 +96,7 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
       expect(screen.getByLabelText(/tipo de factura/i)).toHaveTextContent(INVOICE_TYPES[0]!.label);
 
@@ -106,7 +117,7 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
       await selectOption(user, /cliente/i, CUSTOMER.name);
       await fillFirstItem(user, "Consultoria", "500");
@@ -130,13 +141,14 @@ describe("InvoiceFormContent", () => {
         <InvoiceFormContent
           customers={[CUSTOMER]}
           invoiceTypes={INVOICE_TYPES}
+          products={PRODUCTS}
           invoice={{
             id: "invoice-1",
             customerId: CUSTOMER.id,
             issueDate: "2026-06-01",
             dueDate: "2026-06-30",
             notes: "",
-            items: [{ description: "Consultoria previa", quantity: 1, unitPrice: 100000 }],
+            items: [{ description: "Consultoria previa", quantity: 1, unitPrice: 100000, productId: null }],
             paidAmount: 0,
           }}
         />,
@@ -170,9 +182,10 @@ describe("InvoiceFormContent", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     await selectOption(user, /cliente/i, CUSTOMER.name);
+    await selectOption(user, /producto/i, /otro/i);
     await user.type(screen.getByLabelText(/descripción/i), "Consultoria");
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "1");
@@ -207,7 +220,7 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
       await selectOption(user, /cliente/i, CUSTOMER.name);
       await fillFirstItem(user, "Consultoria", typed);
@@ -235,7 +248,7 @@ describe("InvoiceFormContent", () => {
     const expectedLocalDate = `${pinnedInstant.getFullYear()}-${String(pinnedInstant.getMonth() + 1).padStart(2, "0")}-${String(pinnedInstant.getDate()).padStart(2, "0")}`;
     const expectedUtcDate = pinnedInstant.toISOString().slice(0, 10);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     // The native `type="date"` input is gone — the trigger is now a `<button>`
     // labeled via `<Label htmlFor>`, displaying the `DatePicker`'s "d MMM yyyy"
@@ -258,7 +271,7 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
@@ -294,7 +307,7 @@ describe("InvoiceFormContent", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
@@ -323,7 +336,7 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     // dueDate is optional/clearable — no forced default, placeholder shown until picked.
     expect(screen.getByLabelText(/fecha de vencimiento/i)).toHaveTextContent(/seleccionar fecha/i);
@@ -350,7 +363,7 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
@@ -376,7 +389,7 @@ describe("InvoiceFormContent", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
@@ -407,9 +420,10 @@ describe("InvoiceFormContent", () => {
     // still exercised by `lib/money.test.ts`'s dedicated `lineTotal`/
     // `pesosToCents` unit tests with 3-decimal inputs.
     const user = userEvent.setup();
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
-    await user.type(screen.getByLabelText(/descripción/i), "Consultoria");
+    // The running total only depends on quantity/unitPrice, not on
+    // description/productId — no need to pick a product here.
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "3");
     await user.clear(screen.getByLabelText(/valor unitario/i));
@@ -421,7 +435,7 @@ describe("InvoiceFormContent", () => {
 
   it("renders a running total that is the SUM of each line item's lineTotal across multiple items", async () => {
     const user = userEvent.setup();
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     await user.clear(screen.getByLabelText(/cantidad/i));
     await user.type(screen.getByLabelText(/cantidad/i), "3");
@@ -451,7 +465,7 @@ describe("InvoiceFormContent", () => {
       }),
     );
 
-    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+    render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
     await selectOption(user, /cliente/i, CUSTOMER.name);
     await fillFirstItem(user, "Consultoria", "500");
@@ -470,13 +484,13 @@ describe("InvoiceFormContent", () => {
       dueDate: "2026-06-30",
       notes: "Nota existente",
       items: [
-        { description: "Consultoria previa", quantity: 2, unitPrice: 150000 }, // 1500.00 pesos in cents
+        { description: "Consultoria previa", quantity: 2, unitPrice: 150000, productId: null }, // 1500.00 pesos in cents
       ],
       paidAmount: 0, // zero payments — below-paid-total warning never applies to these tests
     };
 
     it("pre-fills every field from the invoice prop, converting cents back to whole pesos", async () => {
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} invoice={INVOICE} />);
 
       // The native `<select>`'s `toHaveValue(id)` assertion is gone — the
       // trigger is now a `<button role="combobox">` displaying the selected
@@ -492,7 +506,7 @@ describe("InvoiceFormContent", () => {
     });
 
     it("renders the 'Guardar cambios' submit label instead of 'Crear factura'", () => {
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} invoice={INVOICE} />);
 
       expect(screen.getByRole("button", { name: /guardar cambios/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^crear factura$/i })).not.toBeInTheDocument();
@@ -506,7 +520,7 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} invoice={INVOICE} />);
 
       await user.clear(screen.getByLabelText(/valor unitario/i));
       await user.type(screen.getByLabelText(/valor unitario/i), "2000");
@@ -519,7 +533,9 @@ describe("InvoiceFormContent", () => {
       const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
       const body = JSON.parse(options.body);
       expect(body.customerId).toBe(CUSTOMER.id);
-      expect(body.items).toEqual([{ description: INVOICE.items[0].description, quantity: 2, unitPrice: 200000 }]);
+      expect(body.items).toEqual([
+        { description: INVOICE.items[0].description, quantity: 2, unitPrice: 200000, productId: null },
+      ]);
       expect(body.issueDate).toBe(INVOICE.issueDate);
       expect(body.dueDate).toBe(INVOICE.dueDate);
       expect(pushMock).toHaveBeenCalledWith(`/invoices/${INVOICE.id}`);
@@ -537,7 +553,7 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} invoice={INVOICE} />);
 
       const targetDate = new Date(2026, 5, 15);
       const dayLabel = format(targetDate, "PPPP", { locale: es });
@@ -560,7 +576,7 @@ describe("InvoiceFormContent", () => {
         }),
       );
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} invoice={INVOICE} />);
 
       await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
 
@@ -583,13 +599,13 @@ describe("InvoiceFormContent", () => {
       issueDate: "2026-06-01",
       dueDate: "2026-06-30",
       notes: "Nota existente",
-      items: [{ description: "Consultoria previa", quantity: 2, unitPrice: 150_000 }], // total = 300000 cents
+      items: [{ description: "Consultoria previa", quantity: 2, unitPrice: 150_000, productId: null }], // total = 300000 cents
       paidAmount: 250_000,
     };
 
     it("shows the below-paid-total warning and disables submit once the live total drops below paidAmount", async () => {
       const user = userEvent.setup();
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={PARTIALLY_PAID_INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} invoice={PARTIALLY_PAID_INVOICE} />);
 
       // Initial total (300000) >= paidAmount (250000): no warning, submit enabled.
       // `findByRole` (not `getByRole`): `formState.isValid` settles
@@ -612,7 +628,7 @@ describe("InvoiceFormContent", () => {
 
     it("re-enables submit and hides the warning once the live total is raised back to at least paidAmount", async () => {
       const user = userEvent.setup();
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} invoice={PARTIALLY_PAID_INVOICE} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} invoice={PARTIALLY_PAID_INVOICE} />);
 
       await user.clear(screen.getByLabelText(/valor unitario/i));
       await user.type(screen.getByLabelText(/valor unitario/i), "1000");
@@ -636,7 +652,7 @@ describe("InvoiceFormContent", () => {
       // already covered by "blocks submission client-side ... unitPrice is
       // left empty" above.
       const user = userEvent.setup();
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
       await selectOption(user, /cliente/i, CUSTOMER.name);
       await fillFirstItem(user, "Consultoria", "500");
@@ -655,7 +671,7 @@ describe("InvoiceFormContent", () => {
       });
       vi.stubGlobal("fetch", fetchMock);
 
-      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} />);
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={PRODUCTS} />);
 
       expect(screen.getByRole("button", { name: /crear factura/i })).toBeInTheDocument();
 
@@ -665,6 +681,142 @@ describe("InvoiceFormContent", () => {
 
       expect(fetchMock).toHaveBeenCalledWith("/api/invoices", expect.objectContaining({ method: "POST" }));
       expect(pushMock).toHaveBeenCalledWith("/invoices/invoice-2");
+    });
+  });
+
+  describe("Selector de producto (línea de factura)", () => {
+    const PRODUCT_A = { id: "80000000-0000-4000-8000-000000000001", name: "Tornillos 1/4", currentQuantity: 12 };
+    const PRODUCT_B = { id: "80000000-0000-4000-8000-000000000002", name: "Martillos", currentQuantity: 0 };
+    const REAL_PRODUCTS = [PRODUCT_A, PRODUCT_B];
+
+    it("lists every active product (labeled 'Name · stock N') plus a trailing 'Otro…' option", async () => {
+      const user = userEvent.setup();
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={REAL_PRODUCTS} />);
+
+      await user.click(screen.getByLabelText(/producto/i));
+
+      expect(
+        screen.getByRole("option", { name: `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}` }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: `${PRODUCT_B.name} · stock ${PRODUCT_B.currentQuantity}` }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: /otro…/i })).toBeInTheDocument();
+    });
+
+    it("picking a real product hides the free-text description input and submits that product's id as productId", async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { id: "invoice-1" } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={REAL_PRODUCTS} />);
+
+      await selectOption(user, /cliente/i, CUSTOMER.name);
+      await selectOption(user, /producto/i, `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}`);
+
+      // No free-text description input for a real-product line.
+      expect(screen.queryByLabelText(/descripción/i)).not.toBeInTheDocument();
+
+      await user.clear(screen.getByLabelText(/valor unitario/i));
+      await user.type(screen.getByLabelText(/valor unitario/i), "500");
+      await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+      const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body);
+      expect(body.items).toEqual([
+        { description: PRODUCT_A.name, quantity: 1, unitPrice: 50000, productId: PRODUCT_A.id },
+      ]);
+    });
+
+    it("picking 'Otro…' reveals the free-text description input and submits null as productId", async () => {
+      const user = userEvent.setup();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { id: "invoice-1" } }),
+      });
+      vi.stubGlobal("fetch", fetchMock);
+
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={REAL_PRODUCTS} />);
+
+      await selectOption(user, /cliente/i, CUSTOMER.name);
+      await selectOption(user, /producto/i, /otro…/i);
+
+      expect(screen.getByLabelText(/descripción/i)).toBeInTheDocument();
+
+      await fillFirstItem(user, "Consultoria por hora", "500");
+      await user.click(screen.getByRole("button", { name: /crear factura/i }));
+
+      const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
+      const body = JSON.parse(options.body);
+      expect(body.items).toEqual([
+        { description: "Consultoria por hora", quantity: 1, unitPrice: 50000, productId: null },
+      ]);
+    });
+
+    it("switching from a real product back to 'Otro…' clears the derived description so the free-text input starts empty", async () => {
+      const user = userEvent.setup();
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={REAL_PRODUCTS} />);
+
+      await selectOption(user, /producto/i, `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}`);
+      await selectOption(user, /producto/i, /otro…/i);
+
+      expect(screen.getByLabelText(/descripción/i)).toHaveValue("");
+    });
+
+    it("edit mode: pre-selects the Select on the matching product when the item's productId is present in products", async () => {
+      render(
+        <InvoiceFormContent
+          customers={[CUSTOMER]}
+          invoiceTypes={INVOICE_TYPES}
+          products={REAL_PRODUCTS}
+          invoice={{
+            id: "invoice-1",
+            customerId: CUSTOMER.id,
+            issueDate: "2026-06-01",
+            dueDate: "2026-06-30",
+            notes: "",
+            items: [{ description: PRODUCT_A.name, quantity: 1, unitPrice: 100000, productId: PRODUCT_A.id }],
+            paidAmount: 0,
+          }}
+        />,
+      );
+
+      expect(screen.getByLabelText(/producto/i)).toHaveTextContent(
+        `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}`,
+      );
+      expect(screen.queryByLabelText(/descripción/i)).not.toBeInTheDocument();
+    });
+
+    it("edit mode: falls back to 'Otro…' showing the stored description when productId is null or references a product absent from products (e.g. now inactive)", async () => {
+      render(
+        <InvoiceFormContent
+          customers={[CUSTOMER]}
+          invoiceTypes={INVOICE_TYPES}
+          products={REAL_PRODUCTS}
+          invoice={{
+            id: "invoice-1",
+            customerId: CUSTOMER.id,
+            issueDate: "2026-06-01",
+            dueDate: "2026-06-30",
+            notes: "",
+            items: [
+              {
+                description: "Producto descontinuado",
+                quantity: 1,
+                unitPrice: 100000,
+                productId: "80000000-0000-4000-8000-000000000099",
+              },
+            ],
+            paidAmount: 0,
+          }}
+        />,
+      );
+
+      expect(screen.getByLabelText(/producto/i)).toHaveTextContent(/otro…/i);
+      expect(screen.getByLabelText(/descripción/i)).toHaveValue("Producto descontinuado");
     });
   });
 });

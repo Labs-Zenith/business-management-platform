@@ -36,7 +36,6 @@ import type {
   InvoiceDetail,
   InvoiceListQuery,
   InvoicePersist,
-  InvoiceUpdate,
   InvoiceWithFinance,
   Paged,
   Session,
@@ -73,6 +72,17 @@ export type InvoiceItemCreateInput = {
   description: string;
   quantity: number;
   unitPrice: number;
+  /**
+   * Optional FK to `products.id` — when present, the repository decrements
+   * that product's stock via a guarded `out` inventory movement in the SAME
+   * transaction as the invoice write (see `InvoiceRepository.create`/
+   * `.update`'s doc comments). Omitted/`null` for a free-text "Otro" line,
+   * which never touches inventory. No HTTP schema wires this field yet
+   * (`lib/schemas/invoice.ts` is unchanged) — this is the service-layer seam
+   * for a future caller/UI wave; defaults to `null` when absent so the
+   * current schema-validated route keeps working unchanged.
+   */
+  productId?: string | null;
 };
 
 export type InvoiceCreateInput = {
@@ -83,6 +93,28 @@ export type InvoiceCreateInput = {
   notes?: string | null;
   /** Optional FK to `invoice_types.id` — see `resolveInvoiceTypeId`'s doc comment. */
   invoiceTypeId?: string;
+};
+
+/**
+ * Service-facing edit input — deliberately its OWN type (mirroring
+ * `InvoiceCreateInput`'s shape, minus `invoiceTypeId`), NOT `ports.ts`'s
+ * `InvoiceUpdate` directly. `InvoiceUpdate.items` is `InvoiceItemInput[]`,
+ * whose `productId` is a REQUIRED `string | null` (the repository-layer
+ * contract) — but `lib/schemas/invoice.ts`'s `invoiceUpdateSchema` (the only
+ * caller today, via `app/api/invoices/[id]/route.ts`) has no `productId`
+ * field yet, so its parsed payload cannot satisfy that repository-facing
+ * type. Using this looser, service-local type (via `InvoiceItemCreateInput`,
+ * whose `productId` is optional) keeps the current schema-validated route
+ * type-checking unchanged, while still letting any future/direct caller pass
+ * `productId` through to the repository below (defaulted to `null` per item,
+ * same as `createInvoice`).
+ */
+export type InvoiceUpdateInput = {
+  customerId: string;
+  issueDate: string;
+  dueDate?: string | null;
+  items: InvoiceItemCreateInput[];
+  notes?: string | null;
 };
 
 export async function listInvoices(session: Session, query: InvoiceListQuery): Promise<Paged<InvoiceWithFinance>> {
@@ -138,6 +170,7 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
     description: item.description,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
+    productId: item.productId ?? null,
     lineTotal: lineTotal(item.quantity, item.unitPrice),
   }));
 
@@ -199,7 +232,7 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
  * even have the field) — the repository preserves the existing invoice's
  * `number` untouched.
  */
-export async function updateInvoice(session: Session, id: string, data: InvoiceUpdate): Promise<InvoiceDetail> {
+export async function updateInvoice(session: Session, id: string, data: InvoiceUpdateInput): Promise<InvoiceDetail> {
   const invoice = await getInvoice(session, id);
 
   // Fully-paid invoices are permanently locked.
@@ -218,6 +251,7 @@ export async function updateInvoice(session: Session, id: string, data: InvoiceU
     description: item.description,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
+    productId: item.productId ?? null,
     lineTotal: lineTotal(item.quantity, item.unitPrice),
   }));
 

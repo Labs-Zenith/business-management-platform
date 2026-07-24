@@ -90,7 +90,7 @@ describe("GET /api/dashboard/summary", () => {
       customerId: otherCustomer.id,
       issueDate: "2020-01-01",
       dueDate: "2020-01-15",
-      items: [{ description: "Item grande", quantity: 1, unitPrice: 999_999_999, lineTotal: 999_999_999 }],
+      items: [{ description: "Item grande", quantity: 1, unitPrice: 999_999_999, productId: null, lineTotal: 999_999_999 }],
       subtotal: 999_999_999,
       total: 999_999_999,
       status: "pending",

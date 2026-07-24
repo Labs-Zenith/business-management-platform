@@ -42,8 +42,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { todayIsoDate } from "@/lib/dates";
 import { formatCOP, lineTotal, pesosToCents } from "@/lib/money";
-import { InvoiceItemFields } from "./invoice-item-fields";
-import { invoiceFormSchema, type InvoiceFormValues } from "./invoice-form-schema";
+import { InvoiceItemFields, type InvoiceItemFieldsProduct } from "./invoice-item-fields";
+import { invoiceFormSchema, OTRO_PRODUCT_VALUE, type InvoiceFormValues } from "./invoice-form-schema";
 
 const CREATE_ERROR_MESSAGE = "No se pudo crear la factura. Verifica los datos e intenta de nuevo.";
 const EDIT_ERROR_MESSAGE = "No se pudo guardar los cambios. Verifica los datos e intenta de nuevo.";
@@ -52,6 +52,9 @@ export type InvoiceFormCustomer = { id: string; name: string };
 
 /** Minimal shape this form needs for the "Tipo de factura" dropdown — a subset of `InvoiceType` (`lib/services/ports.ts`). */
 export type InvoiceFormInvoiceType = { id: string; code: string; label: string };
+
+/** Re-exported alias — see `invoice-item-fields.tsx`'s `InvoiceItemFieldsProduct` doc comment for the full contract. */
+export type InvoiceFormProduct = InvoiceItemFieldsProduct;
 
 /**
  * Resolves the catalog's `venta` type as the create-mode default — matching
@@ -77,6 +80,8 @@ export type InvoiceFormContentInvoice = {
     quantity: number;
     /** Integer minor units (COP cents), per `lib/money.ts`'s convention. */
     unitPrice: number;
+    /** Links this line to an inventory product, or `null` for a free-text "Otro" line — see `InvoiceItemInput.productId` (`lib/services/ports.ts`). */
+    productId: string | null;
   }[];
   /**
    * Integer minor units (COP cents) already collected against this invoice,
@@ -94,16 +99,45 @@ export type InvoiceFormContentProps = {
   customers: InvoiceFormCustomer[];
   /** Sources the NEW "Tipo de factura" dropdown, create mode only (see this file's doc comment: the type is immutable after creation). */
   invoiceTypes: InvoiceFormInvoiceType[];
+  /** Active inventory products only — populates each item row's product `<Select>` (see `invoice-item-fields.tsx`). */
+  products: InvoiceFormProduct[];
   /** Preselects the customer, e.g. when arriving from "Crear factura para este cliente". Ignored in edit mode. */
   defaultCustomerId?: string;
   /** When present, the form operates in edit mode: pre-fills from this invoice and PATCHes instead of POSTing. */
   invoice?: InvoiceFormContentInvoice;
 };
 
+/**
+ * Resolves an existing item's product `<Select>` starting value: the
+ * `OTRO_PRODUCT_VALUE` sentinel + the item's stored `description` when
+ * `productId` is `null` OR doesn't match any entry in `products` (e.g. an
+ * inactive product referenced by an old line — see this file's edit-prefill
+ * doc comment), otherwise the matched product's id + its CURRENT name (kept
+ * consistent with what a fresh selection would derive via `setValue` in
+ * `invoice-item-fields.tsx`, even if the stored `description` text has since
+ * drifted from the product's current name).
+ */
+function toItemDefaultValues(
+  item: InvoiceFormContentInvoice["items"][number],
+  products: InvoiceFormProduct[],
+): InvoiceFormValues["items"][number] {
+  const matchedProduct = item.productId ? products.find((product) => product.id === item.productId) : undefined;
+  return {
+    productId: matchedProduct ? matchedProduct.id : OTRO_PRODUCT_VALUE,
+    description: matchedProduct ? matchedProduct.name : item.description,
+    quantity: item.quantity,
+    // Cents -> whole pesos (raw string), the inverse of `pesosToCents`
+    // applied at submit time — matches this form's "entered in pesos"
+    // convention and `MoneyInput`'s raw-string contract.
+    unitPrice: String(item.unitPrice / 100),
+  };
+}
+
 function toDefaultValues(
   defaultCustomerId: string | undefined,
   invoice: InvoiceFormContentInvoice | undefined,
   invoiceTypes: InvoiceFormInvoiceType[],
+  products: InvoiceFormProduct[],
 ): InvoiceFormValues {
   if (invoice) {
     return {
@@ -116,14 +150,7 @@ function toDefaultValues(
       // this value is never read/submitted, but the field must still exist
       // for `InvoiceFormValues`'s shape.
       invoiceTypeId: "",
-      items: invoice.items.map((item) => ({
-        description: item.description,
-        quantity: item.quantity,
-        // Cents -> whole pesos (raw string), the inverse of `pesosToCents`
-        // applied at submit time — matches this form's "entered in pesos"
-        // convention and `MoneyInput`'s raw-string contract.
-        unitPrice: String(item.unitPrice / 100),
-      })),
+      items: invoice.items.map((item) => toItemDefaultValues(item, products)),
     };
   }
   return {
@@ -132,13 +159,14 @@ function toDefaultValues(
     dueDate: "",
     notes: "",
     invoiceTypeId: defaultInvoiceTypeId(invoiceTypes),
-    items: [{ description: "", quantity: 1, unitPrice: "" }],
+    items: [{ productId: "", description: "", quantity: 1, unitPrice: "" }],
   };
 }
 
 export default function InvoiceFormContent({
   customers,
   invoiceTypes,
+  products,
   defaultCustomerId,
   invoice,
 }: InvoiceFormContentProps) {
@@ -150,10 +178,11 @@ export default function InvoiceFormContent({
     register,
     control,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting, isValid },
   } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceFormSchema),
-    defaultValues: toDefaultValues(defaultCustomerId, invoice, invoiceTypes),
+    defaultValues: toDefaultValues(defaultCustomerId, invoice, invoiceTypes, products),
     // Live (as-you-type) validation: errors surface per field after its
     // first blur, then keep re-validating on every subsequent change.
     mode: "onTouched",
@@ -202,6 +231,7 @@ export default function InvoiceFormContent({
           description: item.description,
           quantity: item.quantity,
           unitPrice: pesosToCents(Number(item.unitPrice) || 0),
+          productId: item.productId === OTRO_PRODUCT_VALUE ? null : item.productId,
         })),
       };
 
@@ -309,7 +339,7 @@ export default function InvoiceFormContent({
         </div>
       </div>
 
-      <InvoiceItemFields control={control} register={register} errors={errors} />
+      <InvoiceItemFields control={control} register={register} errors={errors} setValue={setValue} products={products} />
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="invoice-notes">Nota</Label>

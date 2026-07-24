@@ -29,5 +29,6 @@ export type {
   InvoiceFormCustomer,
   InvoiceFormContentInvoice,
   InvoiceFormInvoiceType,
+  InvoiceFormProduct,
 } from "./invoice-form-content";
 export default InvoiceForm;

@@ -14,7 +14,15 @@ function movementsForProduct(store: MockStore, productId: string) {
   return [...store.inventoryMovements.values()].filter((movement) => movement.productId === productId);
 }
 
-function currentQuantityFor(store: MockStore, productId: string): number {
+/**
+ * Exported for `lib/mock/invoice-repo.ts`, which replicates this floor-at-zero
+ * ledger read (rather than calling `inventoryRepo.create` directly) so an
+ * invoice's product-line stock decrement/reversal commits atomically with the
+ * invoice+items write, inside the SAME `withLock` critical section — mirrors
+ * `lib/db/invoice-repo.ts` replicating `lib/db/inventory-repo.ts`'s guarded
+ * SQL insert inside the SAME `runTransaction`.
+ */
+export function currentQuantityFor(store: MockStore, productId: string): number {
   return movementsForProduct(store, productId).reduce(
     (qty, movement) => qty + (movement.type === "in" ? movement.quantity : -movement.quantity),
     0,

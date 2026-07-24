@@ -35,6 +35,10 @@ const invoiceItemSchema = z
     description: z.string().trim().min(1).max(DESCRIPTION_MAX),
     quantity: z.number().positive(),
     unitPrice: z.number().nonnegative(),
+    // Links the line to an inventory product (its stock is decremented on
+    // create/update — see `lib/db/invoice-repo.ts`). `null`/omitted for a
+    // free-text "Otro" line, which touches no inventory.
+    productId: z.string().uuid().nullable().optional(),
   })
   .strict();
 

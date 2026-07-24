@@ -6,15 +6,25 @@ import type {
   InvoiceDetail,
   InvoiceItem,
   InvoiceListQuery,
+  InvoiceItemInput,
   InvoicePersist,
   InvoiceRepository,
   InvoiceWithFinance,
+  InventoryMovement,
   Paged,
   Payment,
   PaymentWithRefs,
 } from "@/lib/services/ports";
+import { currentQuantityFor } from "./inventory-repo";
 import { withLock } from "./lock";
-import { defaultInvoiceTypeId, generateId, reserveNextInvoiceNumber, store as defaultStore, type MockStore } from "./store";
+import {
+  defaultInvoiceTypeId,
+  generateId,
+  resolveCatalogId,
+  reserveNextInvoiceNumber,
+  store as defaultStore,
+  type MockStore,
+} from "./store";
 
 function paymentsForInvoice(store: MockStore, invoiceId: string): Payment[] {
   return [...store.payments.values()].filter((payment) => payment.invoiceId === invoiceId);
@@ -61,6 +71,94 @@ function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
     pageSize,
     total: items.length,
   };
+}
+
+/**
+ * Validates every product-linked item against a RUNNING per-product
+ * quantity (so two lines of the SAME product in one invoice/edit accumulate
+ * correctly, and — for `update` — reversed old quantities are already
+ * folded in by the caller before this runs) and BUILDS the `out` movement
+ * rows to persist, WITHOUT touching the store. Throws `VALIDATION_ERROR`
+ * (naming the offending line) on the FIRST overdraw — mirrors
+ * `lib/db/invoice-repo.ts`'s guarded-insert rollback: this function must
+ * always be called (and allowed to throw) BEFORE any store mutation, so a
+ * rejected create/edit never partially decrements stock. `runningQty` is
+ * lazily seeded from `currentQuantityFor` for a product not already present
+ * (a fresh `Map` for `create`; pre-seeded with reversed quantities for
+ * `update` — see `seedRunningQtyWithReversal`). A free-text "Otro" line
+ * (`item.productId == null`) is skipped entirely — it never touches
+ * inventory.
+ */
+function buildOutMovements(
+  store: MockStore,
+  businessId: string,
+  items: InvoiceItemInput[],
+  runningQty: Map<string, number>,
+  now: string,
+): InventoryMovement[] {
+  const movements: InventoryMovement[] = [];
+  for (const item of items) {
+    if (!item.productId) continue;
+    const productId = item.productId;
+    if (!runningQty.has(productId)) {
+      runningQty.set(productId, currentQuantityFor(store, productId));
+    }
+    const available = runningQty.get(productId)!;
+    if (item.quantity > available) {
+      throw new ApiError("VALIDATION_ERROR", `Stock insuficiente para "${item.description}"`);
+    }
+    runningQty.set(productId, available - item.quantity);
+    movements.push({
+      id: generateId(),
+      businessId,
+      productId,
+      type: "out",
+      typeId: resolveCatalogId(store.movementTypes, undefined, "out", "typeId"),
+      quantity: item.quantity,
+      note: null,
+      createdAt: now,
+    });
+  }
+  return movements;
+}
+
+/**
+ * Builds the reversal `in` movements for every OLD product-linked item of an
+ * edited invoice — restores exactly the quantity each pre-edit line had
+ * reserved. Never throws (restoring stock can never drive it below zero).
+ */
+function buildInMovements(store: MockStore, businessId: string, oldItems: InvoiceItem[], now: string): InventoryMovement[] {
+  return oldItems
+    .filter((item): item is InvoiceItem & { productId: string } => item.productId !== null)
+    .map((item) => ({
+      id: generateId(),
+      businessId,
+      productId: item.productId,
+      type: "in",
+      typeId: resolveCatalogId(store.movementTypes, undefined, "in", "typeId"),
+      quantity: item.quantity,
+      note: null,
+      createdAt: now,
+    }));
+}
+
+/**
+ * Seeds a running-quantity map for `update`'s `buildOutMovements` call: every
+ * OLD product line's quantity is added BACK (restored) before the NEW lines
+ * are validated/decremented against it — so an edit that keeps the SAME
+ * product/quantity (or reduces it) never spuriously overdraws against its
+ * own pre-edit reservation.
+ */
+function seedRunningQtyWithReversal(store: MockStore, oldItems: InvoiceItem[]): Map<string, number> {
+  const runningQty = new Map<string, number>();
+  for (const old of oldItems) {
+    if (!old.productId) continue;
+    if (!runningQty.has(old.productId)) {
+      runningQty.set(old.productId, currentQuantityFor(store, old.productId));
+    }
+    runningQty.set(old.productId, runningQty.get(old.productId)! + old.quantity);
+  }
+  return runningQty;
 }
 
 export function createInvoiceRepository(store: MockStore): InvoiceRepository {
@@ -119,9 +217,17 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
       }
       const invoiceTypeId = data.invoiceTypeId ?? defaultInvoiceTypeId(store);
       return withLock(`${businessId}:${invoiceTypeId}`, async () => {
+        const now = new Date().toISOString();
+
+        // Validate every product line against stock — and BUILD the `out`
+        // movements — BEFORE reserving the invoice number or mutating
+        // anything. An overdraw throws here, so it never consumes a
+        // sequence number nor persists any partial state (mirrors
+        // `lib/db/invoice-repo.ts#create`'s whole-transaction rollback).
+        const movements = buildOutMovements(store, businessId, data.items, new Map(), now);
+
         const id = generateId();
         const number = await reserveNextInvoiceNumber(store, businessId, invoiceTypeId);
-        const now = new Date().toISOString();
 
         const items: InvoiceItem[] = data.items.map((item) => ({
           id: generateId(),
@@ -129,6 +235,7 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           description: item.description,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
+          productId: item.productId,
           lineTotal: item.lineTotal,
         }));
 
@@ -148,11 +255,15 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           updatedAt: now,
         };
 
-        // All-or-nothing insert: header and items are written together,
-        // with nothing awaited in between, before releasing the lock.
+        // All-or-nothing insert: header, items, and inventory movements are
+        // written together, with nothing awaited in between, before
+        // releasing the lock.
         store.invoices.set(invoice.id, invoice);
         for (const item of items) {
           store.invoiceItems.set(item.id, item);
+        }
+        for (const movement of movements) {
+          store.inventoryMovements.set(movement.id, movement);
         }
 
         return toInvoiceDetail(store, invoice);
@@ -197,9 +308,25 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           throw new ApiError("CONFLICT", "The invoice total cannot be reduced below the amount already paid.");
         }
 
+        // Inventory reversal/decrement — validated and BUILT before any
+        // store mutation, mirroring `lib/db/invoice-repo.ts#update`'s
+        // whole-transaction rollback: an overdraw on a NEW product line
+        // throws here, before the old items are deleted or anything else is
+        // touched, so a rejected edit never partially reverses/decrements
+        // stock. Old product lines are captured NOW (before the wholesale
+        // delete below) and their quantities are restored into the running
+        // balance first, so a line kept on the SAME product (or reduced)
+        // never spuriously overdraws against its own pre-edit reservation.
+        const now = new Date().toISOString();
+        const oldItems = itemsForInvoice(store, id);
+        const runningQty = seedRunningQtyWithReversal(store, oldItems);
+        const outMovements = buildOutMovements(store, businessId, data.items, runningQty, now);
+        const inMovements = buildInMovements(store, businessId, oldItems, now);
+
         // Replace items wholesale: delete all existing items for this
         // invoice, then insert the new set — only after the payment guard
-        // above already passed, so a rejected edit never touches items.
+        // AND the stock guard above already passed, so a rejected edit never
+        // touches items or inventory.
         for (const [itemId, item] of store.invoiceItems) {
           if (item.invoiceId === id) {
             store.invoiceItems.delete(itemId);
@@ -211,10 +338,21 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           description: item.description,
           quantity: item.quantity,
           unitPrice: item.unitPrice,
+          productId: item.productId,
           lineTotal: item.lineTotal,
         }));
         for (const item of newItems) {
           store.invoiceItems.set(item.id, item);
+        }
+
+        // Reversal (`in`) BEFORE decrement (`out`) — matches
+        // `buildOutMovements`'s seeded running balance and the DB
+        // implementation's statement order.
+        for (const movement of inMovements) {
+          store.inventoryMovements.set(movement.id, movement);
+        }
+        for (const movement of outMovements) {
+          store.inventoryMovements.set(movement.id, movement);
         }
 
         const updated: Invoice = {

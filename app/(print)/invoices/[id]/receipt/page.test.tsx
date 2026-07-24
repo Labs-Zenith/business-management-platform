@@ -82,6 +82,7 @@ const INVOICE_DETAIL: InvoiceDetail = {
       description: "Servicio de consultoria",
       quantity: 1,
       unitPrice: 100000,
+      productId: null,
       lineTotal: 100000,
     },
   ],

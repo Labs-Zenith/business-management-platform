@@ -37,6 +37,7 @@ type InvoiceItemRow = {
   quantity: string;
   unit_price: number;
   line_total: number;
+  product_id: string | null;
 };
 
 type PaymentRow = {
@@ -96,6 +97,7 @@ function toItem(row: InvoiceItemRow): InvoiceItem {
     quantity: Number(row.quantity),
     unitPrice: Number(row.unit_price),
     lineTotal: Number(row.line_total),
+    productId: row.product_id,
   };
 }
 
@@ -288,12 +290,66 @@ export const invoiceRepo: InvoiceRepository = {
       `) as unknown as InvoiceRow[];
       const invoiceId = invoiceRows[0]!.id;
 
-      // Statements 3..N: one INSERT per item, same transaction.
+      // Statements 3..N: one INSERT per item, same transaction. For any item
+      // that links to a real product (`item.productId != null`), this ALSO
+      // decrements that product's stock via a guarded `out` inventory
+      // movement — inserted in this SAME transaction, replicating
+      // `inventory-repo.ts#create`'s two-statement floor-at-zero guard (row
+      // lock, then a fresh-snapshot `SUM`-guarded conditional INSERT) rather
+      // than calling that repository (which would open its OWN separate
+      // transaction — the movement must commit/rollback atomically with the
+      // invoice+items here, in ONE transaction). Sequential item inserts
+      // inside the SAME `tx` mean two lines of the SAME product correctly
+      // accumulate: the second line's `SUM` sees the first line's
+      // already-inserted movement. A "Otro"/free-text line (`productId ===
+      // null`) never touches inventory at all.
       for (const item of data.items) {
         await tx`
-          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total)
-          VALUES (gen_random_uuid(), ${invoiceId}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal})
+          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total, product_id)
+          VALUES (gen_random_uuid(), ${invoiceId}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}, ${item.productId})
         `;
+
+        if (item.productId) {
+          // Statement: acquire and HOLD the product row lock for the
+          // remainder of this transaction — same two-statement pattern
+          // `inventory-repo.ts#create` uses, so two concurrent invoice
+          // creates against the SAME product serialize correctly (see
+          // `client.ts`'s canonical note).
+          const productLockRows = (await tx`
+            SELECT id FROM products WHERE id = ${item.productId} AND business_id = ${businessId} FOR UPDATE
+          `) as unknown as { id: string }[];
+          if (productLockRows.length === 0) {
+            throw new ApiError("VALIDATION_ERROR", `Producto no encontrado para la línea "${item.description}"`);
+          }
+
+          // Statement: fresh-snapshot SUM guard + conditional insert, run
+          // AFTER the lock above holds the row — an `out` movement that
+          // would drive the product's computed quantity below zero inserts
+          // ZERO rows, which is the overdraw signal below.
+          const movementRows = (await tx`
+            WITH bal AS (
+              SELECT p.id,
+                COALESCE((SELECT SUM(CASE WHEN m.type = 'in' THEN m.quantity ELSE -m.quantity END)
+                          FROM inventory_movements m WHERE m.product_id = p.id), 0) AS current_qty
+              FROM products p
+              WHERE p.id = ${item.productId} AND p.business_id = ${businessId}
+            )
+            INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+            SELECT gen_random_uuid(), ${businessId}, bal.id, 'out',
+              (SELECT id FROM movement_types WHERE code = 'out'), ${item.quantity}, NULL
+            FROM bal
+            WHERE ${item.quantity} <= bal.current_qty
+            RETURNING *
+          `) as unknown as { id: string }[];
+
+          if (movementRows.length === 0) {
+            // Over-draw rejected with ZERO mutation — throwing here rolls
+            // back the WHOLE transaction (header, every item insert so far,
+            // and any earlier movement), so no partial invoice is ever
+            // persisted.
+            throw new ApiError("VALIDATION_ERROR", `Stock insuficiente para "${item.description}"`);
+          }
+        }
       }
 
       return { invoiceRows };
@@ -337,7 +393,44 @@ export const invoiceRepo: InvoiceRepository = {
         SELECT id FROM invoices WHERE id = ${id} AND business_id = ${businessId} FOR UPDATE
       `) as unknown as { id: string }[];
 
-      // Statement 2: guarded wholesale item DELETE — a no-op unless the
+      // Statement 2 (inventory support, read-only): evaluates the EXACT SAME
+      // compound guard the DELETE/INSERT/header UPDATE below embed in SQL —
+      // "belongs to this business AND not fully paid AND new total not below
+      // paid" — but as a single boolean read (`editAllowed`), used in PLAIN
+      // JS below to gate the inventory reversal/decrement statements. This
+      // is necessary because those statements, unlike the item DELETE/INSERT,
+      // ALSO carry their OWN independent floor-at-zero condition (an `out`
+      // movement that would drive stock below zero) — if the edit-lock guard
+      // were embedded in the SAME `WHERE` as the floor-at-zero check, a
+      // rejected edit (e.g. fully paid) and a genuine stock overdraw would
+      // both surface as "0 rows inserted", making it impossible to throw the
+      // CORRECT error (`CONFLICT` for the former, `VALIDATION_ERROR` for the
+      // latter). Evaluating the edit-lock guard ONCE, here, and skipping the
+      // inventory statements entirely in JS when it's false keeps the
+      // floor-at-zero check's 0-rows result unambiguous. Since statement 1
+      // already holds the invoice row lock, this read is safe against the
+      // exact same concurrent-payment race the embedded guards defend
+      // against — a concurrent payment attempting its own lock on this row
+      // blocks until this transaction commits or rolls back.
+      const guardRows = (await tx`
+        SELECT 1 FROM invoices i
+        WHERE i.id = ${id} AND i.business_id = ${businessId}
+          AND (i.total - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)) > 0
+          AND ${data.total} >= COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)
+      `) as unknown as { "?column?": number }[];
+      const editAllowed = guardRows.length > 0;
+
+      // Statement 3 (inventory support, read-only): captures the OLD items'
+      // `product_id`/`quantity` BEFORE the wholesale DELETE below erases
+      // them — needed to restore (`in` movement) whatever stock the
+      // pre-edit product lines had reserved. Unconditional (no guard): a
+      // plain read never mutates anything, and the reversal INSERTs built
+      // from this result are themselves only run when `editAllowed` is true.
+      const oldProductItemRows = (await tx`
+        SELECT product_id, quantity FROM invoice_items WHERE invoice_id = ${id} AND product_id IS NOT NULL
+      `) as unknown as { product_id: string; quantity: string }[];
+
+      // Statement 4: guarded wholesale item DELETE — a no-op unless the
       // invoice still belongs to this business AND passes the
       // not-fully-paid + new-total-not-below-paid guard, evaluated against
       // the invoice's CURRENT (pre-edit) total, since the header UPDATE has
@@ -353,7 +446,7 @@ export const invoiceRepo: InvoiceRepository = {
           )
       `;
 
-      // Statements 3..N-1: one guarded INSERT per item, written as
+      // Statements 5..N-1: one guarded INSERT per item, written as
       // `INSERT ... SELECT ... WHERE EXISTS(guard)` so an insert is a no-op
       // (zero rows) whenever the guard is false — never a partial re-insert
       // against a fully-paid, below-paid, or cross-business invoice. Same
@@ -361,8 +454,8 @@ export const invoiceRepo: InvoiceRepository = {
       // plain loop preserve the exact per-item order.
       for (const item of data.items) {
         await tx`
-          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total)
-          SELECT gen_random_uuid(), ${id}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}
+          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total, product_id)
+          SELECT gen_random_uuid(), ${id}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}, ${item.productId}
           WHERE EXISTS (
             SELECT 1 FROM invoices i
             WHERE i.id = ${id} AND i.business_id = ${businessId}
@@ -370,6 +463,56 @@ export const invoiceRepo: InvoiceRepository = {
               AND ${data.total} >= COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.invoice_id = i.id), 0)
           )
         `;
+      }
+
+      // Inventory reversal/decrement — ONLY when the edit itself is allowed
+      // (see statement 2's doc comment). Order matters: ALL old product
+      // lines are restored (`in`) BEFORE any new line is decremented (`out`),
+      // so a line moved between two invoice items for the SAME product (or a
+      // quantity reduced then re-applied) sees the restored balance first —
+      // mirrors `create`'s "sequential inserts in one tx accumulate
+      // correctly" reasoning, just reversal-then-reapply instead of
+      // multiple `out`s.
+      if (editAllowed) {
+        // Reversal: one `in` movement per OLD product line, restoring
+        // exactly the quantity that line had reserved.
+        for (const old of oldProductItemRows) {
+          await tx`
+            INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+            VALUES (gen_random_uuid(), ${businessId}, ${old.product_id}, 'in',
+              (SELECT id FROM movement_types WHERE code = 'in'), ${old.quantity}, NULL)
+          `;
+        }
+
+        // Decrement: one guarded `out` movement per NEW product line,
+        // replicating `inventory-repo.ts#create`'s floor-at-zero guard (see
+        // `create`'s identical block above in this file for the full
+        // rationale). Zero rows inserted -> over-draw -> throw, rolling back
+        // the WHOLE transaction (including the reversal above and the item
+        // DELETE/INSERTs) — never a partial edit.
+        for (const item of data.items) {
+          if (!item.productId) continue;
+
+          const movementRows = (await tx`
+            WITH bal AS (
+              SELECT p.id,
+                COALESCE((SELECT SUM(CASE WHEN m.type = 'in' THEN m.quantity ELSE -m.quantity END)
+                          FROM inventory_movements m WHERE m.product_id = p.id), 0) AS current_qty
+              FROM products p
+              WHERE p.id = ${item.productId} AND p.business_id = ${businessId}
+            )
+            INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+            SELECT gen_random_uuid(), ${businessId}, bal.id, 'out',
+              (SELECT id FROM movement_types WHERE code = 'out'), ${item.quantity}, NULL
+            FROM bal
+            WHERE ${item.quantity} <= bal.current_qty
+            RETURNING *
+          `) as unknown as { id: string }[];
+
+          if (movementRows.length === 0) {
+            throw new ApiError("VALIDATION_ERROR", `Stock insuficiente para "${item.description}"`);
+          }
+        }
       }
 
       // Statement N (LAST): fresh-snapshot compound-guarded header UPDATE (no

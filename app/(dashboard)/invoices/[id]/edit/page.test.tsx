@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { CustomerWithBalance, InvoiceDetail, Paged, Session } from "@/lib/services/ports";
+import type { CustomerWithBalance, InvoiceDetail, Paged, ProductWithStock, Session } from "@/lib/services/ports";
 
 /**
  * `app/(dashboard)/invoices/[id]/edit/page.tsx`, per this change's PR3 scope
@@ -16,6 +16,7 @@ import type { CustomerWithBalance, InvoiceDetail, Paged, Session } from "@/lib/s
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockGetInvoice = vi.fn<(session: Session, id: string) => Promise<InvoiceDetail>>();
 const mockListCustomers = vi.fn<() => Promise<Paged<CustomerWithBalance>>>();
+const mockListProducts = vi.fn<() => Promise<Paged<ProductWithStock>>>();
 const mockRedirect = vi.fn((url: string) => {
   throw Object.assign(new Error("NEXT_REDIRECT"), { digest: `NEXT_REDIRECT;replace;${url};307;` });
 });
@@ -36,18 +37,28 @@ vi.mock("@/lib/services/customer-service", () => ({
   listCustomers: () => mockListCustomers(),
 }));
 
+vi.mock("@/lib/services/product-service", () => ({
+  listProducts: () => mockListProducts(),
+}));
+
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => mockRedirect(url),
 }));
 
 // InvoiceForm is lazy (`dynamic(..., {ssr:false})`) and has its own dedicated
 // test file (`invoice-form-content.test.tsx`) — stub here to a marker
-// exposing the `invoice`/`customers` props it received, mirroring
+// exposing the `invoice`/`customers`/`products` props it received, mirroring
 // `nomina/page.test.tsx`'s dialog-stubbing convention.
 vi.mock("@/components/domain/invoices/invoice-form", () => ({
-  default: ({ invoice, customers }: { invoice?: { id: string }; customers: Array<{ id: string; name: string }> }) => (
-    <div data-testid="invoice-form">{JSON.stringify({ invoice, customers })}</div>
-  ),
+  default: ({
+    invoice,
+    customers,
+    products,
+  }: {
+    invoice?: { id: string };
+    customers: Array<{ id: string; name: string }>;
+    products: Array<{ id: string; name: string; currentQuantity: number }>;
+  }) => <div data-testid="invoice-form">{JSON.stringify({ invoice, customers, products })}</div>,
 }));
 
 import EditInvoicePage from "./page";
@@ -99,6 +110,7 @@ function buildInvoice(overrides: Partial<InvoiceDetail> = {}): InvoiceDetail {
         quantity: 1,
         unitPrice: 100_000,
         lineTotal: 100_000,
+        productId: null,
       },
     ],
     payments: [],
@@ -106,11 +118,14 @@ function buildInvoice(overrides: Partial<InvoiceDetail> = {}): InvoiceDetail {
   };
 }
 
+const EMPTY_PRODUCTS: Paged<ProductWithStock> = { data: [], page: 1, pageSize: 200, total: 0 };
+
 describe("EditInvoicePage", () => {
   beforeEach(() => {
     mockRequireSessionOrRedirect.mockReset();
     mockGetInvoice.mockReset();
     mockListCustomers.mockReset();
+    mockListProducts.mockReset();
     mockRedirect.mockClear();
   });
 
@@ -123,6 +138,7 @@ describe("EditInvoicePage", () => {
       pageSize: 50,
       total: 1,
     });
+    mockListProducts.mockResolvedValue(EMPTY_PRODUCTS);
 
     render(await EditInvoicePage({ params: Promise.resolve({ id: INVOICE_ID }) }));
 
@@ -130,6 +146,55 @@ describe("EditInvoicePage", () => {
     const form = JSON.parse(screen.getByTestId("invoice-form").textContent ?? "{}");
     expect(form.invoice.id).toBe(INVOICE_ID);
     expect(mockRedirect).not.toHaveBeenCalled();
+  });
+
+  it("passes only ACTIVE products to InvoiceForm and threads each item's productId through", async () => {
+    const activeProduct: ProductWithStock = {
+      id: "80000000-0000-4000-8000-000000000001",
+      businessId: SESSION.businessId,
+      name: "Tornillos 1/4",
+      sku: null,
+      unitCost: 1_000,
+      active: true,
+      currentQuantity: 25,
+      totalValue: 25_000,
+      isLowStock: false,
+      createdAt: "2024-01-01T00:00:00.000Z",
+      updatedAt: "2024-01-01T00:00:00.000Z",
+    };
+    const inactiveProduct: ProductWithStock = { ...activeProduct, id: "80000000-0000-4000-8000-000000000002", active: false };
+
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockGetInvoice.mockResolvedValue(
+      buildInvoice({
+        items: [
+          {
+            id: "60000000-0000-4000-8000-000000000001",
+            invoiceId: INVOICE_ID,
+            description: "Tornillos 1/4",
+            quantity: 5,
+            unitPrice: 1_000,
+            lineTotal: 5_000,
+            productId: activeProduct.id,
+          },
+        ],
+      }),
+    );
+    mockListCustomers.mockResolvedValue({
+      data: [{ ...buildInvoice().customer, balance: 0 }],
+      page: 1,
+      pageSize: 50,
+      total: 1,
+    });
+    mockListProducts.mockResolvedValue({ data: [activeProduct, inactiveProduct], page: 1, pageSize: 200, total: 2 });
+
+    render(await EditInvoicePage({ params: Promise.resolve({ id: INVOICE_ID }) }));
+
+    const form = JSON.parse(screen.getByTestId("invoice-form").textContent ?? "{}");
+    expect(form.products).toEqual([
+      { id: activeProduct.id, name: activeProduct.name, currentQuantity: activeProduct.currentQuantity },
+    ]);
+    expect(form.invoice.items[0].productId).toBe(activeProduct.id);
   });
 
   it("renders the form (does NOT redirect) for a partially-paid invoice (paidAmount > 0 but balance > 0)", async () => {
@@ -141,6 +206,7 @@ describe("EditInvoicePage", () => {
       pageSize: 50,
       total: 1,
     });
+    mockListProducts.mockResolvedValue(EMPTY_PRODUCTS);
 
     render(await EditInvoicePage({ params: Promise.resolve({ id: INVOICE_ID }) }));
 

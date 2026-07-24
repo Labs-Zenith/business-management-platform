@@ -235,6 +235,13 @@ export type InvoiceItemInput = {
   description: string;
   quantity: number;
   unitPrice: number;
+  /**
+   * Links this line to an inventory `products.id` when the user picked a real
+   * product (the invoice then decrements that product's stock via an `out`
+   * inventory movement on create/update — see `InvoiceRepository`). `null`
+   * for a free-text "Otro" line, which touches no inventory.
+   */
+  productId: string | null;
 };
 
 export type InvoiceItem = InvoiceItemInput & {

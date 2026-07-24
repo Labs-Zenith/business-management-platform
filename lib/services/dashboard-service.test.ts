@@ -56,7 +56,7 @@ function invoicePersist(
     customerId,
     issueDate,
     dueDate,
-    items: [{ ...item, lineTotal: itemLineTotal }],
+    items: [{ ...item, productId: null, lineTotal: itemLineTotal }],
     subtotal: itemLineTotal,
     total: itemLineTotal,
     status,

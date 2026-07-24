@@ -100,6 +100,7 @@ function buildInvoice(overrides: Partial<InvoiceDetail> = {}): InvoiceDetail {
         quantity: 1,
         unitPrice: 100_000,
         lineTotal: 100_000,
+        productId: null,
       },
     ],
     payments: [],

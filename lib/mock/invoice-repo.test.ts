@@ -3,16 +3,19 @@ import { lineTotal } from "@/lib/money";
 import { ApiError } from "@/lib/server/api-error";
 import type { InvoicePersist } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
-import { invoiceRepo } from "./invoice-repo";
-import { paymentRepo } from "./payment-repo";
+import { createCustomerRepository } from "./customer-repo";
+import { createInventoryMovementRepository } from "./inventory-repo";
+import { createInvoiceRepository, invoiceRepo } from "./invoice-repo";
+import { createPaymentRepository, paymentRepo } from "./payment-repo";
+import { createProductRepository } from "./product-repo";
 import { customerFixtures } from "./fixtures/data";
-import { resetStore } from "./store";
+import { createEmptyStore, resetStore } from "./store";
 
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const CUSTOMER_ID = customerFixtures[0].id;
 
 function buildInvoicePersist(overrides: Partial<InvoicePersist> = {}): InvoicePersist {
-  const items = [{ description: "Servicio", quantity: 1, unitPrice: 100000 }];
+  const items = [{ description: "Servicio", quantity: 1, unitPrice: 100000, productId: null as string | null }];
   const withTotals = items.map((item) => ({ ...item, lineTotal: lineTotal(item.quantity, item.unitPrice) }));
   const subtotal = withTotals.reduce((sum, item) => sum + item.lineTotal, 0);
   const total = subtotal;
@@ -71,7 +74,7 @@ describe("invoiceRepo.create — concurrent numbering (safety-critical)", () => 
 });
 
 function buildInvoiceUpdatePersist(overrides: Partial<InvoicePersist> = {}): InvoicePersist {
-  const items = [{ description: "Servicio editado", quantity: 2, unitPrice: 30000 }];
+  const items = [{ description: "Servicio editado", quantity: 2, unitPrice: 30000, productId: null as string | null }];
   const withTotals = items.map((item) => ({ ...item, lineTotal: lineTotal(item.quantity, item.unitPrice) }));
   const subtotal = withTotals.reduce((sum, item) => sum + item.lineTotal, 0);
   const total = subtotal;
@@ -188,7 +191,7 @@ describe("invoiceRepo.update — edit-lock (safety-critical)", () => {
     // buildInvoicePersist's total is 100000; edit with the SAME total (a
     // no-op total change), just replacing the item description.
     const noOpTotalUpdate = buildInvoiceUpdatePersist({
-      items: [{ description: "Servicio editado", quantity: 1, unitPrice: 100000, lineTotal: 100000 }],
+      items: [{ description: "Servicio editado", quantity: 1, unitPrice: 100000, productId: null, lineTotal: 100000 }],
       subtotal: 100000,
       total: 100000,
       status: computeStatus(100000, PAID_AMOUNT, "2026-08-09", new Date("2026-07-09")),
@@ -283,5 +286,243 @@ describe("invoiceRepo.update — edit-lock (safety-critical)", () => {
     );
 
     expect(result).toBeNull();
+  });
+});
+
+/**
+ * Product-line inventory decrement (invoice-item-product change) — safety
+ * critical, mock-backend behavioral proof (mirrors
+ * `lib/mock/inventory-repo.test.ts`'s floor-at-zero guard tests). Uses an
+ * ISOLATED `createEmptyStore()` per test (not the shared fixture-seeded
+ * singleton) so stock arithmetic is exact and never depends on fixture data.
+ */
+describe("invoiceRepo — product-line inventory decrement (safety-critical)", () => {
+  const LOCAL_BUSINESS_ID = "10000000-0000-4000-8000-000000000042";
+
+  async function setup(initialStock = 10) {
+    const store = createEmptyStore();
+    const customers = createCustomerRepository(store);
+    const products = createProductRepository(store);
+    const movements = createInventoryMovementRepository(store);
+    const invoices = createInvoiceRepository(store);
+    const payments = createPaymentRepository(store);
+
+    const customer = await customers.create(LOCAL_BUSINESS_ID, { name: "Cliente Local" });
+    const product = await products.create(LOCAL_BUSINESS_ID, { name: "Shampoo", unitCost: 1000 });
+    await movements.create(LOCAL_BUSINESS_ID, { productId: product.id, type: "in", quantity: initialStock });
+
+    return { store, customers, products, movements, invoices, payments, customer, product };
+  }
+
+  function persistWithItems(
+    customerId: string,
+    items: Array<{ description: string; quantity: number; unitPrice: number; productId: string | null }>,
+  ): InvoicePersist {
+    const withTotals = items.map((item) => ({ ...item, lineTotal: lineTotal(item.quantity, item.unitPrice) }));
+    const subtotal = withTotals.reduce((sum, item) => sum + item.lineTotal, 0);
+    return {
+      customerId,
+      issueDate: "2026-07-20",
+      dueDate: "2026-08-20",
+      items: withTotals,
+      subtotal,
+      total: subtotal,
+      status: computeStatus(subtotal, 0, "2026-08-20", new Date("2026-07-20")),
+      notes: null,
+    };
+  }
+
+  it("create: a product-linked line decrements stock via an `out` movement, and the returned item exposes productId", async () => {
+    const { invoices, products, customer, product } = await setup();
+
+    const detail = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 4, unitPrice: 25000, productId: product.id }]),
+    );
+
+    expect(detail.items).toHaveLength(1);
+    expect(detail.items[0]!.productId).toBe(product.id);
+
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(6); // 10 - 4
+  });
+
+  it("create: overdraw throws VALIDATION_ERROR and persists NOTHING — no invoice, no items, no movement (rollback)", async () => {
+    const { invoices, products, store, customer, product } = await setup();
+
+    await expect(
+      invoices.create(
+        LOCAL_BUSINESS_ID,
+        persistWithItems(customer.id, [{ description: product.name, quantity: 999, unitPrice: 25000, productId: product.id }]),
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    expect(store.invoices.size).toBe(0);
+    expect(store.invoiceItems.size).toBe(0);
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(10); // unchanged
+  });
+
+  it("create: propagates an ApiError instance (not a generic Error) on overdraw", async () => {
+    const { invoices, customer, product } = await setup();
+
+    await expect(
+      invoices.create(
+        LOCAL_BUSINESS_ID,
+        persistWithItems(customer.id, [{ description: product.name, quantity: 999, unitPrice: 25000, productId: product.id }]),
+      ),
+    ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("create: a free-text 'Otro' line (productId null) never touches inventory", async () => {
+    const { invoices, products, customer, product } = await setup();
+
+    const detail = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: "Servicio de asesoria", quantity: 1, unitPrice: 50000, productId: null }]),
+    );
+
+    expect(detail.items[0]!.productId).toBeNull();
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(10); // unchanged
+  });
+
+  it("create: two lines of the SAME product accumulate correctly against ONE running stock check", async () => {
+    const { invoices, products, customer, product } = await setup();
+
+    await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [
+        { description: product.name, quantity: 4, unitPrice: 25000, productId: product.id },
+        { description: product.name, quantity: 6, unitPrice: 25000, productId: product.id },
+      ]),
+    );
+
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(0); // 10 - 4 - 6
+  });
+
+  it("create: rejects the SECOND line of the same product once the running balance is exhausted, persisting nothing", async () => {
+    const { invoices, products, store, customer, product } = await setup();
+
+    await expect(
+      invoices.create(
+        LOCAL_BUSINESS_ID,
+        persistWithItems(customer.id, [
+          { description: product.name, quantity: 6, unitPrice: 25000, productId: product.id },
+          { description: product.name, quantity: 5, unitPrice: 25000, productId: product.id },
+        ]),
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    expect(store.invoices.size).toBe(0);
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(10); // unchanged
+  });
+
+  it("update: reverses the OLD product line and applies the NEW one, leaving NET stock correct", async () => {
+    const { invoices, products, customer, product } = await setup();
+    const created = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 4, unitPrice: 25000, productId: product.id }]),
+    );
+    // Stock is now 6 (10 - 4).
+
+    await invoices.update(
+      LOCAL_BUSINESS_ID,
+      created.id,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 2, unitPrice: 25000, productId: product.id }]),
+    );
+
+    // Reversed the old 4 (back to 10), then decremented the new 2 -> 8.
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(8);
+  });
+
+  it("update: switching a line from one product to another reverses the old and decrements the new", async () => {
+    const { invoices, products, movements, customer, product } = await setup();
+    const secondProduct = await products.create(LOCAL_BUSINESS_ID, { name: "Tijera", unitCost: 8000 });
+    await movements.create(LOCAL_BUSINESS_ID, { productId: secondProduct.id, type: "in", quantity: 5 });
+
+    const created = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 4, unitPrice: 25000, productId: product.id }]),
+    );
+
+    await invoices.update(
+      LOCAL_BUSINESS_ID,
+      created.id,
+      persistWithItems(customer.id, [{ description: secondProduct.name, quantity: 3, unitPrice: 8000, productId: secondProduct.id }]),
+    );
+
+    expect((await products.getById(LOCAL_BUSINESS_ID, product.id))!.currentQuantity).toBe(10); // fully restored
+    expect((await products.getById(LOCAL_BUSINESS_ID, secondProduct.id))!.currentQuantity).toBe(2); // 5 - 3
+  });
+
+  it("update: dropping a product line entirely (edited to 'Otro') fully restores that product's stock", async () => {
+    const { invoices, products, customer, product } = await setup();
+    const created = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 4, unitPrice: 25000, productId: product.id }]),
+    );
+
+    await invoices.update(
+      LOCAL_BUSINESS_ID,
+      created.id,
+      persistWithItems(customer.id, [{ description: "Servicio libre", quantity: 1, unitPrice: 10000, productId: null }]),
+    );
+
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(10); // fully restored, no new decrement
+  });
+
+  it("update: overdraw on the NEW line throws VALIDATION_ERROR and leaves the OLD line's reservation untouched (no partial reversal)", async () => {
+    const { invoices, products, customer, product } = await setup();
+    const created = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 4, unitPrice: 25000, productId: product.id }]),
+    );
+    // Stock is now 6.
+
+    await expect(
+      invoices.update(
+        LOCAL_BUSINESS_ID,
+        created.id,
+        persistWithItems(customer.id, [{ description: product.name, quantity: 999, unitPrice: 25000, productId: product.id }]),
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    // Rejected edit mutates nothing — old reservation is intact.
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(6);
+    const detail = await invoices.getById(LOCAL_BUSINESS_ID, created.id);
+    expect(detail!.items[0]!.quantity).toBe(4);
+  });
+
+  it("update: a rejected edit (fully paid) never reverses or decrements stock, even when the invoice has a product line", async () => {
+    const { invoices, products, payments, customer, product } = await setup();
+    const created = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 4, unitPrice: 25000, productId: product.id }]),
+    );
+    // Stock is now 6 (10 - 4). Pay the invoice in FULL to lock the edit.
+    await payments.createForInvoice(LOCAL_BUSINESS_ID, created.id, {
+      paymentDate: "2026-07-20",
+      amount: created.total,
+      method: "cash",
+      notes: null,
+    });
+
+    await expect(
+      invoices.update(
+        LOCAL_BUSINESS_ID,
+        created.id,
+        persistWithItems(customer.id, [{ description: product.name, quantity: 1, unitPrice: 25000, productId: product.id }]),
+      ),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    // Fully-paid edit-lock rejects BEFORE any stock reversal/decrement.
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(6);
   });
 });
