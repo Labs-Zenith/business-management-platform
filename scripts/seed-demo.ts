@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { repositories } from "@/lib/services/repositories";
 import { isDbConfigured } from "@/lib/db/client";
 import { computeStatus } from "@/lib/services/status";
+import type { PipelineStage } from "@/lib/services/ports";
 import {
   customerFixtures,
   invoiceFixtures,
@@ -247,6 +248,40 @@ async function main(): Promise<void> {
   }
   console.log(`[seed-demo] Created ${inventoryMovementFixtures.length} inventory movements.`);
 
+  // ---------------------------------------------------------------------
+  // Pipeline (Ventas kanban) cards — spread across stages, some linked to a
+  // seeded customer, with deal amounts (integer COP cents).
+  // ---------------------------------------------------------------------
+  const createdCustomerIds = [...customerIdMap.values()];
+  const pipelineFixtures: Array<{
+    title: string;
+    stage: PipelineStage;
+    amount: number | null;
+    customerIndex: number | null;
+    notes: string | null;
+    position: number;
+  }> = [
+    { title: "Consulta inicial", stage: "nuevo", amount: 50000000, customerIndex: null, notes: null, position: 0 },
+    { title: "Demo agendada", stage: "nuevo", amount: 120000000, customerIndex: 0, notes: null, position: 1 },
+    { title: "Propuesta enviada", stage: "interesado", amount: 350000000, customerIndex: 1, notes: "Espera aprobación de gerencia.", position: 0 },
+    { title: "Interesado en plan anual", stage: "interesado", amount: 90000000, customerIndex: null, notes: null, position: 1 },
+    { title: "Negociando descuento", stage: "negociacion", amount: 480000000, customerIndex: 2, notes: null, position: 0 },
+    { title: "Contrato en revisión", stage: "negociacion", amount: 220000000, customerIndex: null, notes: null, position: 1 },
+    { title: "Venta cerrada (anual)", stage: "ganado", amount: 600000000, customerIndex: 3, notes: null, position: 0 },
+    { title: "Sin presupuesto este año", stage: "perdido", amount: null, customerIndex: null, notes: "Retomar en Q4.", position: 0 },
+  ];
+  for (const card of pipelineFixtures) {
+    await repositories.pipeline.create(businessId, {
+      title: card.title,
+      stage: card.stage,
+      amount: card.amount,
+      notes: card.notes,
+      customerId: card.customerIndex !== null ? (createdCustomerIds[card.customerIndex] ?? null) : null,
+      position: card.position,
+    });
+  }
+  console.log(`[seed-demo] Created ${pipelineFixtures.length} pipeline cards.`);
+
   console.log("[seed-demo] Done. Summary:");
   console.log(`  customers:           ${customerIdMap.size}`);
   console.log(`  invoices:            ${invoiceIdMap.size}`);
@@ -256,6 +291,7 @@ async function main(): Promise<void> {
   console.log(`  payroll payments:    ${payrollPaymentFixtures.length}`);
   console.log(`  products:            ${productIdMap.size}`);
   console.log(`  inventory movements: ${inventoryMovementFixtures.length}`);
+  console.log(`  pipeline cards:      ${pipelineFixtures.length}`);
 }
 
 main()
