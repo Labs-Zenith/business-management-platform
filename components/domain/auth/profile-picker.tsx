@@ -19,6 +19,7 @@ import { useState } from "react";
 import type { SavedAccount } from "@/lib/services/ports";
 import { MAX_SAVED_ACCOUNTS } from "@/lib/auth/saved-accounts";
 import { avatarInitial } from "@/lib/utils";
+import { emailToUsername } from "@/lib/auth/username";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Building2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -127,11 +128,11 @@ export default function ProfilePicker({ accounts, next }: ProfilePickerProps) {
                 >
                   <Avatar size="sm" className="shrink-0">
                     <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground">
-                      {avatarInitial(account.label || account.email)}
+                      {avatarInitial(emailToUsername(account.label || account.email))}
                     </AvatarFallback>
                   </Avatar>
                   <span className="min-w-0 flex-1 truncate">
-                    {account.label || account.email}
+                    {emailToUsername(account.label || account.email)}
                   </span>
                   {account.active ? (
                     <span className="shrink-0 text-xs text-muted-foreground">
@@ -148,7 +149,7 @@ export default function ProfilePicker({ accounts, next }: ProfilePickerProps) {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Eliminar perfil de ${account.label || account.email}`}
+                      aria-label={`Eliminar perfil de ${emailToUsername(account.label || account.email)}`}
                       disabled={isSwitching || isRemoving}
                       className="shrink-0 text-muted-foreground hover:text-destructive"
                     >

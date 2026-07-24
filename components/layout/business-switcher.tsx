@@ -36,6 +36,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { ChevronsUpDown, Plus } from "lucide-react";
 import type { BusinessMembership, SavedAccount } from "@/lib/services/ports";
 import { avatarInitial, cn } from "@/lib/utils";
+import { emailToUsername } from "@/lib/auth/username";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 
@@ -181,10 +182,10 @@ export default function BusinessSwitcher({
                 >
                   <Avatar size="sm" className="shrink-0">
                     <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
-                      {avatarInitial(account.label || account.email)}
+                      {avatarInitial(emailToUsername(account.label || account.email))}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="truncate">{account.label || account.email}</span>
+                  <span className="truncate">{emailToUsername(account.label || account.email)}</span>
                 </button>
               ))}
             </>

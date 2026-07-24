@@ -48,6 +48,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Ellipsis } from "lucide-react";
 import { avatarInitial } from "@/lib/utils";
+import { emailToUsername } from "@/lib/auth/username";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -94,7 +95,10 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
     }
   }
 
-  const initial = avatarInitial(email);
+  // Show just the username in the UI — the internal `@zenith.app` domain is an
+  // invisible login shim, not something the user should see.
+  const displayName = emailToUsername(email);
+  const initial = avatarInitial(displayName);
 
   const menuContent = (
     // `w-64` (+ align="end") overrides DropdownMenuContent's default
@@ -104,7 +108,7 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
     // keeps it inside the viewport instead of overflowing off the right edge.
     <DropdownMenuContent align="end" side="top" className="w-64 max-w-[calc(100vw-1rem)]">
       <DropdownMenuGroup>
-        <DropdownMenuLabel className="truncate">{email}</DropdownMenuLabel>
+        <DropdownMenuLabel className="truncate">{displayName}</DropdownMenuLabel>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
@@ -121,8 +125,8 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
           // itself is the trigger (logout must stay reachable).
           <DropdownMenuTrigger
             disabled={isLoggingOut}
-            title={email}
-            aria-label={email}
+            title={displayName}
+            aria-label={displayName}
             render={
               <button
                 type="button"
@@ -147,10 +151,10 @@ export default function SidebarUserMenu({ email, collapsed = false }: SidebarUse
                 </AvatarFallback>
               </Avatar>
               <span
-                title={email}
+                title={displayName}
                 className="truncate text-sm font-medium text-sidebar-foreground"
               >
-                {email}
+                {displayName}
               </span>
             </div>
             <DropdownMenuTrigger

@@ -16,3 +16,14 @@ export function usernameToEmail(identifier: string): string {
   const trimmed = identifier.trim();
   return trimmed.includes("@") ? trimmed : `${trimmed}@${INTERNAL_EMAIL_DOMAIN}`;
 }
+
+/**
+ * Display form: hides the internal `@zenith.app` domain so the UI shows just
+ * the username. A real email on any OTHER domain (e.g. the legacy
+ * `demo@negociodemo.test`) passes through unchanged.
+ * `printingcompany@zenith.app` → `printingcompany`.
+ */
+export function emailToUsername(identifier: string): string {
+  const suffix = `@${INTERNAL_EMAIL_DOMAIN}`;
+  return identifier.endsWith(suffix) ? identifier.slice(0, -suffix.length) : identifier;
+}
