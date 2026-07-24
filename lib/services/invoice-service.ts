@@ -155,6 +155,19 @@ function validateItemInvariants(items: InvoiceItemCreateInput[]): void {
     if (!(item.unitPrice >= 0)) {
       throw new ApiError("VALIDATION_ERROR", "Every item's unitPrice cannot be negative.");
     }
+    // Defense in depth (mirrors `lib/schemas/invoice.ts`'s `.superRefine`):
+    // `inventory_movements.quantity` is an INTEGER column, so a
+    // product-linked line's quantity must be a whole number — a fractional
+    // value would otherwise reach the repository and either bind into that
+    // INTEGER column (real DB: raw 500) or silently decrement a fractional
+    // amount (mock). Free-text "Otro" lines (`productId == null`) never
+    // touch inventory and may stay fractional.
+    if (item.productId != null && !Number.isInteger(item.quantity)) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "La cantidad debe ser un número entero para productos de inventario.",
+      );
+    }
   }
 }
 

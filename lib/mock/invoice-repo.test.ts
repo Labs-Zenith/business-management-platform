@@ -374,6 +374,34 @@ describe("invoiceRepo — product-line inventory decrement (safety-critical)", (
     ).rejects.toBeInstanceOf(ApiError);
   });
 
+  it("create: a fractional quantity on a product-linked line is rejected with VALIDATION_ERROR — no invoice, no items, no movement (PARITY with the DB backend's INTEGER column)", async () => {
+    const { invoices, products, store, customer, product } = await setup();
+
+    await expect(
+      invoices.create(
+        LOCAL_BUSINESS_ID,
+        persistWithItems(customer.id, [{ description: product.name, quantity: 2.5, unitPrice: 25000, productId: product.id }]),
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    expect(store.invoices.size).toBe(0);
+    expect(store.invoiceItems.size).toBe(0);
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(10); // unchanged
+  });
+
+  it("create: a fractional quantity on a free-text 'Otro' line is still allowed (it never touches inventory)", async () => {
+    const { invoices, customer } = await setup();
+
+    const detail = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: "Servicio de asesoria", quantity: 1.5, unitPrice: 25000, productId: null }]),
+    );
+
+    expect(detail.items[0]!.quantity).toBe(1.5);
+    expect(detail.items[0]!.productId).toBeNull();
+  });
+
   it("create: a free-text 'Otro' line (productId null) never touches inventory", async () => {
     const { invoices, products, customer, product } = await setup();
 
@@ -400,6 +428,19 @@ describe("invoiceRepo — product-line inventory decrement (safety-critical)", (
 
     const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
     expect(found!.currentQuantity).toBe(0); // 10 - 4 - 6
+  });
+
+  it("create: a quantity EXACTLY equal to current stock succeeds (inclusive boundary) and drains the product to 0", async () => {
+    const { invoices, products, customer, product } = await setup();
+
+    const detail = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 10, unitPrice: 25000, productId: product.id }]),
+    );
+
+    expect(detail.items[0]!.productId).toBe(product.id);
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(0); // 10 - 10, drained exactly to zero, no throw
   });
 
   it("create: rejects the SECOND line of the same product once the running balance is exhausted, persisting nothing", async () => {
@@ -437,6 +478,59 @@ describe("invoiceRepo — product-line inventory decrement (safety-critical)", (
     // Reversed the old 4 (back to 10), then decremented the new 2 -> 8.
     const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
     expect(found!.currentQuantity).toBe(8);
+  });
+
+  it("update: two NEW lines of the SAME product accumulate sequentially against the running balance (FIX 5)", async () => {
+    const { invoices, products, customer, product } = await setup();
+    const created = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 4, unitPrice: 25000, productId: product.id }]),
+    );
+    // Stock is now 6 (10 - 4).
+
+    await invoices.update(
+      LOCAL_BUSINESS_ID,
+      created.id,
+      persistWithItems(customer.id, [
+        { description: product.name, quantity: 3, unitPrice: 25000, productId: product.id },
+        { description: product.name, quantity: 5, unitPrice: 25000, productId: product.id },
+      ]),
+    );
+
+    // Old 4 reversed (back to 10), then the combined new lines (3 + 5 = 8)
+    // decremented sequentially -> 10 - 8 = 2.
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(2);
+  });
+
+  it("update: two NEW lines of the SAME product whose COMBINED quantity exceeds stock rolls back the WHOLE edit", async () => {
+    const { invoices, products, customer, product } = await setup();
+    const created = await invoices.create(
+      LOCAL_BUSINESS_ID,
+      persistWithItems(customer.id, [{ description: product.name, quantity: 4, unitPrice: 25000, productId: product.id }]),
+    );
+    // Stock is now 6 (10 - 4). Restoring the old 4 gives a running balance of
+    // 10 for the new lines below; their combined quantity (6 + 5 = 11)
+    // exceeds that 10, so the SECOND new line must overdraw and roll back.
+
+    await expect(
+      invoices.update(
+        LOCAL_BUSINESS_ID,
+        created.id,
+        persistWithItems(customer.id, [
+          { description: product.name, quantity: 6, unitPrice: 25000, productId: product.id },
+          { description: product.name, quantity: 5, unitPrice: 25000, productId: product.id },
+        ]),
+      ),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    // Rejected edit mutates nothing — the OLD reservation (4 consumed, stock
+    // at 6) is untouched.
+    const found = await products.getById(LOCAL_BUSINESS_ID, product.id);
+    expect(found!.currentQuantity).toBe(6);
+    const detail = await invoices.getById(LOCAL_BUSINESS_ID, created.id);
+    expect(detail!.items).toHaveLength(1);
+    expect(detail!.items[0]!.quantity).toBe(4);
   });
 
   it("update: switching a line from one product to another reverses the old and decrements the new", async () => {

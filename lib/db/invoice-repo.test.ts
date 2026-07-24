@@ -424,7 +424,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     expect(lastCallText).toContain("UPDATE invoices SET");
   });
 
-  it("restores old product lines (`in`) and decrements new product lines (`out`), in that order, when the edit is allowed", async () => {
+  it("restores old product lines (`in`), locks the new product line's row, then decrements it (`out`), in that order, when the edit is allowed", async () => {
     const OLD_PRODUCT_ID = "80000000-0000-4000-8000-000000000001";
     const NEW_PRODUCT_ID = "80000000-0000-4000-8000-000000000002";
     mockTx
@@ -434,6 +434,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
       .mockResolvedValueOnce([]) // delete
       .mockResolvedValueOnce([]) // insert new item
       .mockResolvedValueOnce([]) // reversal `in` movement insert (no RETURNING)
+      .mockResolvedValueOnce([{ id: NEW_PRODUCT_ID }]) // NEW: product row lock (found)
       .mockResolvedValueOnce([{ id: "90000000-0000-4000-8000-000000000002" }]) // guarded `out` movement insert (success)
       .mockResolvedValueOnce([invoiceRow()]); // header update (LAST)
     mockSql.mockResolvedValueOnce([customerRow()]);
@@ -445,7 +446,9 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     });
     await invoiceRepo.update(BUSINESS_ID, INVOICE_ID, persist);
 
-    expect(mockTx).toHaveBeenCalledTimes(8);
+    // lock + guard-check + old-items + delete + insert + reversal + product
+    // lock + decrement + header update = 9 statements.
+    expect(mockTx).toHaveBeenCalledTimes(9);
 
     const [reversalStrings, ...reversalValues] = mockTx.mock.calls[5]!;
     const reversalText = Array.from(reversalStrings as unknown as string[]).join("");
@@ -454,7 +457,18 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     expect(reversalValues).toContain(OLD_PRODUCT_ID);
     expect(reversalValues).toContain("5");
 
-    const [decrementStrings, ...decrementValues] = mockTx.mock.calls[6]!;
+    // FIX 1: the decrement loop must acquire the SAME `FOR UPDATE` product
+    // row lock `create` takes, immediately BEFORE the guarded `out` insert —
+    // otherwise a plain SELECT under READ COMMITTED isn't blocked by another
+    // tx, so two concurrent edits/creates on the same product could both
+    // pass the floor-at-zero check and drive stock negative.
+    const [lockStrings, ...lockValues] = mockTx.mock.calls[6]!;
+    const lockText = Array.from(lockStrings as unknown as string[]).join("");
+    expect(lockText).toContain("SELECT id FROM products");
+    expect(lockText).toContain("FOR UPDATE");
+    expect(lockValues).toEqual([NEW_PRODUCT_ID, BUSINESS_ID]);
+
+    const [decrementStrings, ...decrementValues] = mockTx.mock.calls[7]!;
     const decrementText = Array.from(decrementStrings as unknown as string[]).join("");
     expect(decrementText).toContain("INSERT INTO inventory_movements");
     expect(decrementText).toContain("'out'");
@@ -462,8 +476,30 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     expect(decrementValues).toContain(2);
 
     // Header UPDATE is still LAST, after both inventory statements.
-    const headerText = Array.from(mockTx.mock.calls[7]![0] as unknown as string[]).join("");
+    const headerText = Array.from(mockTx.mock.calls[8]![0] as unknown as string[]).join("");
     expect(headerText).toContain("UPDATE invoices SET");
+  });
+
+  it("throws the SAME 'Producto no encontrado' VALIDATION_ERROR create() throws when the new product line's row lock finds zero rows (invalid/deleted/cross-business productId)", async () => {
+    const OLD_PRODUCT_ID = "80000000-0000-4000-8000-000000000001";
+    const MISSING_PRODUCT_ID = "80000000-0000-4000-8000-000000000099";
+    mockTx
+      .mockResolvedValueOnce([{ id: INVOICE_ID }]) // lock
+      .mockResolvedValueOnce([{}]) // guard-check (edit allowed)
+      .mockResolvedValueOnce([{ product_id: OLD_PRODUCT_ID, quantity: "5" }]) // old product items
+      .mockResolvedValueOnce([]) // delete
+      .mockResolvedValueOnce([]) // insert new item
+      .mockResolvedValueOnce([]) // reversal `in` movement insert
+      .mockResolvedValueOnce([]); // product lock -> ZERO rows (missing/cross-business)
+
+    const persist = buildPersist({
+      items: [{ description: "Tijera", quantity: 2, unitPrice: 30000, productId: MISSING_PRODUCT_ID, lineTotal: 60000 }],
+    });
+
+    const error: unknown = await invoiceRepo.update(BUSINESS_ID, INVOICE_ID, persist).catch((err: unknown) => err);
+    expect(error).toMatchObject({ code: "VALIDATION_ERROR" });
+    expect((error as { message: string }).message).toBe('Producto no encontrado para la línea "Tijera"');
+    expect(mockSql).not.toHaveBeenCalled();
   });
 
   it("throws VALIDATION_ERROR (rolling back the reversal too) when the new product line's guarded decrement returns ZERO rows (overdraw)", async () => {
@@ -476,6 +512,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
       .mockResolvedValueOnce([]) // delete
       .mockResolvedValueOnce([]) // insert new item
       .mockResolvedValueOnce([]) // reversal `in` movement insert
+      .mockResolvedValueOnce([{ id: NEW_PRODUCT_ID }]) // product lock (found)
       .mockResolvedValueOnce([]); // guarded `out` movement insert -> 0 rows (overdraw)
 
     const persist = buildPersist({

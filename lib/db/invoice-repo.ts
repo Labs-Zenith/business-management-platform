@@ -493,6 +493,22 @@ export const invoiceRepo: InvoiceRepository = {
         for (const item of data.items) {
           if (!item.productId) continue;
 
+          // Statement: acquire and HOLD the product row lock for the
+          // remainder of this transaction — SAME two-statement pattern
+          // `create`'s decrement loop uses above (and `inventory-repo.ts
+          // #create`'s documented pattern this mirrors). Without this lock, a
+          // plain `SELECT` inside the guarded insert's `WITH bal AS (...)` is
+          // NOT blocked by another transaction under READ COMMITTED, so two
+          // concurrent edits/creates against the SAME product could both pass
+          // the floor-at-zero check and drive stock negative. See this file's
+          // top-of-file doc comment and `client.ts`'s canonical note.
+          const productLockRows = (await tx`
+            SELECT id FROM products WHERE id = ${item.productId} AND business_id = ${businessId} FOR UPDATE
+          `) as unknown as { id: string }[];
+          if (productLockRows.length === 0) {
+            throw new ApiError("VALIDATION_ERROR", `Producto no encontrado para la línea "${item.description}"`);
+          }
+
           const movementRows = (await tx`
             WITH bal AS (
               SELECT p.id,

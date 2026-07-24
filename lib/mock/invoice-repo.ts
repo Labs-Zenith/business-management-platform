@@ -100,6 +100,20 @@ function buildOutMovements(
   for (const item of items) {
     if (!item.productId) continue;
     const productId = item.productId;
+    // PARITY with `lib/db/invoice-repo.ts` (FIX 2): the real DB backend's
+    // `inventory_movements.quantity` is an INTEGER column, so a fractional
+    // quantity on a product-linked line would surface as a raw Postgres 500
+    // there. The mock has no such column constraint, so without this guard a
+    // fractional quantity here would silently "succeed" and diverge from the
+    // DB backend's behavior — this makes it visible in mock-backed tests too.
+    // Free-text "Otro" lines (`item.productId == null`, skipped above) never
+    // touch inventory and may stay fractional.
+    if (!Number.isInteger(item.quantity)) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "La cantidad debe ser un número entero para productos de inventario.",
+      );
+    }
     if (!runningQty.has(productId)) {
       runningQty.set(productId, currentQuantityFor(store, productId));
     }

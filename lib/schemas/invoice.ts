@@ -40,7 +40,22 @@ const invoiceItemSchema = z
     // free-text "Otro" line, which touches no inventory.
     productId: z.string().uuid().nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((item, ctx) => {
+    // `inventory_movements.quantity` is `INTEGER NOT NULL CHECK(quantity>0)`,
+    // but a plain `Otro`/free-text line never touches inventory, so ONLY a
+    // product-linked line (`productId` a non-null string) must have an
+    // integer `quantity` — a fractional value here would bind straight into
+    // that INTEGER column and surface as a raw Postgres 500 instead of a
+    // clean validation error. Free-text lines may stay fractional.
+    if (item.productId != null && !Number.isInteger(item.quantity)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La cantidad debe ser un número entero para productos de inventario.",
+        path: ["quantity"],
+      });
+    }
+  });
 
 export const invoiceCreateSchema = z
   .object({

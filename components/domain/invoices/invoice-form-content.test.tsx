@@ -695,8 +695,11 @@ describe("InvoiceFormContent", () => {
 
       await user.click(screen.getByLabelText(/producto/i));
 
+      // base-ui only mounts the listbox/options after the popup opens, so the
+      // first lookup must be async (findByRole) — the rest are already in the
+      // DOM by then. Mirrors `selectOption`'s `findByRole` gesture.
       expect(
-        screen.getByRole("option", { name: `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}` }),
+        await screen.findByRole("option", { name: `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}` }),
       ).toBeInTheDocument();
       expect(
         screen.getByRole("option", { name: `${PRODUCT_B.name} · stock ${PRODUCT_B.currentQuantity}` }),

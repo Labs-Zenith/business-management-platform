@@ -59,6 +59,18 @@ export const invoiceItemFormSchema = z
         path: ["description"],
       });
     }
+    // A real inventory product (anything other than the "Otro" sentinel)
+    // decrements stock via an INTEGER `inventory_movements.quantity` column
+    // (see `lib/schemas/invoice.ts`'s matching server-side `.superRefine`) —
+    // reject a fractional quantity inline, before submit. "Otro" free-text
+    // lines never touch inventory and may stay fractional.
+    if (item.productId !== OTRO_PRODUCT_VALUE && !Number.isInteger(item.quantity)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Debe ser un número entero",
+        path: ["quantity"],
+      });
+    }
   });
 
 export const invoiceFormSchema = z.object({

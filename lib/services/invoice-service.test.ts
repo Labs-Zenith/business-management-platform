@@ -287,6 +287,40 @@ describe("createInvoice", () => {
     await expect(createInvoice(SESSION, invalidInput)).rejects.toBeInstanceOf(ApiError);
   });
 
+  it("aborts the WHOLE creation with VALIDATION_ERROR when a product-linked item has a fractional quantity (inventory_movements.quantity is INTEGER) — defense in depth beyond the schema", async () => {
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+
+    const invalidInput = {
+      ...VALID_INPUT,
+      items: [
+        {
+          description: "Shampoo",
+          quantity: 2.5,
+          unitPrice: 25000,
+          productId: "80000000-0000-4000-8000-000000000001",
+        },
+      ],
+    };
+
+    await expect(createInvoice(SESSION, invalidInput)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(mockInvoicesCreate).not.toHaveBeenCalled();
+  });
+
+  it("allows a fractional quantity on a free-text 'Otro' item (productId null — never touches inventory)", async () => {
+    mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
+    mockInvoicesCreate.mockResolvedValue(buildInvoiceDetail());
+
+    const input = {
+      ...VALID_INPUT,
+      items: [{ description: "Servicio de asesoria", quantity: 1.5, unitPrice: 25000, productId: null }],
+    };
+
+    await expect(createInvoice(SESSION, input)).resolves.toBeDefined();
+    expect(mockInvoicesCreate).toHaveBeenCalledTimes(1);
+  });
+
   it("records an invoice_created audit row (entityType='invoice', entityId=the new invoice's id) after a successful create", async () => {
     mockCustomersGetById.mockResolvedValue(CUSTOMER_DETAIL);
     const created = buildInvoiceDetail();

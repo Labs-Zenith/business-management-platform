@@ -95,6 +95,31 @@ describe("invoiceCreateSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("rejects a fractional quantity on a product-linked item (inventory_movements.quantity is INTEGER)", () => {
+    const result = invoiceCreateSchema.safeParse({
+      ...VALID_PAYLOAD,
+      items: [
+        {
+          description: "Shampoo",
+          quantity: 2.5,
+          unitPrice: 25000,
+          productId: "80000000-0000-4000-8000-000000000001",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a fractional quantity on a free-text 'Otro' item (productId null/omitted never touches inventory)", () => {
+    const result = invoiceCreateSchema.safeParse({
+      ...VALID_PAYLOAD,
+      items: [{ description: "Servicio de asesoria", quantity: 1.5, unitPrice: 25000, productId: null }],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   it("rejects a client-supplied number via the strict schema", () => {
     const result = invoiceCreateSchema.safeParse({ ...VALID_PAYLOAD, number: "FAC-9999" });
 
