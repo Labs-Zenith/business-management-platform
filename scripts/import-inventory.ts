@@ -148,6 +148,15 @@ function parseWorkbook(sheet: ExcelJS.Worksheet): ParseResult {
       continue;
     }
 
+    // Skip spreadsheet footer/summary rows (e.g. a "TOTAL" row with a SUM
+    // formula in the Cantidad column) — otherwise they'd be ingested as a
+    // bogus product whose quantity is the whole column's total, doubling the
+    // imported stock. Both source files end with such a "TOTAL" row.
+    if (["total", "subtotal", "resumen", "suma"].includes(producto.trim().toLowerCase())) {
+      skippedEmpty++;
+      continue;
+    }
+
     totalDataRows++;
 
     let name = producto;
