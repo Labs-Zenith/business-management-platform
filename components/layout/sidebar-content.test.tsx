@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { BusinessMembership } from "@/lib/services/ports";
@@ -35,7 +35,11 @@ describe("SidebarContent", () => {
     );
 
     expect(screen.getByRole("button", { name: "Negocio Demo" })).toBeInTheDocument();
-    for (const item of navItemsForRole("admin")) {
+    // Feature-gated items (e.g. "Ventas") are excluded here — this asserts
+    // every ROLE-filtered item renders; feature-flag gating has its own
+    // dedicated tests below (`navItemsFor` also filters by business feature,
+    // which `navItemsForRole` alone doesn't know about).
+    for (const item of navItemsForRole("admin").filter((navItem) => !navItem.feature)) {
       expect(screen.getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
     }
     expect(screen.getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();
@@ -80,6 +84,40 @@ describe("SidebarContent", () => {
     );
 
     expect(screen.getByRole("button", { name: /colapsar barra lateral/i })).toBeInTheDocument();
+  });
+
+  afterEach(() => {
+    delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
+  });
+
+  it("hides the Ventas nav item by default (pipeline feature disabled for this business)", () => {
+    delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
+
+    render(
+      <SidebarContent
+        role="admin"
+        currentBusinessId={CURRENT_BUSINESS_ID}
+        memberships={MEMBERSHIPS}
+        email={EMAIL}
+      />
+    );
+
+    expect(screen.queryByRole("link", { name: "Ventas" })).not.toBeInTheDocument();
+  });
+
+  it("shows the Ventas nav item once the pipeline feature is enabled for the current business", () => {
+    process.env.PIPELINE_ENABLED_BUSINESS_IDS = CURRENT_BUSINESS_ID;
+
+    render(
+      <SidebarContent
+        role="admin"
+        currentBusinessId={CURRENT_BUSINESS_ID}
+        memberships={MEMBERSHIPS}
+        email={EMAIL}
+      />
+    );
+
+    expect(screen.getByRole("link", { name: "Ventas" })).toHaveAttribute("href", "/ventas");
   });
 
   it("calls onNavigate when a nav link is clicked (mobile drawer close)", async () => {

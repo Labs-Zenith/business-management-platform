@@ -36,6 +36,18 @@
  * `capability` tag — visible to every role via `navItemsForRole`'s
  * `!item.capability` short-circuit, unlike Nómina.
  *
+ * `feature` (optional, distinct from `capability`) tags an item as gated by
+ * a per-BUSINESS feature flag (`lib/services/features.ts`) rather than the
+ * viewer's ROLE — "Ventas" (the sales pipeline kanban board) is the first
+ * (and so far only) feature-tagged item, enabled only for businesses in the
+ * `PIPELINE_ENABLED_BUSINESS_IDS` allowlist. `navItemsForRole` alone does
+ * NOT filter by `feature` (it has no `businessId` to check against) — real
+ * nav consumers (`sidebar-content.tsx`) call `navItemsFor(role, businessId)`
+ * instead, which layers the feature filter on top of the role filter. Same
+ * "UX complement only" caveat as `capability`: the authoritative check is
+ * the page's own `isPipelineEnabled` gate (`notFound()`) and the API
+ * route's own check — hiding the nav item never substitutes for either.
+ *
  * `isActivePath` and `SIDEBAR_COLLAPSED_COOKIE` (review-fix pass, Fase 4 Lane
  * C) also live here rather than being copy-pasted per nav surface:
  * `isActivePath` was previously duplicated verbatim in both
@@ -47,21 +59,27 @@
  * now single-sourced here alongside `NAV_ITEMS`/`navItemsForRole`.
  */
 
-import { Banknote, CreditCard, FileText, LayoutDashboard, Package, Receipt, Settings, Users, type LucideIcon } from "lucide-react";
+import { Banknote, CreditCard, FileText, Kanban, LayoutDashboard, Package, Receipt, Settings, Users, type LucideIcon } from "lucide-react";
 import { can, type Capability } from "@/lib/services/permissions";
+import { isPipelineEnabled } from "@/lib/services/features";
 import type { Role } from "@/lib/services/ports";
+
+/** The only per-business feature flags a nav item can be tagged with today — see this file's `feature` doc comment above. */
+export type NavFeature = "pipeline";
 
 export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
   capability?: Capability;
+  feature?: NavFeature;
 };
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Clientes", icon: Users },
   { href: "/invoices", label: "Facturas", icon: FileText },
+  { href: "/ventas", label: "Ventas", icon: Kanban, feature: "pipeline" },
   { href: "/payments", label: "Ingresos", icon: CreditCard },
   { href: "/egresos", label: "Egresos", icon: Receipt },
   { href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
@@ -69,9 +87,28 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/settings", label: "Configuración", icon: Settings },
 ];
 
-/** Filters `NAV_ITEMS` down to those `role` may see (deny-by-default, via `can()`). */
+/** Filters `NAV_ITEMS` down to those `role` may see (deny-by-default, via `can()`). Does NOT consider `feature` — see `navItemsFor` below. */
 export function navItemsForRole(role: Role): NavItem[] {
   return NAV_ITEMS.filter((item) => !item.capability || can(role, item.capability));
+}
+
+/** Resolves whether `feature` is enabled for `businessId` — the single dispatch point for every `NavFeature`. */
+function isNavFeatureEnabled(feature: NavFeature, businessId: string): boolean {
+  switch (feature) {
+    case "pipeline":
+      return isPipelineEnabled(businessId);
+  }
+}
+
+/**
+ * The real filtering function nav consumers (`sidebar-content.tsx`) call:
+ * layers the per-business `feature` filter on top of `navItemsForRole`'s
+ * role/capability filter, so a feature-gated item (e.g. "Ventas") is hidden
+ * unless BOTH the role allows it (n/a for `pipeline`, which has no
+ * `capability`) AND the business has the feature enabled.
+ */
+export function navItemsFor(role: Role, businessId: string): NavItem[] {
+  return navItemsForRole(role).filter((item) => !item.feature || isNavFeatureEnabled(item.feature, businessId));
 }
 
 /**

@@ -21,7 +21,7 @@ const PROFILE_ID = "30000000-0000-4000-8000-000000000001";
 
 function buildLegacyPayload(): Omit<
   SerializedStore,
-  "expenses" | "employees" | "payrollPayments" | "products" | "inventoryMovements" | "auditLogs"
+  "expenses" | "employees" | "payrollPayments" | "products" | "inventoryMovements" | "auditLogs" | "pipelineCards"
 > {
   const business: Business = {
     id: BUSINESS_ID,

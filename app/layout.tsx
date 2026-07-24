@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
 const inter = Inter({
@@ -27,6 +28,13 @@ export const metadata: Metadata = {
  * back to the light palette via a `.light` class, since printable
  * comprobantes must stay light/high-contrast on paper regardless of the
  * on-screen theme.
+ *
+ * `<Toaster />` (`components/ui/sonner.tsx`) is mounted once here, globally
+ * — first real consumer is `ventas-board.tsx`'s drag-and-drop error toast
+ * (a failed `PATCH /api/ventas/[id]` reverts the optimistic move and surfaces
+ * a `toast.error(...)`). Without a mounted `<Toaster/>` somewhere in the
+ * tree, `sonner`'s `toast(...)` calls are silent no-ops (nothing renders
+ * them) — this was previously missing app-wide.
  */
 export default function RootLayout({
   children,
@@ -38,7 +46,10 @@ export default function RootLayout({
       lang="es"
       className={`dark ${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Toaster />
+      </body>
     </html>
   );
 }

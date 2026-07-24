@@ -31,6 +31,7 @@ import { inventoryRepo as mockInventoryRepo } from "@/lib/mock/inventory-repo";
 import { invoiceRepo as mockInvoiceRepo } from "@/lib/mock/invoice-repo";
 import { paymentRepo as mockPaymentRepo } from "@/lib/mock/payment-repo";
 import { payrollRepo as mockPayrollRepo } from "@/lib/mock/payroll-repo";
+import { pipelineRepo as mockPipelineRepo } from "@/lib/mock/pipeline-repo";
 import { productRepo as mockProductRepo } from "@/lib/mock/product-repo";
 
 import { isDbConfigured } from "@/lib/db/client";
@@ -44,6 +45,7 @@ import { inventoryRepo as dbInventoryRepo } from "@/lib/db/inventory-repo";
 import { invoiceRepo as dbInvoiceRepo } from "@/lib/db/invoice-repo";
 import { paymentRepo as dbPaymentRepo } from "@/lib/db/payment-repo";
 import { payrollRepo as dbPayrollRepo } from "@/lib/db/payroll-repo";
+import { pipelineRepo as dbPipelineRepo } from "@/lib/db/pipeline-repo";
 import { productRepo as dbProductRepo } from "@/lib/db/product-repo";
 
 export const repositories = {
@@ -59,4 +61,5 @@ export const repositories = {
   inventory: isDbConfigured ? dbInventoryRepo : mockInventoryRepo,
   auditLog: isDbConfigured ? dbAuditLogRepo : mockAuditLogRepo,
   catalog: isDbConfigured ? dbCatalogRepo : mockCatalogRepo,
+  pipeline: isDbConfigured ? dbPipelineRepo : mockPipelineRepo,
 };

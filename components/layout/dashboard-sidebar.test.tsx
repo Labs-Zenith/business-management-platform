@@ -60,7 +60,12 @@ describe("DashboardSidebar", () => {
       />
     );
 
-    for (const item of navItemsForRole("admin")) {
+    // Feature-gated items (e.g. "Ventas") are excluded — the rendered
+    // `navItemsFor(role, businessId)` also filters by the per-business
+    // pipeline feature flag, which is disabled by default in tests (no
+    // `PIPELINE_ENABLED_BUSINESS_IDS`); that gating has its own dedicated
+    // tests (`sidebar-content.test.tsx`).
+    for (const item of navItemsForRole("admin").filter((navItem) => !navItem.feature)) {
       expect(screen.getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
     }
   });
@@ -75,9 +80,9 @@ describe("DashboardSidebar", () => {
       />
     );
 
-    const workerItems = navItemsForRole("worker");
+    const workerItems = navItemsForRole("worker").filter((item) => !item.feature);
     const adminOnlyItems = navItemsForRole("admin").filter(
-      (item) => !workerItems.some((workerItem) => workerItem.href === item.href)
+      (item) => !item.feature && !workerItems.some((workerItem) => workerItem.href === item.href)
     );
 
     for (const item of workerItems) {

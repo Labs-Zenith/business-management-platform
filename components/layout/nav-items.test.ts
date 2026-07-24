@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { NAV_ITEMS, navItemsForRole } from "./nav-items";
+import { afterEach, describe, expect, it } from "vitest";
+import { NAV_ITEMS, navItemsFor, navItemsForRole } from "./nav-items";
+
+const BIZ_ID = "10000000-0000-4000-8000-000000000001";
+const OTHER_BIZ_ID = "10000000-0000-4000-8000-000000000002";
 
 /**
  * `navItemsForRole`, per
@@ -54,5 +57,38 @@ describe("navItemsForRole", () => {
     expect(NAV_ITEMS.at(-1)).toMatchObject({ href: "/settings", label: "Configuración" });
     expect(navItemsForRole("worker").some((item) => item.href === "/settings")).toBe(true);
     expect(navItemsForRole("admin").some((item) => item.href === "/settings")).toBe(true);
+  });
+
+  it("includes the Ventas nav item unconditionally (no capability, only a feature flag) for both roles", () => {
+    expect(navItemsForRole("worker").some((item) => item.href === "/ventas")).toBe(true);
+    expect(navItemsForRole("admin").some((item) => item.href === "/ventas")).toBe(true);
+  });
+});
+
+describe("navItemsFor", () => {
+  afterEach(() => {
+    delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
+  });
+
+  it("hides the Ventas nav item when the feature is disabled (deny-by-default, empty allowlist)", () => {
+    delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
+
+    expect(navItemsFor("admin", BIZ_ID).some((item) => item.href === "/ventas")).toBe(false);
+    expect(navItemsFor("worker", BIZ_ID).some((item) => item.href === "/ventas")).toBe(false);
+  });
+
+  it("shows the Ventas nav item only for a business in PIPELINE_ENABLED_BUSINESS_IDS", () => {
+    process.env.PIPELINE_ENABLED_BUSINESS_IDS = BIZ_ID;
+
+    expect(navItemsFor("admin", BIZ_ID).some((item) => item.href === "/ventas")).toBe(true);
+    expect(navItemsFor("admin", OTHER_BIZ_ID).some((item) => item.href === "/ventas")).toBe(false);
+  });
+
+  it("still applies the role/capability filter on top of the feature filter (Nómina stays gated)", () => {
+    process.env.PIPELINE_ENABLED_BUSINESS_IDS = BIZ_ID;
+
+    const workerItems = navItemsFor("worker", BIZ_ID);
+    expect(workerItems.some((item) => item.href === "/ventas")).toBe(true);
+    expect(workerItems.some((item) => item.href === "/nomina")).toBe(false);
   });
 });

@@ -103,7 +103,12 @@ describe("DashboardLayout (shared navigation shell)", () => {
     // (single source of truth in `nav-items.ts`, owned by another
     // concurrent lane) rather than hardcoded here, so this test doesn't
     // drift when that list changes (e.g. items added/removed/renamed).
-    for (const item of navItemsForRole(SESSION.role)) {
+    // Feature-gated items (e.g. "Ventas") are excluded — the rendered
+    // `navItemsFor(role, businessId)` also filters by the per-business
+    // pipeline feature flag, disabled by default in tests (no
+    // `PIPELINE_ENABLED_BUSINESS_IDS`); see `sidebar-content.test.tsx` for
+    // that gating's dedicated coverage.
+    for (const item of navItemsForRole(SESSION.role).filter((navItem) => !navItem.feature)) {
       const links = screen.getAllByRole("link", { name: item.label });
       expect(links.length).toBeGreaterThan(0);
       for (const link of links) {
@@ -146,9 +151,9 @@ describe("DashboardLayout (shared navigation shell)", () => {
 
     render(await DashboardLayout({ children: <div>Page content</div> }));
 
-    const workerItems = navItemsForRole(WORKER_SESSION.role);
+    const workerItems = navItemsForRole(WORKER_SESSION.role).filter((item) => !item.feature);
     const adminOnlyItems = navItemsForRole("admin").filter(
-      (item) => !workerItems.some((workerItem) => workerItem.href === item.href)
+      (item) => !item.feature && !workerItems.some((workerItem) => workerItem.href === item.href)
     );
 
     for (const item of adminOnlyItems) {

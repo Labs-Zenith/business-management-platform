@@ -614,6 +614,62 @@ export interface ProductRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline / Ventas (sales kanban board)
+// ---------------------------------------------------------------------------
+
+/**
+ * The fixed set of sales-pipeline stages (kanban columns). A `stage` is
+ * user-set (moved by drag-and-drop), unlike the DERIVED invoice status.
+ * Order here is the left-to-right column order.
+ */
+export const PIPELINE_STAGES = ["nuevo", "interesado", "negociacion", "ganado", "perdido"] as const;
+export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
+export type PipelineCard = {
+  id: string;
+  businessId: string;
+  /** Optional link to a customer (forward-looking sales/CRM connection). */
+  customerId: string | null;
+  title: string;
+  stage: PipelineStage;
+  /** Deal value, integer COP cents (see lib/money.ts). Nullable. */
+  amount: number | null;
+  notes: string | null;
+  /** Order within a stage column (for stable sort + reorder). */
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PipelineCardCreate = {
+  title: string;
+  stage: PipelineStage;
+  customerId?: string | null;
+  amount?: number | null;
+  notes?: string | null;
+  position?: number;
+};
+
+export type PipelineCardUpdate = Partial<PipelineCardCreate>;
+
+export type PipelineCardListQuery = {
+  stage?: PipelineStage;
+};
+
+/**
+ * `list` returns EVERY card for the business (no pagination) — a pipeline is
+ * bounded and the board groups them by `stage` client-side. Cards ARE
+ * deletable (unlike most entities), so this repo has a `delete`.
+ */
+export interface PipelineRepository {
+  list(businessId: string, query?: PipelineCardListQuery): Promise<PipelineCard[]>;
+  getById(businessId: string, id: string): Promise<PipelineCard | null>;
+  create(businessId: string, data: PipelineCardCreate): Promise<PipelineCard>;
+  update(businessId: string, id: string, data: PipelineCardUpdate): Promise<PipelineCard | null>;
+  delete(businessId: string, id: string): Promise<boolean>;
+}
+
+// ---------------------------------------------------------------------------
 // Audit Log (append-only — Expense-style)
 // ---------------------------------------------------------------------------
 

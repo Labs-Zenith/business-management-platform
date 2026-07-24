@@ -12,6 +12,7 @@ import type {
   InvoiceType,
   Payment,
   PayrollPayment,
+  PipelineCard,
   Product,
   Role,
 } from "@/lib/services/ports";
@@ -54,6 +55,7 @@ export type MockStore = {
   products: Map<string, Product>;
   inventoryMovements: Map<string, InventoryMovement>;
   auditLogs: Map<string, AuditLogEntry>;
+  pipelineCards: Map<string, PipelineCard>;
   /** `${businessId}:${invoiceTypeId}` -> last-used sequence number, for atomic per-(business,type) invoice numbering. */
   invoiceSequences: Map<string, number>;
   /**
@@ -86,6 +88,7 @@ export type SerializedStore = {
   products: Product[];
   inventoryMovements: InventoryMovement[];
   auditLogs: AuditLogEntry[];
+  pipelineCards: PipelineCard[];
   invoiceSequences: Record<string, number>;
 };
 
@@ -103,6 +106,7 @@ export function serializeStore(target: MockStore = store): SerializedStore {
     products: [...target.products.values()],
     inventoryMovements: [...target.inventoryMovements.values()],
     auditLogs: [...target.auditLogs.values()],
+    pipelineCards: [...target.pipelineCards.values()],
     invoiceSequences: Object.fromEntries(target.invoiceSequences),
   };
 }
@@ -120,6 +124,7 @@ export function clearStore(target: MockStore): void {
   target.products.clear();
   target.inventoryMovements.clear();
   target.auditLogs.clear();
+  target.pipelineCards.clear();
   target.invoiceSequences.clear();
 }
 
@@ -146,6 +151,9 @@ export function hydrateStore(data: SerializedStore, target: MockStore = store): 
   // Same `?? []` requirement for `auditLogs` — a cookie serialized before the
   // audit-log change has no `auditLogs` field at all.
   for (const a of data.auditLogs ?? []) target.auditLogs.set(a.id, a);
+  // Same `?? []` requirement for `pipelineCards` — a cookie serialized before
+  // the ventas-pipeline change has no `pipelineCards` field at all.
+  for (const p of data.pipelineCards ?? []) target.pipelineCards.set(p.id, p);
   for (const [k, v] of Object.entries(data.invoiceSequences)) target.invoiceSequences.set(k, v);
 }
 
@@ -177,6 +185,7 @@ export function createEmptyStore(): MockStore {
     products: new Map(),
     inventoryMovements: new Map(),
     auditLogs: new Map(),
+    pipelineCards: new Map(),
     invoiceSequences: new Map(),
     invoiceTypes: new Map(),
     expenseCategories: new Map(),

@@ -40,7 +40,7 @@ import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { isActivePath, navItemsForRole } from "./nav-items";
+import { isActivePath, navItemsFor } from "./nav-items";
 import { NavLink } from "./nav-link";
 import BusinessSwitcher from "./business-switcher";
 import SidebarUserMenu from "./sidebar-user-menu";
@@ -70,7 +70,11 @@ export default function SidebarContent({
   onToggleCollapse,
 }: SidebarContentProps) {
   const pathname = usePathname();
-  const items = navItemsForRole(role);
+  // `navItemsFor` (not `navItemsForRole`) — layers the per-business
+  // "Ventas" feature-flag filter on top of the role filter; `currentBusinessId`
+  // is already threaded to this component for `BusinessSwitcher`, so no
+  // additional prop plumbing through `app/(dashboard)/layout.tsx` was needed.
+  const items = navItemsFor(role, currentBusinessId);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">
