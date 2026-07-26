@@ -5,6 +5,7 @@ import type {
   Customer,
   Employee,
   Expense,
+  Feature,
   InventoryMovement,
   Invoice,
   InvoiceItem,
@@ -48,6 +49,30 @@ export function seedMinimal(store: MockStore): void {
   store.businesses.set(BUSINESS_ID_2, { ...businessFixture2, createdAt: laterIso, updatedAt: laterIso });
   store.profiles.set(demoProfileFixture.id, { ...demoProfileFixture, createdAt: nowIso, updatedAt: nowIso });
   store.profiles.set(demoProfileFixture2.id, { ...demoProfileFixture2, createdAt: laterIso, updatedAt: laterIso });
+  seedDemoBusinessFeatures(store);
+}
+
+/**
+ * Enables the Ventas sales-pipeline board for the primary "Negocio Demo"
+ * business (`BUSINESS_ID`), so it shows up in mock/dev WITHOUT setting any
+ * env var — replaces the earlier `PIPELINE_ENABLED_BUSINESS_IDS` allowlist
+ * (see `lib/services/features.ts`). Shared by both seed paths (`seedMinimal`,
+ * the fresh-cookie-session seed, and `seedFixtures`, the full demo dataset)
+ * so the two never drift out of sync.
+ *
+ * Set-if-absent (NOT an unconditional overwrite): `lib/mock/cookie-persistence.ts#loadStoreFromCookie`
+ * calls `seedMinimal` on EVERY request that arrives without an `app_data`
+ * cookie (the norm for a fresh in-memory test store, which never round-trips
+ * through a real cookie) — an unconditional `.set(...)` here would silently
+ * re-enable the feature on the very next request after a caller (e.g. a test,
+ * or a future admin toggle) explicitly disabled it. Skipping when an entry
+ * already exists makes this seed idempotent without clobbering a later
+ * mutation.
+ */
+function seedDemoBusinessFeatures(store: MockStore): void {
+  if (!store.businessFeatures.has(BUSINESS_ID)) {
+    store.businessFeatures.set(BUSINESS_ID, new Map<Feature, boolean>([["pipeline", true]]));
+  }
 }
 
 function daysFromNow(offset: number): string {
@@ -89,6 +114,8 @@ export function seedFixtures(store: MockStore): void {
     updatedAt: laterIso,
   };
   store.profiles.set(profile2.id, profile2);
+
+  seedDemoBusinessFeatures(store);
 
   for (const customerFixture of customerFixtures) {
     const customer: Customer = {

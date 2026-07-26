@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetStore, store } from "@/lib/mock/store";
 import { repositories } from "@/lib/services/repositories";
-import type { PipelineCard } from "@/lib/services/ports";
+import type { Feature, PipelineCard } from "@/lib/services/ports";
 
 /**
  * Same in-memory cookie jar strategy as `app/api/products/products-routes.test.ts`:
@@ -11,9 +11,14 @@ import type { PipelineCard } from "@/lib/services/ports";
  * handler -> `pipeline-service.ts` -> `pipeline-repo.ts` code path.
  *
  * Ventas has NO role gating (any authenticated member may use the board), but
- * DOES have a per-BUSINESS feature gate (`isPipelineEnabled`) — every group
- * below proves BOTH the 403-when-disabled path AND the enabled/happy path, in
- * addition to the shared 401/cross-business/origin concerns.
+ * DOES have a per-BUSINESS feature gate (`isPipelineEnabled`, now DB-backed
+ * via the `business_features` table — see `lib/services/features.ts`) —
+ * every group below proves BOTH the 403-when-disabled path AND the
+ * enabled/happy path, in addition to the shared 401/cross-business/origin
+ * concerns. `resetStore()` (mirroring `lib/mock/fixtures/index.ts#seedFixtures`)
+ * seeds `BUSINESS_ID` with `pipeline` already enabled, matching real dev/mock
+ * behavior with no env var — `disablePipeline()` explicitly turns it back off
+ * per test where the 403 path is under test.
  */
 const { mockCookieJar } = vi.hoisted(() => {
   const jarStore = new Map<string, string>();
@@ -79,28 +84,25 @@ function seedCard(overrides: Partial<PipelineCard> = {}): PipelineCard {
 }
 
 const ORIGINAL_APP_ORIGIN = process.env.APP_ORIGIN;
-const ORIGINAL_PIPELINE_ENABLED = process.env.PIPELINE_ENABLED_BUSINESS_IDS;
 
+/**
+ * `resetStore()` already seeds `BUSINESS_ID` with `pipeline` enabled (see
+ * `lib/mock/fixtures/index.ts#seedDemoBusinessFeatures`), so this is a no-op
+ * kept for readability/symmetry at each call site — explicit about which
+ * state each test needs.
+ */
 function enablePipelineForSessionBusiness(): void {
-  process.env.PIPELINE_ENABLED_BUSINESS_IDS = BUSINESS_ID;
+  store.businessFeatures.set(BUSINESS_ID, new Map<Feature, boolean>([["pipeline", true]]));
 }
 
 function disablePipeline(): void {
-  delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
+  store.businessFeatures.set(BUSINESS_ID, new Map<Feature, boolean>([["pipeline", false]]));
 }
 
 describe("GET /api/ventas", () => {
   beforeEach(() => {
     resetStore();
     mockCookieJar.clear();
-  });
-
-  afterEach(() => {
-    if (ORIGINAL_PIPELINE_ENABLED === undefined) {
-      delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-    } else {
-      process.env.PIPELINE_ENABLED_BUSINESS_IDS = ORIGINAL_PIPELINE_ENABLED;
-    }
   });
 
   it("rejects unauthenticated requests with 401 UNAUTHENTICATED", async () => {
@@ -153,11 +155,6 @@ describe("POST /api/ventas", () => {
       delete process.env.APP_ORIGIN;
     } else {
       process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
-    }
-    if (ORIGINAL_PIPELINE_ENABLED === undefined) {
-      delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-    } else {
-      process.env.PIPELINE_ENABLED_BUSINESS_IDS = ORIGINAL_PIPELINE_ENABLED;
     }
   });
 
@@ -252,11 +249,6 @@ describe("PATCH /api/ventas/{id}", () => {
       delete process.env.APP_ORIGIN;
     } else {
       process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
-    }
-    if (ORIGINAL_PIPELINE_ENABLED === undefined) {
-      delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-    } else {
-      process.env.PIPELINE_ENABLED_BUSINESS_IDS = ORIGINAL_PIPELINE_ENABLED;
     }
   });
 
@@ -367,11 +359,6 @@ describe("DELETE /api/ventas/{id}", () => {
     } else {
       process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
     }
-    if (ORIGINAL_PIPELINE_ENABLED === undefined) {
-      delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-    } else {
-      process.env.PIPELINE_ENABLED_BUSINESS_IDS = ORIGINAL_PIPELINE_ENABLED;
-    }
   });
 
   function deleteRequest(id: string) {
@@ -467,11 +454,6 @@ describe("POST /api/ventas/reorder", () => {
       delete process.env.APP_ORIGIN;
     } else {
       process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
-    }
-    if (ORIGINAL_PIPELINE_ENABLED === undefined) {
-      delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-    } else {
-      process.env.PIPELINE_ENABLED_BUSINESS_IDS = ORIGINAL_PIPELINE_ENABLED;
     }
   });
 

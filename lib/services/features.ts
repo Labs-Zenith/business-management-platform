@@ -1,25 +1,32 @@
+import { repositories } from "./repositories";
+import type { Feature } from "./ports";
+
 /**
- * Per-BUSINESS feature flags (env-driven allowlist). Distinct from role
+ * Per-BUSINESS feature flags, DB-backed via the `business_features` table
+ * (see `migrations/1700000015000_add_business_features.sql` and
+ * `lib/services/ports.ts`'s `BusinessFeatureRepository`). Distinct from role
  * capabilities (`lib/services/permissions.ts`): a capability gates by the
  * member's ROLE within a business, whereas a feature here is enabled for a
  * set of BUSINESSES regardless of role.
  *
- * Currently just the "Ventas" (sales pipeline) board, enabled via the
- * comma-separated `PIPELINE_ENABLED_BUSINESS_IDS` env var (see .env.example).
- * The env is read at CALL time (not module load) so it can be varied per test
- * and picks up runtime config without a rebuild. Deny-by-default: an empty or
- * unset var disables the feature for everyone.
+ * Enabling a module for a business is now a row in `business_features`, not
+ * a redeploy — this replaces the earlier `PIPELINE_ENABLED_BUSINESS_IDS` env
+ * var. Deny-by-default: a business with no row (or `enabled = false`) has
+ * the feature disabled, matching the env var's "empty allowlist = disabled
+ * for everyone" contract.
  */
-function parseBusinessAllowlist(raw: string | undefined): Set<string> {
-  return new Set(
-    (raw ?? "")
-      .split(",")
-      .map((id) => id.trim())
-      .filter(Boolean),
-  );
+
+/** True if `feature` is enabled for `businessId`. */
+export function isFeatureEnabled(businessId: string, feature: Feature): Promise<boolean> {
+  return repositories.businessFeature.isEnabled(businessId, feature);
 }
 
-/** True if the Ventas (sales pipeline) board is enabled for `businessId`. */
-export function isPipelineEnabled(businessId: string): boolean {
-  return parseBusinessAllowlist(process.env.PIPELINE_ENABLED_BUSINESS_IDS).has(businessId);
+/** Every feature currently enabled for `businessId`. */
+export function listEnabledFeatures(businessId: string): Promise<Feature[]> {
+  return repositories.businessFeature.listEnabledFeatures(businessId);
+}
+
+/** Convenience wrapper for the Ventas pipeline board. Now async (DB-backed). */
+export function isPipelineEnabled(businessId: string): Promise<boolean> {
+  return isFeatureEnabled(businessId, "pipeline");
 }

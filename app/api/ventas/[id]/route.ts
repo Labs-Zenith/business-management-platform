@@ -22,7 +22,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export const PATCH = withApiHandler(async (request: Request, context: RouteContext): Promise<NextResponse> => {
   const session = await requireSession();
-  if (!isPipelineEnabled(session.businessId)) {
+  if (!(await isPipelineEnabled(session.businessId))) {
     throw new ApiError("FORBIDDEN", "The sales pipeline is not enabled for this business.");
   }
   checkOrigin(request);
@@ -47,7 +47,7 @@ export const PATCH = withApiHandler(async (request: Request, context: RouteConte
 
 export const DELETE = withApiHandler(async (request: Request, context: RouteContext): Promise<NextResponse> => {
   const session = await requireSession();
-  if (!isPipelineEnabled(session.businessId)) {
+  if (!(await isPipelineEnabled(session.businessId))) {
     throw new ApiError("FORBIDDEN", "The sales pipeline is not enabled for this business.");
   }
   checkOrigin(request);

@@ -6,6 +6,7 @@ import type {
   Customer,
   Employee,
   Expense,
+  Feature,
   InventoryMovement,
   Invoice,
   InvoiceItem,
@@ -56,6 +57,13 @@ export type MockStore = {
   inventoryMovements: Map<string, InventoryMovement>;
   auditLogs: Map<string, AuditLogEntry>;
   pipelineCards: Map<string, PipelineCard>;
+  /**
+   * Per-business feature entitlements (`businessId -> feature -> enabled`),
+   * mirroring the Postgres `business_features` table (see
+   * `lib/mock/business-features-repo.ts`). Deny-by-default: a missing
+   * business, or a missing/`false` feature entry, both resolve to disabled.
+   */
+  businessFeatures: Map<string, Map<Feature, boolean>>;
   /** `${businessId}:${invoiceTypeId}` -> last-used sequence number, for atomic per-(business,type) invoice numbering. */
   invoiceSequences: Map<string, number>;
   /**
@@ -89,6 +97,7 @@ export type SerializedStore = {
   inventoryMovements: InventoryMovement[];
   auditLogs: AuditLogEntry[];
   pipelineCards: PipelineCard[];
+  businessFeatures: Array<{ businessId: string; feature: Feature; enabled: boolean }>;
   invoiceSequences: Record<string, number>;
 };
 
@@ -107,6 +116,9 @@ export function serializeStore(target: MockStore = store): SerializedStore {
     inventoryMovements: [...target.inventoryMovements.values()],
     auditLogs: [...target.auditLogs.values()],
     pipelineCards: [...target.pipelineCards.values()],
+    businessFeatures: [...target.businessFeatures.entries()].flatMap(([businessId, featureMap]) =>
+      [...featureMap.entries()].map(([feature, enabled]) => ({ businessId, feature, enabled })),
+    ),
     invoiceSequences: Object.fromEntries(target.invoiceSequences),
   };
 }
@@ -125,6 +137,7 @@ export function clearStore(target: MockStore): void {
   target.inventoryMovements.clear();
   target.auditLogs.clear();
   target.pipelineCards.clear();
+  target.businessFeatures.clear();
   target.invoiceSequences.clear();
 }
 
@@ -154,6 +167,16 @@ export function hydrateStore(data: SerializedStore, target: MockStore = store): 
   // Same `?? []` requirement for `pipelineCards` — a cookie serialized before
   // the ventas-pipeline change has no `pipelineCards` field at all.
   for (const p of data.pipelineCards ?? []) target.pipelineCards.set(p.id, p);
+  // Same `?? []` requirement for `businessFeatures` — a cookie serialized
+  // before the business-features change has no such field at all.
+  for (const row of data.businessFeatures ?? []) {
+    let featureMap = target.businessFeatures.get(row.businessId);
+    if (!featureMap) {
+      featureMap = new Map();
+      target.businessFeatures.set(row.businessId, featureMap);
+    }
+    featureMap.set(row.feature, row.enabled);
+  }
   for (const [k, v] of Object.entries(data.invoiceSequences)) target.invoiceSequences.set(k, v);
 }
 
@@ -186,6 +209,7 @@ export function createEmptyStore(): MockStore {
     inventoryMovements: new Map(),
     auditLogs: new Map(),
     pipelineCards: new Map(),
+    businessFeatures: new Map(),
     invoiceSequences: new Map(),
     invoiceTypes: new Map(),
     expenseCategories: new Map(),

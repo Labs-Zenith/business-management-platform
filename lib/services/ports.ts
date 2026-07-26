@@ -781,6 +781,28 @@ export interface InventoryMovementRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Business feature entitlements (per-business, DB-backed — replaces the
+// earlier `PIPELINE_ENABLED_BUSINESS_IDS` env var; see
+// `lib/services/features.ts` and `migrations/1700000015000_add_business_features.sql`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The set of module/feature flags that can be entitled to a business via the
+ * `business_features` table. Currently just the Ventas sales-pipeline board;
+ * extend this union (never duplicate it) when a second feature is added.
+ */
+export type Feature = "pipeline";
+
+export interface BusinessFeatureRepository {
+  /** Deny-by-default: no row (or `enabled = false`) resolves to `false`. */
+  isEnabled(businessId: string, feature: Feature): Promise<boolean>;
+  /** Every feature with `enabled = true` for `businessId`. */
+  listEnabledFeatures(businessId: string): Promise<Feature[]>;
+  /** Upserts the `(businessId, feature)` row's `enabled` flag. */
+  setEnabled(businessId: string, feature: Feature, enabled: boolean): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
 // Catalog repository (global, business-agnostic — no businessId scoping)
 // ---------------------------------------------------------------------------
 

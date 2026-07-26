@@ -25,7 +25,7 @@ import { reorderPipelineCards } from "@/lib/services/pipeline-service";
 
 export const POST = withApiHandler(async (request: Request): Promise<NextResponse> => {
   const session = await requireSession();
-  if (!isPipelineEnabled(session.businessId)) {
+  if (!(await isPipelineEnabled(session.businessId))) {
     throw new ApiError("FORBIDDEN", "The sales pipeline is not enabled for this business.");
   }
   checkOrigin(request);

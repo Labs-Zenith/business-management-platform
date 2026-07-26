@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { BusinessMembership, Session } from "@/lib/services/ports";
+import type { BusinessMembership, Feature, Session } from "@/lib/services/ports";
 
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockListMembershipsForUser = vi.fn<(userId: string) => Promise<BusinessMembership[]>>();
+const mockListEnabledFeatures = vi.fn<(businessId: string) => Promise<Feature[]>>();
 
 vi.mock("@/lib/session", () => ({
   requireSessionOrRedirect: () => mockRequireSessionOrRedirect(),
@@ -51,6 +52,16 @@ vi.mock("@/lib/services/repositories", () => ({
   },
 }));
 
+// This layout resolves the session business's enabled features via
+// `listEnabledFeatures` (DB-backed `business_features` table, see
+// `lib/services/features.ts`) — mocked here the same way the other
+// dependencies are, disabled by default (no `pipeline`) so `resolveVisibleNavIds`
+// excludes "Ventas" unless a test explicitly enables it (see
+// `sidebar-content.test.tsx` for that gating's dedicated coverage).
+vi.mock("@/lib/services/features", () => ({
+  listEnabledFeatures: (businessId: string) => mockListEnabledFeatures(businessId),
+}));
+
 import DashboardLayout from "./layout";
 import {
   NAV_ITEMS_BY_ID,
@@ -91,6 +102,8 @@ describe("DashboardLayout (shared navigation shell)", () => {
   beforeEach(() => {
     mockRequireSessionOrRedirect.mockReset();
     mockListMembershipsForUser.mockReset();
+    mockListEnabledFeatures.mockReset();
+    mockListEnabledFeatures.mockResolvedValue([]);
     mockCookieGet.mockReset();
     mockCookieGet.mockReturnValue(undefined);
   });
@@ -111,9 +124,9 @@ describe("DashboardLayout (shared navigation shell)", () => {
     // drift when that list changes (e.g. items added/removed/renamed).
     // Feature-gated items (e.g. "Ventas") are already excluded by
     // `resolveVisibleNavIds` itself — disabled by default in tests (no
-    // `PIPELINE_ENABLED_BUSINESS_IDS`); see `sidebar-content.test.tsx` for
-    // that gating's dedicated coverage.
-    const visibleIds: NavItemId[] = resolveVisibleNavIds(SESSION.role, SESSION.businessId);
+    // enabled features); see `sidebar-content.test.tsx` for that gating's
+    // dedicated coverage.
+    const visibleIds: NavItemId[] = resolveVisibleNavIds(SESSION.role, new Set());
     for (const id of visibleIds) {
       const item: NavItem = NAV_ITEMS_BY_ID[id];
       const links = screen.getAllByRole("link", { name: item.label });
@@ -158,8 +171,8 @@ describe("DashboardLayout (shared navigation shell)", () => {
 
     render(await DashboardLayout({ children: <div>Page content</div> }));
 
-    const workerIds: NavItemId[] = resolveVisibleNavIds(WORKER_SESSION.role, WORKER_SESSION.businessId);
-    const adminIds: NavItemId[] = resolveVisibleNavIds("admin", WORKER_SESSION.businessId);
+    const workerIds: NavItemId[] = resolveVisibleNavIds(WORKER_SESSION.role, new Set());
+    const adminIds: NavItemId[] = resolveVisibleNavIds("admin", new Set());
     const adminOnlyIds = adminIds.filter((id) => !workerIds.includes(id));
 
     for (const id of adminOnlyIds) {

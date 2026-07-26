@@ -282,6 +282,15 @@ async function main(): Promise<void> {
   }
   console.log(`[seed-demo] Created ${pipelineFixtures.length} pipeline cards.`);
 
+  // ---------------------------------------------------------------------
+  // Business feature entitlements — enable the Ventas pipeline board for
+  // this business (DB-backed `business_features` table; see
+  // `lib/services/features.ts`). Without this, the pipeline cards seeded
+  // above would exist but the board would 404/403 (deny-by-default).
+  // ---------------------------------------------------------------------
+  await repositories.businessFeature.setEnabled(businessId, "pipeline", true);
+  console.log("[seed-demo] Enabled the 'pipeline' feature for this business.");
+
   console.log("[seed-demo] Done. Summary:");
   console.log(`  customers:           ${customerIdMap.size}`);
   console.log(`  invoices:            ${invoiceIdMap.size}`);

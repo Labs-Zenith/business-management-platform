@@ -14,7 +14,7 @@ import type { CustomerWithBalance, Paged, PipelineCard, Session } from "@/lib/se
  */
 
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
-const mockIsPipelineEnabled = vi.fn<(businessId: string) => boolean>();
+const mockIsPipelineEnabled = vi.fn<(businessId: string) => Promise<boolean>>();
 const mockListPipelineCards = vi.fn<(session: Session) => Promise<PipelineCard[]>>();
 const mockListCustomers = vi.fn<(session: Session, query: unknown) => Promise<Paged<CustomerWithBalance>>>();
 
@@ -108,7 +108,7 @@ describe("VentasPage", () => {
 
   it("renders the board with cards/customers when the pipeline feature is enabled for the session's business", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
-    mockIsPipelineEnabled.mockReturnValue(true);
+    mockIsPipelineEnabled.mockResolvedValue(true);
     mockListPipelineCards.mockResolvedValue([CARD]);
     mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 1, pageSize: 200, total: 1 });
 
@@ -127,7 +127,7 @@ describe("VentasPage", () => {
 
   it("results in a 404 when the pipeline feature is disabled for the session's business, and never fetches cards/customers", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
-    mockIsPipelineEnabled.mockReturnValue(false);
+    mockIsPipelineEnabled.mockResolvedValue(false);
 
     await expect(VentasPage()).rejects.toMatchObject({ digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
 
@@ -137,7 +137,7 @@ describe("VentasPage", () => {
 
   it("offers the 'Nueva' quick action", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
-    mockIsPipelineEnabled.mockReturnValue(true);
+    mockIsPipelineEnabled.mockResolvedValue(true);
     mockListPipelineCards.mockResolvedValue([]);
     mockListCustomers.mockResolvedValue({ data: [], page: 1, pageSize: 200, total: 0 });
 

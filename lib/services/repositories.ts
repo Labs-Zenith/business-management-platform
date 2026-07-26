@@ -24,6 +24,7 @@ import { supabaseAuthAdapter } from "@/lib/supabase/auth-adapter";
 import { auditLogRepo as mockAuditLogRepo } from "@/lib/mock/audit-log-repo";
 import { catalogRepo as mockCatalogRepo } from "@/lib/mock/catalog-repo";
 import { businessRepo as mockBusinessRepo } from "@/lib/mock/business-repo";
+import { businessFeatureRepo as mockBusinessFeatureRepo } from "@/lib/mock/business-features-repo";
 import { customerRepo as mockCustomerRepo } from "@/lib/mock/customer-repo";
 import { employeeRepo as mockEmployeeRepo } from "@/lib/mock/employee-repo";
 import { expenseRepo as mockExpenseRepo } from "@/lib/mock/expense-repo";
@@ -38,6 +39,7 @@ import { isDbConfigured } from "@/lib/db/client";
 import { auditLogRepo as dbAuditLogRepo } from "@/lib/db/audit-log-repo";
 import { catalogRepo as dbCatalogRepo } from "@/lib/db/catalog-repo";
 import { businessRepo as dbBusinessRepo } from "@/lib/db/business-repo";
+import { businessFeatureRepo as dbBusinessFeatureRepo } from "@/lib/db/business-features-repo";
 import { customerRepo as dbCustomerRepo } from "@/lib/db/customer-repo";
 import { employeeRepo as dbEmployeeRepo } from "@/lib/db/employee-repo";
 import { expenseRepo as dbExpenseRepo } from "@/lib/db/expense-repo";
@@ -51,6 +53,7 @@ import { productRepo as dbProductRepo } from "@/lib/db/product-repo";
 export const repositories = {
   auth: isSupabaseConfigured ? supabaseAuthAdapter : authAdapter,
   business: isDbConfigured ? dbBusinessRepo : mockBusinessRepo,
+  businessFeature: isDbConfigured ? dbBusinessFeatureRepo : mockBusinessFeatureRepo,
   customers: isDbConfigured ? dbCustomerRepo : mockCustomerRepo,
   invoices: isDbConfigured ? dbInvoiceRepo : mockInvoiceRepo,
   payments: isDbConfigured ? dbPaymentRepo : mockPaymentRepo,

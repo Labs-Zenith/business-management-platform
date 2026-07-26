@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { requireSessionOrRedirect, getSavedAccounts } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { repositories } from "@/lib/services/repositories";
+import { listEnabledFeatures } from "@/lib/services/features";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
 import DashboardSidebar from "@/components/layout/dashboard-sidebar";
 import { resolveVisibleNavIds } from "@/components/layout/nav-items";
@@ -79,12 +80,15 @@ export default async function DashboardLayout({
   // possible future improvement, not implemented here.
   const memberships = await repositories.business.listMembershipsForUser(session.userId);
   const savedAccounts = await getSavedAccounts();
-  // Decide the ENTIRE visible nav HERE (server): `resolveVisibleNavIds`
-  // applies both the role and the per-business feature gates and returns the
-  // ordered id list. The client nav renders from that plain string[] and runs
-  // no gating of its own (the feature env var is server-only, so evaluating it
-  // on the client would flicker the item on at SSR then off at hydration).
-  const visibleNavIds = resolveVisibleNavIds(session.role, session.businessId);
+  // Decide the ENTIRE visible nav HERE (server): resolve this business's
+  // enabled features from the `business_features` DB table
+  // (`listEnabledFeatures`), then `resolveVisibleNavIds` applies both the
+  // role and the per-business feature gates and returns the ordered id list.
+  // The client nav renders from that plain string[] and runs no gating of
+  // its own — evaluating the feature gate on the client would flicker the
+  // item on at SSR then off at hydration.
+  const enabledFeatures = new Set(await listEnabledFeatures(session.businessId));
+  const visibleNavIds = resolveVisibleNavIds(session.role, enabledFeatures);
   const cookieStore = await cookies();
   const sidebarDefaultCollapsed =
     cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === "true";
