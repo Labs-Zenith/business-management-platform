@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import DashboardSidebar from "./dashboard-sidebar";
-import { navItemsForRole, SIDEBAR_COLLAPSED_COOKIE } from "./nav-items";
+import { NAV_ITEMS_BY_ID, SIDEBAR_COLLAPSED_COOKIE, type NavItemId } from "./nav-items";
 
 const CURRENT_BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const EMAIL = "demo@negociodemo.test";
@@ -23,13 +23,35 @@ const MULTIPLE_MEMBERSHIPS: BusinessMembership[] = [
   { businessId: "biz-2", businessName: "Negocio Demo 2", role: "admin" },
 ];
 
+const ADMIN_VISIBLE_NAV_IDS: NavItemId[] = [
+  "dashboard",
+  "customers",
+  "invoices",
+  "payments",
+  "egresos",
+  "nomina",
+  "inventario",
+  "settings",
+];
+
+const WORKER_VISIBLE_NAV_IDS: NavItemId[] = [
+  "dashboard",
+  "customers",
+  "invoices",
+  "payments",
+  "egresos",
+  "inventario",
+  "settings",
+];
+
 /**
- * `role` prop (a plain string, per the "Server Component can't pass a
- * `NavItem[]` — it carries `lucide-react` icon component references —
- * across the client boundary" fix): `DashboardSidebar` delegates to
- * `sidebar-content.tsx`, which filters `NAV_ITEMS` internally via
- * `navItemsForRole`, so `app/(dashboard)/layout.tsx` only ever needs to
- * pass `session.role`.
+ * `visibleNavIds` (a plain `NavItemId[]`, per the "Server Component can't
+ * pass a `NavItem[]` — it carries `lucide-react` icon component references —
+ * across the client boundary" fix): the ENTIRE gating decision
+ * (`resolveVisibleNavIds`) now happens server-side in
+ * `app/(dashboard)/layout.tsx`, so this component (and the
+ * `sidebar-content.tsx` it delegates to) just renders whichever ids it's
+ * given, resolving each id's icon/label via `NAV_ITEMS_BY_ID`.
  *
  * Fase 5.1 Lane B: this component now ONLY owns the `<aside>` shell +
  * collapse state/cookie — the switcher, nav list, and bottom user row are
@@ -46,63 +68,46 @@ const MULTIPLE_MEMBERSHIPS: BusinessMembership[] = [
  * happened, short of mocking `document.cookie`'s setter entirely).
  */
 describe("DashboardSidebar", () => {
-  // Nav item labels are derived from the live `navItemsForRole` (single
-  // source of truth in `nav-items.ts`, owned by another concurrent lane)
-  // rather than hardcoded here, so this test doesn't drift when that list
-  // changes (e.g. items added/removed/renamed).
-  it("renders every navItemsForRole('admin') link for an admin role", () => {
+  it("renders every item in visibleNavIds for an admin session", () => {
     render(
       <DashboardSidebar
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
       />
     );
 
-    // Feature-gated items (e.g. "Ventas") are excluded — the rendered
-    // `navItemsFor(role, businessId)` also filters by the per-business
-    // pipeline feature flag, which is disabled by default in tests (no
-    // `PIPELINE_ENABLED_BUSINESS_IDS`); that gating has its own dedicated
-    // tests (`sidebar-content.test.tsx`).
-    for (const item of navItemsForRole("admin").filter((navItem) => !navItem.feature)) {
+    for (const id of ADMIN_VISIBLE_NAV_IDS) {
+      const item = NAV_ITEMS_BY_ID[id];
       expect(screen.getByRole("link", { name: item.label })).toHaveAttribute("href", item.href);
     }
   });
 
-  it("renders the worker-filtered list (excludes any capability-gated item an admin sees but a worker doesn't)", () => {
+  it("renders the worker-filtered list (excludes Nómina, which the server already dropped from visibleNavIds)", () => {
     render(
       <DashboardSidebar
-        role="worker"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={WORKER_VISIBLE_NAV_IDS}
       />
     );
 
-    const workerItems = navItemsForRole("worker").filter((item) => !item.feature);
-    const adminOnlyItems = navItemsForRole("admin").filter(
-      (item) => !item.feature && !workerItems.some((workerItem) => workerItem.href === item.href)
-    );
-
-    for (const item of workerItems) {
+    for (const id of WORKER_VISIBLE_NAV_IDS) {
+      const item = NAV_ITEMS_BY_ID[id];
       expect(screen.getByRole("link", { name: item.label })).toBeInTheDocument();
     }
-    for (const item of adminOnlyItems) {
-      expect(screen.queryByRole("link", { name: item.label })).not.toBeInTheDocument();
-    }
+    expect(screen.queryByRole("link", { name: "Nómina" })).not.toBeInTheDocument();
   });
 
   it("renders the BusinessSwitcher at the top with the current business name visible when not collapsed", () => {
     render(
       <DashboardSidebar
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MULTIPLE_MEMBERSHIPS}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
       />
     );
 
@@ -112,11 +117,10 @@ describe("DashboardSidebar", () => {
   it("renders the user row at the bottom (avatar + email, plus an Opciones de cuenta trigger)", () => {
     render(
       <DashboardSidebar
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
       />
     );
 
@@ -127,11 +131,10 @@ describe("DashboardSidebar", () => {
   it("expands by default (labels visible, toggle offers to collapse) when defaultCollapsed is not passed", () => {
     render(
       <DashboardSidebar
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
       />
     );
 
@@ -143,11 +146,10 @@ describe("DashboardSidebar", () => {
   it("starts collapsed (labels hidden, each link exposes its label via title, business name hidden) when defaultCollapsed is true", () => {
     render(
       <DashboardSidebar
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
         defaultCollapsed
       />
     );
@@ -164,11 +166,10 @@ describe("DashboardSidebar", () => {
     document.cookie = `${SIDEBAR_COLLAPSED_COOKIE}=; max-age=0`;
     render(
       <DashboardSidebar
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
       />
     );
 
@@ -184,11 +185,10 @@ describe("DashboardSidebar", () => {
     const user = userEvent.setup();
     render(
       <DashboardSidebar
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={SINGLE_MEMBERSHIP}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
         defaultCollapsed
       />
     );

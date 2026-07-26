@@ -5,7 +5,7 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { repositories } from "@/lib/services/repositories";
 import DashboardTopbar from "@/components/layout/dashboard-topbar";
 import DashboardSidebar from "@/components/layout/dashboard-sidebar";
-import { resolveEnabledFeatures } from "@/components/layout/nav-items";
+import { resolveVisibleNavIds } from "@/components/layout/nav-items";
 import { SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
 
 /**
@@ -79,11 +79,12 @@ export default async function DashboardLayout({
   // possible future improvement, not implemented here.
   const memberships = await repositories.business.listMembershipsForUser(session.userId);
   const savedAccounts = await getSavedAccounts();
-  // Resolve per-business feature flags HERE (server) — `isPipelineEnabled`
-  // reads a non-NEXT_PUBLIC env var absent from the client bundle, so this
-  // must not run in the client nav components (it would flicker on at SSR
-  // then off at hydration). Pass the plain string[] down as a prop.
-  const enabledFeatures = resolveEnabledFeatures(session.businessId);
+  // Decide the ENTIRE visible nav HERE (server): `resolveVisibleNavIds`
+  // applies both the role and the per-business feature gates and returns the
+  // ordered id list. The client nav renders from that plain string[] and runs
+  // no gating of its own (the feature env var is server-only, so evaluating it
+  // on the client would flicker the item on at SSR then off at hydration).
+  const visibleNavIds = resolveVisibleNavIds(session.role, session.businessId);
   const cookieStore = await cookies();
   const sidebarDefaultCollapsed =
     cookieStore.get(SIDEBAR_COLLAPSED_COOKIE)?.value === "true";
@@ -94,7 +95,7 @@ export default async function DashboardLayout({
         session={session}
         memberships={memberships}
         savedAccounts={savedAccounts}
-        enabledFeatures={enabledFeatures}
+        visibleNavIds={visibleNavIds}
       />
       <div className="flex min-w-0 flex-1 overflow-hidden">
         {/*
@@ -115,12 +116,11 @@ export default async function DashboardLayout({
           (Fase 5 Lane 1 — moved here from the topbar).
         */}
         <DashboardSidebar
-          role={session.role}
           currentBusinessId={session.businessId}
           memberships={memberships}
           savedAccounts={savedAccounts}
           email={session.email}
-          enabledFeatures={enabledFeatures}
+          visibleNavIds={visibleNavIds}
           defaultCollapsed={sidebarDefaultCollapsed}
         />
         <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">{children}</main>

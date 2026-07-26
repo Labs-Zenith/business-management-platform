@@ -9,6 +9,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import MobileNavSheet from "./mobile-nav-sheet";
+import type { NavItemId } from "./nav-items";
 
 const CURRENT_BUSINESS_ID = "biz-1";
 const MEMBERSHIPS: BusinessMembership[] = [
@@ -16,24 +17,47 @@ const MEMBERSHIPS: BusinessMembership[] = [
 ];
 const EMAIL = "demo@negociodemo.test";
 
+const ADMIN_VISIBLE_NAV_IDS: NavItemId[] = [
+  "dashboard",
+  "customers",
+  "invoices",
+  "payments",
+  "egresos",
+  "nomina",
+  "inventario",
+  "settings",
+];
+
+const WORKER_VISIBLE_NAV_IDS: NavItemId[] = [
+  "dashboard",
+  "customers",
+  "invoices",
+  "payments",
+  "egresos",
+  "inventario",
+  "settings",
+];
+
 /**
  * Vercel-style mobile nav drawer that REPLACES `dashboard-bottom-nav.tsx`
  * (Fase 4 Lane C): a hamburger button (mobile-only) opens the SAME
  * `sidebar-content.tsx` composition `dashboard-sidebar.tsx` shows on
- * desktop, as a left `Sheet` (Fase 5.1 Lane B). Mirrors
- * `dashboard-sidebar.test.tsx`'s role-filtering assertions, plus the
- * drawer open/close behavior specific to this component.
+ * desktop, as a left `Sheet` (Fase 5.1 Lane B). The gating decision
+ * (`resolveVisibleNavIds`) is made entirely server-side in
+ * `app/(dashboard)/layout.tsx`; this component just renders whichever
+ * `visibleNavIds` it's given, mirroring `dashboard-sidebar.test.tsx`'s
+ * assertions, plus the drawer open/close behavior specific to this
+ * component.
  */
 describe("MobileNavSheet", () => {
-  it("is closed by default and opens a nav drawer with every NAV_ITEMS link for an admin role when the hamburger button is clicked", async () => {
+  it("is closed by default and opens a nav drawer with every item in visibleNavIds when the hamburger button is clicked", async () => {
     const user = userEvent.setup();
     render(
       <MobileNavSheet
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
       />
     );
 
@@ -60,11 +84,10 @@ describe("MobileNavSheet", () => {
     const user = userEvent.setup();
     render(
       <MobileNavSheet
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
       />
     );
 
@@ -76,15 +99,14 @@ describe("MobileNavSheet", () => {
     expect(within(dialog).getByRole("button", { name: "Opciones de cuenta" })).toBeInTheDocument();
   });
 
-  it("hides the Nómina link for a worker role inside the drawer (matches navItemsForRole filtering), keeping Inventario", async () => {
+  it("hides the Nómina link inside the drawer when visibleNavIds excludes it (server already filtered a worker session), keeping Inventario", async () => {
     const user = userEvent.setup();
     render(
       <MobileNavSheet
-        role="worker"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={WORKER_VISIBLE_NAV_IDS}
       />
     );
 
@@ -100,11 +122,10 @@ describe("MobileNavSheet", () => {
     const user = userEvent.setup();
     render(
       <MobileNavSheet
-        role="admin"
         currentBusinessId={CURRENT_BUSINESS_ID}
         memberships={MEMBERSHIPS}
         email={EMAIL}
-        enabledFeatures={[]}
+        visibleNavIds={ADMIN_VISIBLE_NAV_IDS}
       />
     );
 

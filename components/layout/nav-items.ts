@@ -21,32 +21,24 @@
  * element) so both consumers render the same icon without keeping a second
  * href-to-icon map in sync by hand.
  *
- * `capability` (optional) tags an item as role-gated, per
- * `openspec/changes/nomina-payroll/specs/role-based-navigation/spec.md`'s
- * "Navigation Items Are Filtered by Role" requirement — Nómina is the first
- * (and so far only) gated item. `navItemsForRole` is the single filtering
- * function both `dashboard-sidebar.tsx` and `mobile-nav-sheet.tsx`
- * consume, so a future gated item is one array entry, not a bespoke filter
- * in each consumer. This is a UX complement only — the authoritative check
- * is `lib/session.ts`'s `requireCapability`/`requireCapabilityOrNotFound` at
- * the page/route layer; hiding a nav item never substitutes for that.
+ * WHICH items a session sees is decided **entirely in the backend** by the
+ * SERVER-only `resolveVisibleNavIds(role, businessId)` (called once in
+ * `app/(dashboard)/layout.tsx`): it applies BOTH the role `capability` gate
+ * and the per-business `feature` gate, and returns the ordered `NavItemId[]`.
+ * That id list (plain, serializable strings) is threaded down to the client
+ * nav surfaces, which render from `NAV_ITEMS_BY_ID` — the client runs NO
+ * gating logic of its own (this is why there's no SSR→hydration flicker: the
+ * `feature` env var is server-only and never read on the client).
  *
- * `Inventario` (per `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s
- * "No Role Gating on Inventory" requirement) is a plain entry with NO
- * `capability` tag — visible to every role via `navItemsForRole`'s
- * `!item.capability` short-circuit, unlike Nómina.
- *
- * `feature` (optional, distinct from `capability`) tags an item as gated by
- * a per-BUSINESS feature flag (`lib/services/features.ts`) rather than the
- * viewer's ROLE — "Ventas" (the sales pipeline kanban board) is the first
- * (and so far only) feature-tagged item, enabled only for businesses in the
- * `PIPELINE_ENABLED_BUSINESS_IDS` allowlist. `navItemsForRole` alone does
- * NOT filter by `feature` (it has no `businessId` to check against) — real
- * nav consumers (`sidebar-content.tsx`) call `navItemsFor(role, businessId)`
- * instead, which layers the feature filter on top of the role filter. Same
- * "UX complement only" caveat as `capability`: the authoritative check is
- * the page's own `isPipelineEnabled` gate (`notFound()`) and the API
- * route's own check — hiding the nav item never substitutes for either.
+ * `capability` (optional) tags an item as role-gated (Nómina, per
+ * `openspec/changes/nomina-payroll/specs/role-based-navigation/spec.md`).
+ * `Inventario` has NO `capability` — visible to every role. `feature`
+ * (optional) tags an item as gated by a per-BUSINESS flag
+ * (`lib/services/features.ts`) — "Ventas" (the sales pipeline board), enabled
+ * only for businesses in the `PIPELINE_ENABLED_BUSINESS_IDS` allowlist. Both
+ * are a UX complement only: the authoritative checks are `lib/session.ts`'s
+ * `requireCapability`/`requireCapabilityOrNotFound` and each gated page's own
+ * `notFound()`/API `403` — hiding a nav item never substitutes for those.
  *
  * `isActivePath` and `SIDEBAR_COLLAPSED_COOKIE` (review-fix pass, Fase 4 Lane
  * C) also live here rather than being copy-pasted per nav surface:
@@ -56,7 +48,7 @@
  * (`dashboard-sidebar.tsx`'s `COLLAPSED_COOKIE_NAME` and
  * `app/(dashboard)/layout.tsx`'s `SIDEBAR_COLLAPSED_COOKIE_NAME`) — a rename
  * of either in isolation would silently break cookie persistence. Both are
- * now single-sourced here alongside `NAV_ITEMS`/`navItemsForRole`.
+ * now single-sourced here alongside `NAV_ITEMS`/`resolveVisibleNavIds`.
  */
 
 import { Banknote, CreditCard, FileText, Kanban, LayoutDashboard, Package, Receipt, Settings, Users, type LucideIcon } from "lucide-react";
@@ -67,7 +59,20 @@ import type { Role } from "@/lib/services/ports";
 /** The only per-business feature flags a nav item can be tagged with today — see this file's `feature` doc comment above. */
 export type NavFeature = "pipeline";
 
+/** Stable id per nav item — the serializable token the server sends to the client (see `resolveVisibleNavIds`/`NAV_ITEMS_BY_ID`). */
+export type NavItemId =
+  | "dashboard"
+  | "customers"
+  | "invoices"
+  | "ventas"
+  | "payments"
+  | "egresos"
+  | "nomina"
+  | "inventario"
+  | "settings";
+
 export type NavItem = {
+  id: NavItemId;
   href: string;
   label: string;
   icon: LucideIcon;
@@ -76,23 +81,29 @@ export type NavItem = {
 };
 
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/customers", label: "Clientes", icon: Users },
-  { href: "/invoices", label: "Facturas", icon: FileText },
-  { href: "/ventas", label: "Ventas", icon: Kanban, feature: "pipeline" },
-  { href: "/payments", label: "Ingresos", icon: CreditCard },
-  { href: "/egresos", label: "Egresos", icon: Receipt },
-  { href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
-  { href: "/inventario", label: "Inventario", icon: Package },
-  { href: "/settings", label: "Configuración", icon: Settings },
+  { id: "dashboard", href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "customers", href: "/customers", label: "Clientes", icon: Users },
+  { id: "invoices", href: "/invoices", label: "Facturas", icon: FileText },
+  { id: "ventas", href: "/ventas", label: "Ventas", icon: Kanban, feature: "pipeline" },
+  { id: "payments", href: "/payments", label: "Ingresos", icon: CreditCard },
+  { id: "egresos", href: "/egresos", label: "Egresos", icon: Receipt },
+  { id: "nomina", href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
+  { id: "inventario", href: "/inventario", label: "Inventario", icon: Package },
+  { id: "settings", href: "/settings", label: "Configuración", icon: Settings },
 ];
 
-/** Filters `NAV_ITEMS` down to those `role` may see (deny-by-default, via `can()`). Does NOT consider `feature` — see `navItemsFor` below. */
-export function navItemsForRole(role: Role): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.capability || can(role, item.capability));
-}
+/**
+ * Client-safe lookup: `id → NavItem` (icon included). The SERVER decides which
+ * ids are visible (`resolveVisibleNavIds`) and sends only the ids (plain,
+ * serializable strings); the CLIENT resolves each id's `icon`/`label`/`href`
+ * here. This is what keeps the gating decision entirely in the backend while
+ * respecting that `icon` (a component) can't cross the RSC → Client boundary.
+ */
+export const NAV_ITEMS_BY_ID: Record<NavItemId, NavItem> = Object.fromEntries(
+  NAV_ITEMS.map((item) => [item.id, item]),
+) as Record<NavItemId, NavItem>;
 
-/** Resolves whether `feature` is enabled for `businessId` — the single dispatch point for every `NavFeature`. */
+/** Single dispatch point for whether a per-business `NavFeature` is enabled. */
 function isNavFeatureEnabled(feature: NavFeature, businessId: string): boolean {
   switch (feature) {
     case "pipeline":
@@ -101,31 +112,23 @@ function isNavFeatureEnabled(feature: NavFeature, businessId: string): boolean {
 }
 
 /**
- * SERVER-ONLY: resolves which per-business `NavFeature`s are enabled for a
- * business. MUST be called from a Server Component (e.g. `app/(dashboard)/
- * layout.tsx`) — `isPipelineEnabled` reads a NON-`NEXT_PUBLIC_` env var
- * (`PIPELINE_ENABLED_BUSINESS_IDS`) that is undefined in the browser bundle,
- * so evaluating features on the client would flicker on (SSR) then off
- * (hydration). The resolved array is a plain, serializable prop that crosses
- * the RSC → Client boundary safely (see `navItemsFor`).
+ * SERVER-ONLY, single source of truth for WHICH nav items a session sees:
+ * applies the role `capability` gate (`can()`) AND the per-business `feature`
+ * gate (`isNavFeatureEnabled` → `isPipelineEnabled`, which reads a
+ * NON-`NEXT_PUBLIC_` env var absent from the browser bundle — so this MUST run
+ * server-side, e.g. in `app/(dashboard)/layout.tsx`). Returns the ORDERED
+ * `NavItemId[]`; the client renders from `NAV_ITEMS_BY_ID`. Sending the
+ * computed id list (plain strings) — never the raw `NavItem`s (whose `icon` is
+ * a non-serializable component) — is what puts the whole gating decision in
+ * the backend and eliminates any client-side flicker. Still a UX complement
+ * only: the page's own `notFound()` and the API's `403` remain the authority.
  */
-export function resolveEnabledFeatures(businessId: string): NavFeature[] {
-  return NAV_FEATURES.filter((feature) => isNavFeatureEnabled(feature, businessId));
-}
-
-/** All feature codes a nav item can be tagged with — the source of truth `resolveEnabledFeatures` iterates. */
-const NAV_FEATURES: readonly NavFeature[] = ["pipeline"];
-
-/**
- * The real filtering function nav consumers (`sidebar-content.tsx`) call:
- * layers the per-business `feature` filter on top of `navItemsForRole`'s
- * role/capability filter. `enabledFeatures` is resolved on the SERVER (via
- * `resolveEnabledFeatures`) and threaded down as a prop — this function is
- * PURE and client-safe (it reads no env). A feature-gated item (e.g.
- * "Ventas") shows only when its role allows it AND its feature is enabled.
- */
-export function navItemsFor(role: Role, enabledFeatures: readonly NavFeature[]): NavItem[] {
-  return navItemsForRole(role).filter((item) => !item.feature || enabledFeatures.includes(item.feature));
+export function resolveVisibleNavIds(role: Role, businessId: string): NavItemId[] {
+  return NAV_ITEMS.filter(
+    (item) =>
+      (!item.capability || can(role, item.capability)) &&
+      (!item.feature || isNavFeatureEnabled(item.feature, businessId)),
+  ).map((item) => item.id);
 }
 
 /**

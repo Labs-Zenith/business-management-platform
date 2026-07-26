@@ -44,8 +44,8 @@ import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SIDEBAR_COLLAPSED_COOKIE } from "./nav-items";
 import SidebarContent from "./sidebar-content";
-import type { NavFeature } from "./nav-items";
-import type { BusinessMembership, Role, SavedAccount } from "@/lib/services/ports";
+import type { NavItemId } from "./nav-items";
+import type { BusinessMembership, SavedAccount } from "@/lib/services/ports";
 
 const COLLAPSED_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365; // 1 year
 
@@ -55,20 +55,18 @@ function persistCollapsedCookie(collapsed: boolean): void {
 }
 
 export default function DashboardSidebar({
-  role,
   currentBusinessId,
   memberships,
   savedAccounts,
   email,
-  enabledFeatures,
+  visibleNavIds,
   defaultCollapsed = false,
 }: {
-  role: Role;
   currentBusinessId: string;
   memberships: BusinessMembership[];
   savedAccounts?: SavedAccount[];
   email: string;
-  enabledFeatures: readonly NavFeature[];
+  visibleNavIds: NavItemId[];
   defaultCollapsed?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -90,12 +88,11 @@ export default function DashboardSidebar({
     >
       <TooltipProvider>
         <SidebarContent
-          role={role}
           currentBusinessId={currentBusinessId}
           memberships={memberships}
           savedAccounts={savedAccounts}
           email={email}
-          enabledFeatures={enabledFeatures}
+          visibleNavIds={visibleNavIds}
           collapsed={collapsed}
           showCollapseToggle
           onToggleCollapse={toggleCollapsed}

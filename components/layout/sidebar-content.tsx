@@ -40,20 +40,24 @@ import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { isActivePath, navItemsFor, type NavFeature } from "./nav-items";
+import { isActivePath, NAV_ITEMS_BY_ID, type NavItemId } from "./nav-items";
 import { NavLink } from "./nav-link";
 import BusinessSwitcher from "./business-switcher";
 import SidebarUserMenu from "./sidebar-user-menu";
-import type { BusinessMembership, Role, SavedAccount } from "@/lib/services/ports";
+import type { BusinessMembership, SavedAccount } from "@/lib/services/ports";
 
 type SidebarContentProps = {
-  role: Role;
   currentBusinessId: string;
   memberships: BusinessMembership[];
   savedAccounts?: SavedAccount[];
   email: string;
-  /** Per-business feature flags, resolved on the SERVER (`app/(dashboard)/layout.tsx`) — must NOT be recomputed here (the env var is server-only). */
-  enabledFeatures: readonly NavFeature[];
+  /**
+   * The ordered nav items to show, decided ENTIRELY on the SERVER
+   * (`resolveVisibleNavIds` in `app/(dashboard)/layout.tsx`, applying role +
+   * per-business feature gates). This component runs NO gating of its own — it
+   * just maps each id to its icon/label via `NAV_ITEMS_BY_ID`.
+   */
+  visibleNavIds: NavItemId[];
   collapsed?: boolean;
   onNavigate?: () => void;
   showCollapseToggle?: boolean;
@@ -61,24 +65,21 @@ type SidebarContentProps = {
 };
 
 export default function SidebarContent({
-  role,
   currentBusinessId,
   memberships,
   savedAccounts = [],
   email,
-  enabledFeatures,
+  visibleNavIds,
   collapsed = false,
   onNavigate,
   showCollapseToggle = false,
   onToggleCollapse,
 }: SidebarContentProps) {
   const pathname = usePathname();
-  // `navItemsFor` layers the per-business `feature` filter on top of the role
-  // filter. `enabledFeatures` is resolved SERVER-side and passed as a prop —
-  // the feature check must NOT run on the client (its env var is absent from
-  // the browser bundle, which would flicker the item on at SSR then off at
-  // hydration).
-  const items = navItemsFor(role, enabledFeatures);
+  // The backend already decided WHICH items are visible; render from the id
+  // list, resolving each id's icon/label from the client registry. No gating
+  // logic here → identical output on SSR and hydration (no flicker).
+  const items = visibleNavIds.map((id) => NAV_ITEMS_BY_ID[id]);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">
