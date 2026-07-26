@@ -1,49 +1,74 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { NAV_ITEMS, navItemsFor, navItemsForRole, resolveEnabledFeatures } from "./nav-items";
+import { describe, expect, it } from "vitest";
+import type { Feature } from "@/lib/services/ports";
+import { NAV_ITEMS, NAV_ITEMS_BY_ID, resolveVisibleNavIds } from "./nav-items";
 
-const BIZ_ID = "10000000-0000-4000-8000-000000000001";
-const OTHER_BIZ_ID = "10000000-0000-4000-8000-000000000002";
+const NO_FEATURES: ReadonlySet<Feature> = new Set();
+const PIPELINE_ENABLED: ReadonlySet<Feature> = new Set(["pipeline"]);
 
 /**
- * `navItemsForRole`, per
- * `openspec/changes/nomina-payroll/specs/role-based-navigation/spec.md`'s
- * "Navigation Items Are Filtered by Role" requirement — Nomina is the app's
- * first capability-tagged nav item. Nav filtering is a UX complement only
- * (the spec's own "Nav Filtering Is a UX Complement, Not a Security
- * Boundary" requirement); the authoritative check lives in
- * `lib/session.ts`'s `requireCapability`/`requireCapabilityOrNotFound`.
+ * `resolveVisibleNavIds(role, enabledFeatures)`, the SERVER-only single
+ * source of truth for which nav ids a session sees — applies BOTH the role
+ * `capability` gate (Nómina, per
+ * `openspec/changes/nomina-payroll/specs/role-based-navigation/spec.md`) and
+ * the per-business `feature` gate (Ventas), now driven by an already-resolved
+ * `Set<Feature>` (the caller, `app/(dashboard)/layout.tsx`, resolves it from
+ * the DB-backed `business_features` table via
+ * `lib/services/features.ts#listEnabledFeatures`) rather than an env var —
+ * this file stays free of any DB/repositories import (see this file's module
+ * doc comment). Nav filtering is a UX complement only (the spec's own "Nav
+ * Filtering Is a UX Complement, Not a Security Boundary" requirement); the
+ * authoritative check lives in `lib/session.ts`'s
+ * `requireCapability`/`requireCapabilityOrNotFound`.
  */
-describe("navItemsForRole", () => {
-  it("excludes the Nómina nav item for a worker session (lacks viewPayroll)", () => {
-    const items = navItemsForRole("worker");
+describe("resolveVisibleNavIds", () => {
+  it("excludes Ventas (empty enabledFeatures) and Nómina (worker lacks viewPayroll), including every ungated id in order", () => {
+    const ids = resolveVisibleNavIds("worker", NO_FEATURES);
 
-    expect(items.some((item) => item.href === "/nomina")).toBe(false);
+    expect(ids).not.toContain("ventas");
+    expect(ids).not.toContain("nomina");
+    expect(ids).toEqual(["dashboard", "customers", "invoices", "payments", "egresos", "inventario", "settings"]);
   });
 
-  it("includes the Nómina nav item for an admin session (holds viewPayroll)", () => {
-    const items = navItemsForRole("admin");
+  it("excludes Ventas but includes Nómina for an admin session (holds viewPayroll) when the feature is disabled", () => {
+    const ids = resolveVisibleNavIds("admin", NO_FEATURES);
 
-    expect(items.some((item) => item.href === "/nomina")).toBe(true);
+    expect(ids).not.toContain("ventas");
+    expect(ids).toContain("nomina");
+    expect(ids).toEqual([
+      "dashboard",
+      "customers",
+      "invoices",
+      "payments",
+      "egresos",
+      "nomina",
+      "inventario",
+      "settings",
+    ]);
   });
 
-  it("keeps every capability-less nav item for both roles (Dashboard/Clientes/Facturas/Ingresos/Egresos/Inventario never filtered)", () => {
-    const capabilityLessHrefs = NAV_ITEMS.filter((item) => !item.capability).map((item) => item.href);
-    expect(capabilityLessHrefs.length).toBeGreaterThan(0);
+  it("keeps every capability-less, feature-less nav item for both roles (Dashboard/Clientes/Facturas/Ingresos/Egresos/Inventario/Configuración never filtered)", () => {
+    const ungatedIds = NAV_ITEMS.filter((item) => !item.capability && !item.feature).map((item) => item.id);
+    expect(ungatedIds.length).toBeGreaterThan(0);
 
-    const workerHrefs = navItemsForRole("worker").map((item) => item.href);
-    const adminHrefs = navItemsForRole("admin").map((item) => item.href);
+    const workerIds = resolveVisibleNavIds("worker", NO_FEATURES);
+    const adminIds = resolveVisibleNavIds("admin", NO_FEATURES);
 
-    for (const href of capabilityLessHrefs) {
-      expect(workerHrefs).toContain(href);
-      expect(adminHrefs).toContain(href);
+    for (const id of ungatedIds) {
+      expect(workerIds).toContain(id);
+      expect(adminIds).toContain(id);
     }
   });
 
-  it("worker's filtered list has exactly one fewer item than admin's (only Nómina is gated today)", () => {
-    const workerItems = navItemsForRole("worker");
-    const adminItems = navItemsForRole("admin");
+  it("includes Ventas when the pipeline feature is in enabledFeatures, but not for an empty set (a different/disabled business)", () => {
+    expect(resolveVisibleNavIds("admin", PIPELINE_ENABLED)).toContain("ventas");
+    expect(resolveVisibleNavIds("admin", NO_FEATURES)).not.toContain("ventas");
+  });
 
-    expect(adminItems.length).toBe(workerItems.length + 1);
+  it("includes Ventas for a worker session once the pipeline feature is enabled, but never Nómina (role gate still applies on top of the feature gate)", () => {
+    const ids = resolveVisibleNavIds("worker", PIPELINE_ENABLED);
+
+    expect(ids).toContain("ventas");
+    expect(ids).not.toContain("nomina");
   });
 
   /**
@@ -54,57 +79,12 @@ describe("navItemsForRole", () => {
    * the end of the list. Fase 5.2 F3 renamed its label to "Configuración".
    */
   it("includes a Configuración nav item (/settings) at the end of NAV_ITEMS, visible to every role", () => {
-    expect(NAV_ITEMS.at(-1)).toMatchObject({ href: "/settings", label: "Configuración" });
-    expect(navItemsForRole("worker").some((item) => item.href === "/settings")).toBe(true);
-    expect(navItemsForRole("admin").some((item) => item.href === "/settings")).toBe(true);
+    expect(NAV_ITEMS.at(-1)).toMatchObject({ id: "settings", href: "/settings", label: "Configuración" });
+    expect(resolveVisibleNavIds("worker", NO_FEATURES)).toContain("settings");
+    expect(resolveVisibleNavIds("admin", NO_FEATURES)).toContain("settings");
   });
 
-  it("includes the Ventas nav item unconditionally (no capability, only a feature flag) for both roles", () => {
-    expect(navItemsForRole("worker").some((item) => item.href === "/ventas")).toBe(true);
-    expect(navItemsForRole("admin").some((item) => item.href === "/ventas")).toBe(true);
-  });
-});
-
-describe("navItemsFor", () => {
-  it("hides the Ventas nav item when the feature list is empty (deny-by-default)", () => {
-    expect(navItemsFor("admin", []).some((item) => item.href === "/ventas")).toBe(false);
-    expect(navItemsFor("worker", []).some((item) => item.href === "/ventas")).toBe(false);
-  });
-
-  it("shows the Ventas nav item when the pipeline feature is enabled", () => {
-    expect(navItemsFor("admin", ["pipeline"]).some((item) => item.href === "/ventas")).toBe(true);
-  });
-
-  it("still applies the role/capability filter on top of the feature filter (Nómina stays gated)", () => {
-    const workerItems = navItemsFor("worker", ["pipeline"]);
-    expect(workerItems.some((item) => item.href === "/ventas")).toBe(true);
-    expect(workerItems.some((item) => item.href === "/nomina")).toBe(false);
-  });
-});
-
-/**
- * `resolveEnabledFeatures` is the SERVER-only piece that reads
- * `PIPELINE_ENABLED_BUSINESS_IDS` — `navItemsFor` above is pure and no
- * longer touches `process.env` at all (that responsibility moved here).
- */
-describe("resolveEnabledFeatures", () => {
-  afterEach(() => {
-    delete process.env.PIPELINE_ENABLED_BUSINESS_IDS;
-  });
-
-  it("returns an empty array by default (deny-by-default, empty allowlist)", () => {
-    expect(resolveEnabledFeatures(BIZ_ID)).toEqual([]);
-  });
-
-  it("returns [\"pipeline\"] for a business in PIPELINE_ENABLED_BUSINESS_IDS", () => {
-    process.env.PIPELINE_ENABLED_BUSINESS_IDS = BIZ_ID;
-
-    expect(resolveEnabledFeatures(BIZ_ID)).toEqual(["pipeline"]);
-  });
-
-  it("returns an empty array for a business NOT in PIPELINE_ENABLED_BUSINESS_IDS", () => {
-    process.env.PIPELINE_ENABLED_BUSINESS_IDS = BIZ_ID;
-
-    expect(resolveEnabledFeatures(OTHER_BIZ_ID)).toEqual([]);
+  it("NAV_ITEMS_BY_ID resolves the Ventas id to its /ventas href", () => {
+    expect(NAV_ITEMS_BY_ID["ventas"].href).toBe("/ventas");
   });
 });

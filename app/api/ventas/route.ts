@@ -12,16 +12,17 @@ import { createPipelineCard, listPipelineCards } from "@/lib/services/pipeline-s
  * `app/api/products/route.ts`'s exact conventions (plain `requireSession()`,
  * no role/capability gate — any authenticated member of an ENABLED business
  * may use the board), EXCEPT this feature is additionally gated per-business
- * via `isPipelineEnabled` (see `lib/services/features.ts`): a session whose
- * business isn't in the `PIPELINE_ENABLED_BUSINESS_IDS` allowlist gets 403
- * FORBIDDEN, checked immediately after `requireSession()` and before any
- * repository access. `list` has no pagination (see `PipelineRepository`'s
- * doc comment in `lib/services/ports.ts`).
+ * via `isPipelineEnabled` (see `lib/services/features.ts`, DB-backed by the
+ * `business_features` table): a session whose business has no enabled
+ * `pipeline` row gets 403 FORBIDDEN, checked immediately after
+ * `requireSession()` and before any repository access. `list` has no
+ * pagination (see `PipelineRepository`'s doc comment in
+ * `lib/services/ports.ts`).
  */
 
 export const GET = withApiHandler(async (_request: Request): Promise<NextResponse> => {
   const session = await requireSession();
-  if (!isPipelineEnabled(session.businessId)) {
+  if (!(await isPipelineEnabled(session.businessId))) {
     throw new ApiError("FORBIDDEN", "The sales pipeline is not enabled for this business.");
   }
 
@@ -34,7 +35,7 @@ export const POST = withApiHandler(async (request: Request): Promise<NextRespons
   // Defense in depth, matching `docs/security-plan.md`: session THEN feature
   // gate THEN origin THEN payload shape, before any repository call.
   const session = await requireSession();
-  if (!isPipelineEnabled(session.businessId)) {
+  if (!(await isPipelineEnabled(session.businessId))) {
     throw new ApiError("FORBIDDEN", "The sales pipeline is not enabled for this business.");
   }
   checkOrigin(request);

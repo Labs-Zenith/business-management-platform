@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { BusinessMembership, Session } from "@/lib/services/ports";
+import type { BusinessMembership, Feature, Session } from "@/lib/services/ports";
 
 const mockRequireSessionOrRedirect = vi.fn<() => Promise<Session>>();
 const mockListMembershipsForUser = vi.fn<(userId: string) => Promise<BusinessMembership[]>>();
+const mockListEnabledFeatures = vi.fn<(businessId: string) => Promise<Feature[]>>();
 
 vi.mock("@/lib/session", () => ({
   requireSessionOrRedirect: () => mockRequireSessionOrRedirect(),
@@ -51,8 +52,24 @@ vi.mock("@/lib/services/repositories", () => ({
   },
 }));
 
+// This layout resolves the session business's enabled features via
+// `listEnabledFeatures` (DB-backed `business_features` table, see
+// `lib/services/features.ts`) — mocked here the same way the other
+// dependencies are, disabled by default (no `pipeline`) so `resolveVisibleNavIds`
+// excludes "Ventas" unless a test explicitly enables it (see
+// `sidebar-content.test.tsx` for that gating's dedicated coverage).
+vi.mock("@/lib/services/features", () => ({
+  listEnabledFeatures: (businessId: string) => mockListEnabledFeatures(businessId),
+}));
+
 import DashboardLayout from "./layout";
-import { navItemsForRole, SIDEBAR_COLLAPSED_COOKIE } from "@/components/layout/nav-items";
+import {
+  NAV_ITEMS_BY_ID,
+  resolveVisibleNavIds,
+  SIDEBAR_COLLAPSED_COOKIE,
+  type NavItem,
+  type NavItemId,
+} from "@/components/layout/nav-items";
 
 const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
@@ -85,6 +102,8 @@ describe("DashboardLayout (shared navigation shell)", () => {
   beforeEach(() => {
     mockRequireSessionOrRedirect.mockReset();
     mockListMembershipsForUser.mockReset();
+    mockListEnabledFeatures.mockReset();
+    mockListEnabledFeatures.mockResolvedValue([]);
     mockCookieGet.mockReset();
     mockCookieGet.mockReturnValue(undefined);
   });
@@ -99,16 +118,17 @@ describe("DashboardLayout (shared navigation shell)", () => {
     expect(mockListMembershipsForUser).toHaveBeenCalledWith(SESSION.userId);
     expect(screen.getByText("Page content")).toBeInTheDocument();
 
-    // Nav item labels/hrefs are derived from the live `navItemsForRole`
+    // Nav item labels/hrefs are derived from the live `resolveVisibleNavIds`
     // (single source of truth in `nav-items.ts`, owned by another
     // concurrent lane) rather than hardcoded here, so this test doesn't
     // drift when that list changes (e.g. items added/removed/renamed).
-    // Feature-gated items (e.g. "Ventas") are excluded — the rendered
-    // `navItemsFor(role, businessId)` also filters by the per-business
-    // pipeline feature flag, disabled by default in tests (no
-    // `PIPELINE_ENABLED_BUSINESS_IDS`); see `sidebar-content.test.tsx` for
-    // that gating's dedicated coverage.
-    for (const item of navItemsForRole(SESSION.role).filter((navItem) => !navItem.feature)) {
+    // Feature-gated items (e.g. "Ventas") are already excluded by
+    // `resolveVisibleNavIds` itself — disabled by default in tests (no
+    // enabled features); see `sidebar-content.test.tsx` for that gating's
+    // dedicated coverage.
+    const visibleIds: NavItemId[] = resolveVisibleNavIds(SESSION.role, new Set());
+    for (const id of visibleIds) {
+      const item: NavItem = NAV_ITEMS_BY_ID[id];
       const links = screen.getAllByRole("link", { name: item.label });
       expect(links.length).toBeGreaterThan(0);
       for (const link of links) {
@@ -151,16 +171,17 @@ describe("DashboardLayout (shared navigation shell)", () => {
 
     render(await DashboardLayout({ children: <div>Page content</div> }));
 
-    const workerItems = navItemsForRole(WORKER_SESSION.role).filter((item) => !item.feature);
-    const adminOnlyItems = navItemsForRole("admin").filter(
-      (item) => !item.feature && !workerItems.some((workerItem) => workerItem.href === item.href)
-    );
+    const workerIds: NavItemId[] = resolveVisibleNavIds(WORKER_SESSION.role, new Set());
+    const adminIds: NavItemId[] = resolveVisibleNavIds("admin", new Set());
+    const adminOnlyIds = adminIds.filter((id) => !workerIds.includes(id));
 
-    for (const item of adminOnlyItems) {
+    for (const id of adminOnlyIds) {
+      const item: NavItem = NAV_ITEMS_BY_ID[id];
       expect(screen.queryByRole("link", { name: item.label })).not.toBeInTheDocument();
     }
     // Every other nav item is still present for a worker.
-    for (const item of workerItems) {
+    for (const id of workerIds) {
+      const item: NavItem = NAV_ITEMS_BY_ID[id];
       expect(screen.getAllByRole("link", { name: item.label }).length).toBeGreaterThan(0);
     }
   });

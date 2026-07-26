@@ -33,23 +33,21 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import SidebarContent from "./sidebar-content";
-import type { NavFeature } from "./nav-items";
-import type { BusinessMembership, Role, SavedAccount } from "@/lib/services/ports";
+import type { NavItemId } from "./nav-items";
+import type { BusinessMembership, SavedAccount } from "@/lib/services/ports";
 
 export default function MobileNavSheet({
-  role,
   currentBusinessId,
   memberships,
   savedAccounts,
   email,
-  enabledFeatures,
+  visibleNavIds,
 }: {
-  role: Role;
   currentBusinessId: string;
   memberships: BusinessMembership[];
   savedAccounts?: SavedAccount[];
   email: string;
-  enabledFeatures: readonly NavFeature[];
+  visibleNavIds: NavItemId[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -72,12 +70,11 @@ export default function MobileNavSheet({
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col px-2 pt-2 pb-4">
           <SidebarContent
-            role={role}
             currentBusinessId={currentBusinessId}
             memberships={memberships}
             savedAccounts={savedAccounts}
             email={email}
-            enabledFeatures={enabledFeatures}
+            visibleNavIds={visibleNavIds}
             collapsed={false}
             onNavigate={() => setOpen(false)}
           />

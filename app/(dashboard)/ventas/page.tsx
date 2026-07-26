@@ -37,7 +37,7 @@ export default async function VentasPage() {
   await loadStoreFromCookie();
   const session = await requireSessionOrRedirect();
 
-  if (!isPipelineEnabled(session.businessId)) {
+  if (!(await isPipelineEnabled(session.businessId))) {
     notFound();
   }
 

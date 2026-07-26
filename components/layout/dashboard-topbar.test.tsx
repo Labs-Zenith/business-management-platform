@@ -8,6 +8,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import DashboardTopbar from "./dashboard-topbar";
+import type { NavItemId } from "./nav-items";
 
 const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
@@ -25,27 +26,57 @@ const MEMBERSHIPS: BusinessMembership[] = [
   { businessId: SESSION.businessId, businessName: "Negocio Demo", role: "admin" },
 ];
 
+const ADMIN_VISIBLE_NAV_IDS: NavItemId[] = [
+  "dashboard",
+  "customers",
+  "invoices",
+  "payments",
+  "egresos",
+  "nomina",
+  "inventario",
+  "settings",
+];
+
+const WORKER_VISIBLE_NAV_IDS: NavItemId[] = [
+  "dashboard",
+  "customers",
+  "invoices",
+  "payments",
+  "egresos",
+  "inventario",
+  "settings",
+];
+
 /**
  * `DashboardTopbar` renders `MobileNavSheet` (Fase 4 Lane C's hamburger
  * drawer, replacing `dashboard-bottom-nav.tsx`) — this needs
- * `session.role`/`session.businessId`/`session.email`/`memberships`
+ * `session.businessId`/`session.email`/`memberships`/`visibleNavIds`
  * threaded to it, exercised here the same way `dashboard-sidebar.test.tsx`
- * exercises role-based filtering. Fase 5.1 Lane B: the topbar no longer
- * renders its own user menu — `session.email`'s only exposure from this
- * component is via `MobileNavSheet`'s drawer (`SidebarUserMenu`, once
- * opened).
+ * exercises nav-id filtering (now decided entirely server-side by
+ * `resolveVisibleNavIds`, so this component takes the already-filtered id
+ * list rather than a `role`). Fase 5.1 Lane B: the topbar no longer renders
+ * its own user menu — `session.email`'s only exposure from this component
+ * is via `MobileNavSheet`'s drawer (`SidebarUserMenu`, once opened).
  */
 describe("DashboardTopbar", () => {
   it("renders the mobile-nav hamburger button", () => {
-    render(<DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} enabledFeatures={[]} />);
+    render(
+      <DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} visibleNavIds={ADMIN_VISIBLE_NAV_IDS} />
+    );
 
     expect(screen.getByRole("button", { name: /abrir menú/i })).toBeInTheDocument();
   });
 
-  it("threads session.role into the hamburger drawer so a worker session's drawer excludes Nómina", async () => {
+  it("threads a worker session's visibleNavIds into the hamburger drawer so it excludes Nómina", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
-    render(<DashboardTopbar session={WORKER_SESSION} memberships={MEMBERSHIPS} enabledFeatures={[]} />);
+    render(
+      <DashboardTopbar
+        session={WORKER_SESSION}
+        memberships={MEMBERSHIPS}
+        visibleNavIds={WORKER_VISIBLE_NAV_IDS}
+      />
+    );
 
     await user.click(screen.getByRole("button", { name: /abrir menú/i }));
 
@@ -58,7 +89,9 @@ describe("DashboardTopbar", () => {
   it("threads memberships + session.email into the drawer, showing the business switcher and the user row with Cerrar sesión once opened", async () => {
     const { default: userEvent } = await import("@testing-library/user-event");
     const user = userEvent.setup();
-    render(<DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} enabledFeatures={[]} />);
+    render(
+      <DashboardTopbar session={SESSION} memberships={MEMBERSHIPS} visibleNavIds={ADMIN_VISIBLE_NAV_IDS} />
+    );
 
     await user.click(screen.getByRole("button", { name: /abrir menú/i }));
     await screen.findByRole("dialog");

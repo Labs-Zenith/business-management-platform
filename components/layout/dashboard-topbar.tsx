@@ -27,29 +27,28 @@
  */
 
 import type { BusinessMembership, SavedAccount, Session } from "@/lib/services/ports";
-import type { NavFeature } from "./nav-items";
+import type { NavItemId } from "./nav-items";
 import MobileNavSheet from "./mobile-nav-sheet";
 
 export default function DashboardTopbar({
   session,
   memberships,
   savedAccounts,
-  enabledFeatures,
+  visibleNavIds,
 }: {
   session: Session;
   memberships: BusinessMembership[];
   savedAccounts?: SavedAccount[];
-  enabledFeatures: readonly NavFeature[];
+  visibleNavIds: NavItemId[];
 }) {
   return (
     <header className="flex shrink-0 items-center border-b border-border bg-background px-4 py-3 md:hidden">
       <MobileNavSheet
-        role={session.role}
         currentBusinessId={session.businessId}
         memberships={memberships}
         savedAccounts={savedAccounts}
         email={session.email}
-        enabledFeatures={enabledFeatures}
+        visibleNavIds={visibleNavIds}
       />
     </header>
   );
