@@ -172,7 +172,7 @@ export default function ProfilePicker({ accounts, next }: ProfilePickerProps) {
 
             {accounts.length >= MAX_SAVED_ACCOUNTS ? (
               <div className="mt-3 text-center text-xs text-muted-foreground">
-                <p>Máximo 2 cuentas guardadas.</p>
+                <p>Máximo {MAX_SAVED_ACCOUNTS} cuentas guardadas.</p>
                 <p>Elimina una para agregar otra.</p>
               </div>
             ) : (

@@ -2,12 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SavedAccount } from "@/lib/services/ports";
+import { MAX_SAVED_ACCOUNTS } from "@/lib/auth/saved-accounts";
 import ProfilePicker from "./profile-picker";
 
 const ACCOUNTS: SavedAccount[] = [
   { userId: "u1", email: "demo@negociodemo.test", label: "Demo", active: true },
   { userId: "u2", email: "otra@negociodemo.test", label: "Otra cuenta", active: false },
 ];
+
+// Exactly at the cap, derived from the constant so this fixture and the hint
+// assertion below never drift when MAX_SAVED_ACCOUNTS changes.
+const FULL_ACCOUNTS: SavedAccount[] = Array.from({ length: MAX_SAVED_ACCOUNTS }, (_, i) => ({
+  userId: `u${i + 1}`,
+  email: `u${i + 1}@negociodemo.test`,
+  label: `Cuenta ${i + 1}`,
+  active: i === 0,
+}));
 
 const SINGLE_ACCOUNT: SavedAccount[] = [
   { userId: "u1", email: "demo@negociodemo.test", label: "Demo", active: true },
@@ -97,10 +107,12 @@ describe("ProfilePicker", () => {
   });
 
   it('hides "Usar otra cuenta" and shows a max-accounts hint once MAX_SAVED_ACCOUNTS is reached', () => {
-    render(<ProfilePicker accounts={ACCOUNTS} />);
+    render(<ProfilePicker accounts={FULL_ACCOUNTS} />);
 
     expect(screen.queryByRole("link", { name: /usar otra cuenta/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/máximo 2 cuentas guardadas\./i)).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(`máximo ${MAX_SAVED_ACCOUNTS} cuentas guardadas\\.`, "i"))
+    ).toBeInTheDocument();
     expect(screen.getByText(/elimina una para agregar otra\./i)).toBeInTheDocument();
   });
 

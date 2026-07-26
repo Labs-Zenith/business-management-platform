@@ -6,4 +6,4 @@
  * account" affordance once the cap is reached (the user must remove one
  * first).
  */
-export const MAX_SAVED_ACCOUNTS = 2;
+export const MAX_SAVED_ACCOUNTS = 5;
