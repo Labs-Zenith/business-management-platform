@@ -18,6 +18,12 @@ Disenar el MVP con una base segura desde el inicio, especialmente en aislamiento
 
 ## Autenticacion
 
+> **NOTA (migración self-host, rama `selfhost-ovh`):** la auth pasará de **Supabase Auth** a un **adaptador
+> propio** (`AuthPort`, `lib/auth/custom-auth-adapter.ts`): tabla `users` + **bcrypt**, sesión firmada con
+> `lib/server/cookie-crypto.ts`, **rate-limit** en login, sesión única por navegador (se conserva
+> `switchBusiness`). Las referencias a Supabase Auth de abajo aplican solo al entorno interino; se actualizan
+> en el cutover. El resto (sin registro público, admin crea cuentas, cookies seguras) se mantiene.
+
 - Usar Supabase Auth.
 - Login con email y password.
 - Cuentas beta creadas manualmente por el administrador.

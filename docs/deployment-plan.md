@@ -1,134 +1,104 @@
-# Deployment Plan
+# Deployment Plan — Self-host en OVH (auth + BD + front)
+
+> Plan de despliegue vigente. Sustituye al plan MVP anterior (Vercel + Supabase), que queda solo como el
+> entorno **interino de producción** hasta el cutover. Ver el plan de migración completo en
+> `/Users/angel/.claude/plans/quiero-que-planees-siempre-snoopy-metcalfe.md`.
 
 ## Objetivo
 
-Definir como desplegar el MVP como beta privada usando Vercel y Supabase, con bajo costo operativo y capacidad de crecimiento.
+Self-hostear **todo** (auth + base de datos + front) en un **VPS de OVH**, construyéndolo **en paralelo** sin
+interrumpir la producción actual (Vercel + Supabase). Al pasar pruebas de paridad, **cutover** a OVH.
+Estado final: `main` con **despliegue automático al VPS**.
 
-## Servicios
+## Estado actual (interino) vs destino
 
-- Hosting de app: Vercel.
-- Base de datos: Supabase Postgres.
-- Auth: Supabase Auth.
-- Documentacion API: Swagger servido desde la app.
+| | Actual (interino) | Destino (self-host) |
+|---|---|---|
+| App | Vercel | Next.js en contenedor (OVH) |
+| BD | Supabase Postgres | Postgres self-host (contenedor) |
+| Auth | Supabase Auth | **Auth propia** (adaptador `AuthPort`, bcrypt) |
+| Costo | ~$45/mo | ~$7.50/mo |
 
-## Ambientes
+## Arquitectura destino
 
-### Desarrollo
-
-- Next.js local.
-- Supabase project de desarrollo o Supabase local si se decide despues.
-- Variables en `.env.local`.
-
-### Produccion beta
-
-- Vercel project conectado al repositorio.
-- Supabase project de produccion.
-- Variables configuradas en Vercel.
-- Acceso solo para usuarios creados manualmente.
-
-## Variables de entorno esperadas
-
-Nombres sugeridos:
-
-```text
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-NEXT_PUBLIC_APP_URL=
-APP_ORIGIN=
+```
+OVH VPS-1 (4 vCPU / 8 GB / 75 GB NVMe) — Ubuntu + Dokploy
+ ├─ web   (Next.js)          → público (dominio + HTTPS vía Traefik/Let's Encrypt)
+ ├─ db    (Postgres)         → red interna, NO expuesto a internet
+ └─ (dev) web + db aparte    → dev.tudominio.com (BD dev separada)
 ```
 
-Reglas:
+Acceso a datos por conexión directa **postgres.js** (rol `postgres`); autorización en la capa de app
+(`lib/services/permissions.ts`).
 
-- Toda variable `NEXT_PUBLIC_*` se considera publica y visible en el navegador.
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` puede estar en cliente porque es publica por diseno, pero debe depender de RLS para proteger datos.
-- `SUPABASE_SERVICE_ROLE_KEY` solo debe usarse en scripts administrativos o procesos server-side aislados.
-- `SUPABASE_SERVICE_ROLE_KEY` no debe usarse en Route Handlers de usuario.
-- `APP_ORIGIN` o `NEXT_PUBLIC_APP_URL` debe usarse para validar `Origin` o `Referer` en mutaciones.
-- No versionar valores reales.
-- Mantener `.env.example` cuando se implemente codigo.
+## Ambientes (prod + dev)
 
-## Configuracion inicial de Supabase
+Usando las ramas existentes **`main`** y **`develop`**, ambos en el mismo VPS vía Dokploy:
 
-Pasos:
+| Ambiente | Rama | Subdominio | BD |
+|---|---|---|---|
+| prod | `main` | `app.tudominio.com` | Postgres prod |
+| dev | `develop` | `dev.tudominio.com` | Postgres **dev separada** |
 
-1. Crear proyecto Supabase.
-2. Crear tablas y relaciones.
-3. Activar RLS en `businesses`, `profiles`, `customers`, `invoices`, `invoice_items` y `payments`.
-4. Crear politicas por `business_id`.
-5. Configurar Auth con email/password.
-6. Crear primer negocio.
-7. Crear primer usuario beta.
-8. Asociar usuario en `profiles`.
-9. Probar aislamiento con dos negocios distintos antes de usar datos reales.
+- BD y secretos **separados** por ambiente; datos solo **prod→dev anonimizado**, nunca dev→prod.
+- `dev` no público (basic auth / `noindex`).
 
-## Configuracion inicial de Vercel
+## Setup del VPS (OVH)
 
-Pasos:
+1. Crear **OVH VPS-1** (Ubuntu 24.04), región **Canadá (Beauharnois)** (mejor latencia LatAm) o Francia.
+2. Acceso por **llave SSH** (no password).
+3. `apt update && apt upgrade -y`.
+4. **Swap** (picos de build): `fallocate -l 3G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile` + persistir en `/etc/fstab`.
+5. **Firewall** (`ufw`): permitir solo `OpenSSH`, `80`, `443` (y `3000` temporal para el setup de Dokploy). **Postgres nunca expuesto.**
+6. Instalar **Dokploy**: `curl -sSL https://dokploy.com/install.sh | sh`. Acceder en `http://IP:3000`, crear admin, luego cerrar `3000`.
 
-1. Crear proyecto Vercel.
-2. Conectar repositorio.
-3. Configurar variables de entorno.
-4. Deploy de preview.
-5. Configurar headers de seguridad o confirmar que se aplican en la capa edge.
-6. Validar login, dashboard y API docs.
-7. Confirmar que `/api/docs` y `/api/openapi.json` requieren sesion en produccion beta.
-8. Confirmar que endpoints privados responden `Cache-Control: no-store`.
-9. Confirmar que mutaciones rechazan origenes no permitidos.
-10. Promover a produccion beta.
+## Base de datos
 
-## Flujo de entrega a cliente beta
+- Postgres como servicio en Dokploy (contenedor + volumen), en **red interna**.
+- Migraciones con `npm run migrate` (`node-pg-migrate`, `migrations/*.sql`).
+- **Nota:** en `main` la BD es Supabase (prod interina); la migración destructiva que desacopla de Supabase
+  (`auth.uid()` RLS + FK a `users`) vive en la rama `selfhost-ovh`.
 
-1. El administrador crea negocio.
-2. El administrador crea usuario.
-3. Se asocia usuario al negocio.
-4. Se entrega URL de la app.
-5. El cliente inicia sesion.
-6. El cliente prueba con datos reales o controlados.
-7. Se recoge feedback.
+## Deploy (CI/CD)
 
-## Backups y recuperacion
+- Dokploy conectado a GitHub con **auto-deploy por rama** (webhook): `main`→prod, `develop`→dev.
+- Build en el VPS (por eso el swap). `next build` + `npm run migrate` en el arranque.
 
-Para beta:
+## Dominio + HTTPS
 
-- Usar backups disponibles del plan de Supabase.
-- Exportar datos manualmente si el cliente empieza a depender del sistema.
+- Registros **A** al IP del VPS (`app` y `dev`).
+- SSL automático (Let's Encrypt vía Traefik/Dokploy).
 
-Antes de cobrar formalmente:
+## Backups y recuperación
 
-- Definir politica de backups.
-- Definir restauracion.
-- Definir retencion de datos.
-- Definir monitoreo de errores.
+- **Doble red:** backups diarios de OVH (incluidos en el VPS-1) **+** cron `pg_dump` propio.
+- Script `/root/backup-db.sh`: `docker exec <pg> pg_dump -U <user> <db> | gzip > /root/backups/db-$(fecha).sql.gz`, rotación 14 días.
+- Copia off-site gratis: `scp` de los dumps a la máquina local.
+- Restaurar: `gunzip -c dump.sql.gz | docker exec -i <pg> psql -U <user> <db>`.
 
-## Observabilidad inicial
+## Conexión a la BD desde local (editor SQL)
 
-Minimo recomendado:
+Vía **túnel SSH** (Postgres no expuesto): en DBeaver/TablePlus/DataGrip, activar SSH Tunnel (host=IP, user=root,
+llave SSH) + DB (host=`localhost`, port=`5432`, credenciales de Postgres). **No abrir 5432 a internet.**
 
-- Logs de Vercel.
-- Logs de Supabase.
-- Manejo consistente de errores.
-- Registro de errores en UI sin mostrar detalles sensibles.
-- Redaccion de cookies, tokens, cabeceras `Authorization` y variables de entorno en logs.
-- Alertar manualmente cualquier error repetido en pagos, saldos o autorizacion durante beta.
+## Variables de entorno (destino)
 
-Futuro:
+```text
+POSTGRES_URL=            # Postgres del VPS (red interna)
+SESSION_SECRET=          # cadena aleatoria larga (openssl rand -hex 32)
+APP_ORIGIN=              # https://tudominio.com (validación de Origin en mutaciones)
+NEXT_PUBLIC_APP_URL=
+```
+(Las `SUPABASE_*` desaparecen al completar el cutover.)
 
-- Error tracking.
-- Metricas de uso.
-- Auditoria por usuario.
+## Seguridad
 
-## Consideracion VPS vs serverless
+- Acceso por llave SSH; `ufw` (solo 22/80/443); Postgres nunca expuesto; panel Dokploy tras auth y no público.
+- Cookies de sesión `httpOnly`/`Secure`/`SameSite`; hashing **bcrypt**; **rate-limit** en login; CSRF por `origin-check.ts`.
+- Sin registro público (usuarios creados por admin).
 
-Para el MVP se elige Vercel + Supabase porque reduce tiempo de operacion y permite validar rapido.
+## Cutover (resumen)
 
-Una VPS dockerizada puede ser mas barata en dinero mensual, pero exige:
-
-- Configurar servidor.
-- Mantener SSL.
-- Actualizar sistema.
-- Administrar backups.
-- Monitorear caidas.
-- Asegurar Postgres.
-
-La arquitectura con Postgres y Next.js debe mantenerse portable para poder migrar en el futuro si el costo operativo lo justifica.
+Bajar TTL de DNS → pausa breve de escrituras → `pg_dump` final de Supabase → restore al VPS → **copiar hashes
+bcrypt** (`auth.users.encrypted_password`→`users.password_hash`, sin resetear claves) → dominio→VPS → verificar →
+Supabase de respaldo unos días → desmantelar. **Downtime: minutos.**
