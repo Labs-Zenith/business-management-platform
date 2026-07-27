@@ -33,7 +33,9 @@ describe("PageShell", () => {
 
     const shell = screen.getByText("Contenido").parentElement;
     expect(shell).toHaveClass("custom-class");
-    expect(shell).toHaveClass("mx-auto");
-    expect(shell).toHaveClass("max-w-6xl");
+    expect(shell).toHaveClass("w-full");
+    // Full-width now: the centered max-width was removed (see PageShell).
+    expect(shell).not.toHaveClass("max-w-6xl");
+    expect(shell).not.toHaveClass("mx-auto");
   });
 });
