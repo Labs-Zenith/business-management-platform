@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import type { AuditLogEntry, Session } from "@/lib/services/ports";
+import type { AuditLogListEntry, Session } from "@/lib/services/ports";
 
-const mockListAuditLog = vi.fn<(session: Session, entityType: string, entityId: string) => Promise<AuditLogEntry[]>>();
+const mockListAuditLog = vi.fn<(session: Session, entityType: string, entityId: string) => Promise<AuditLogListEntry[]>>();
 
 vi.mock("@/lib/services/audit-log-service", () => ({
   listAuditLog: (session: Session, entityType: string, entityId: string) =>
@@ -20,7 +20,7 @@ const SESSION: Session = {
 
 const INVOICE_ID = "50000000-0000-4000-8000-000000000001";
 
-function buildEntry(overrides: Partial<AuditLogEntry> = {}): AuditLogEntry {
+function buildEntry(overrides: Partial<AuditLogListEntry> = {}): AuditLogListEntry {
   return {
     id: "70000000-0000-4000-8000-000000000001",
     businessId: SESSION.businessId,
@@ -28,6 +28,8 @@ function buildEntry(overrides: Partial<AuditLogEntry> = {}): AuditLogEntry {
     entityId: INVOICE_ID,
     action: "invoice_created",
     actorUserId: SESSION.userId,
+    actorFullName: "Ana Demo",
+    actorEmail: "ana@zenith.app",
     detail: "FAC-0001",
     createdAt: "2026-07-01T12:00:00.000Z",
     ...overrides,
@@ -43,13 +45,11 @@ describe("MovementsPanel", () => {
     const newest = buildEntry({
       id: "70000000-0000-4000-8000-000000000002",
       action: "invoice_updated",
-      detail: "FAC-0001",
       createdAt: "2026-07-03T09:00:00.000Z",
     });
     const oldest = buildEntry({
       id: "70000000-0000-4000-8000-000000000001",
       action: "invoice_created",
-      detail: "FAC-0001",
       createdAt: "2026-07-01T12:00:00.000Z",
     });
     mockListAuditLog.mockResolvedValue([newest, oldest]);
@@ -59,8 +59,8 @@ describe("MovementsPanel", () => {
     expect(mockListAuditLog).toHaveBeenCalledWith(SESSION, "invoice", INVOICE_ID);
 
     const rows = screen.getAllByRole("row").slice(1); // skip header row
-    expect(rows[0]).toHaveTextContent("invoice_updated");
-    expect(rows[1]).toHaveTextContent("invoice_created");
+    expect(rows[0]).toHaveTextContent("Factura actualizada");
+    expect(rows[1]).toHaveTextContent("Factura creada");
   });
 
   it('renders the empty state ("Sin movimientos registrados.") when there is no history yet', async () => {
@@ -71,15 +71,38 @@ describe("MovementsPanel", () => {
     expect(screen.getByText("Sin movimientos registrados.")).toBeInTheDocument();
   });
 
-  it("renders action, actor, detail, and timestamp for each entry", async () => {
+  it("renders the Spanish action label, the actor name, the detail, and a formatted date (not the raw enum/UUID/ISO)", async () => {
     mockListAuditLog.mockResolvedValue([buildEntry({ detail: "FAC-0007" })]);
 
     render(await MovementsPanel({ session: SESSION, entityType: "invoice", entityId: INVOICE_ID }));
 
-    expect(screen.getByText("invoice_created")).toBeInTheDocument();
-    expect(screen.getByText(SESSION.userId)).toBeInTheDocument();
+    expect(screen.getByText("Factura creada")).toBeInTheDocument();
+    expect(screen.getByText("Ana Demo")).toBeInTheDocument();
     expect(screen.getByText("FAC-0007")).toBeInTheDocument();
-    expect(screen.getByText("2026-07-01T12:00:00.000Z")).toBeInTheDocument();
+    // Date is localized, not the raw ISO.
+    expect(screen.queryByText("2026-07-01T12:00:00.000Z")).not.toBeInTheDocument();
+    expect(screen.getByText(/2026/)).toBeInTheDocument();
+    // Raw enum / UUID must not leak through.
+    expect(screen.queryByText("invoice_created")).not.toBeInTheDocument();
+    expect(screen.queryByText(SESSION.userId)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the short username when the actor has no full name", async () => {
+    mockListAuditLog.mockResolvedValue([
+      buildEntry({ actorFullName: null, actorEmail: "printingcompany@zenith.app" }),
+    ]);
+
+    render(await MovementsPanel({ session: SESSION, entityType: "invoice", entityId: INVOICE_ID }));
+
+    expect(screen.getByText("printingcompany")).toBeInTheDocument();
+  });
+
+  it("falls back to the raw actor id when neither name nor email is known", async () => {
+    mockListAuditLog.mockResolvedValue([buildEntry({ actorFullName: null, actorEmail: null })]);
+
+    render(await MovementsPanel({ session: SESSION, entityType: "invoice", entityId: INVOICE_ID }));
+
+    expect(screen.getByText(SESSION.userId)).toBeInTheDocument();
   });
 
   it("renders a dash when detail is null", async () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { todayIsoDate } from "./dates";
+import { formatDateTime, todayIsoDate } from "./dates";
 
 describe("todayIsoDate", () => {
   afterEach(() => {
@@ -43,5 +43,30 @@ describe("todayIsoDate", () => {
     if (expectedLocalDate !== expectedUtcDate) {
       expect(todayIsoDate()).not.toBe(expectedUtcDate);
     }
+  });
+});
+
+describe("formatDateTime", () => {
+  it("formats an ISO timestamp as a Colombian date + time, not the raw ISO", () => {
+    // 12:00 UTC → 07:00 in Bogota (UTC-5).
+    const out = formatDateTime("2026-07-01T12:00:00.000Z");
+    expect(out).toMatch(/1 de jul de 2026/);
+    expect(out).toMatch(/7:00/);
+    expect(out).not.toContain("2026-07-01T12:00:00.000Z");
+  });
+
+  it("uses America/Bogota rather than UTC (a late-UTC instant stays on the local day)", () => {
+    // 02:00 UTC on Jul 2 is 21:00 on Jul 1 in Bogota (UTC-5).
+    const out = formatDateTime("2026-07-02T02:00:00.000Z");
+    expect(out).toMatch(/1 de jul de 2026/);
+    expect(out).toMatch(/9:00/);
+  });
+
+  it('returns "-" for empty input', () => {
+    expect(formatDateTime("")).toBe("-");
+  });
+
+  it("echoes the raw value back when it is not a valid date", () => {
+    expect(formatDateTime("not-a-date")).toBe("not-a-date");
   });
 });

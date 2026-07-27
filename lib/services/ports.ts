@@ -710,6 +710,18 @@ export type AuditLogEntry = {
 };
 
 /**
+ * Read-path shape returned by `AuditLogRepository.list`: the base entry plus
+ * the actor's resolved identity (from a `profiles` join on `user_id` +
+ * `business_id`). Both are nullable — an actor may have no profile row for
+ * this business. The write path (`create`) still returns the plain
+ * `AuditLogEntry`.
+ */
+export type AuditLogListEntry = AuditLogEntry & {
+  actorFullName: string | null;
+  actorEmail: string | null;
+};
+
+/**
  * Repository-facing create payload. Append-only (Expense-style):
  * `businessId` is always a separate argument, never a field.
  */
@@ -723,7 +735,7 @@ export type AuditLogCreate = {
 
 export interface AuditLogRepository {
   /** Business-scoped, filtered by `entityType`/`entityId`, ordered `createdAt` DESC. */
-  list(businessId: string, entityType: string, entityId: string): Promise<AuditLogEntry[]>;
+  list(businessId: string, entityType: string, entityId: string): Promise<AuditLogListEntry[]>;
   /** Plain insert — no lock, no sequence, no balance invariant. No update/delete surface (append-only). */
   create(businessId: string, data: AuditLogCreate): Promise<AuditLogEntry>;
 }
