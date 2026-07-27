@@ -1,5 +1,8 @@
 import { listAuditLog } from "@/lib/services/audit-log-service";
 import type { Session } from "@/lib/services/ports";
+import { emailToUsername } from "@/lib/auth/username";
+import { formatAuditAction } from "@/lib/audit/action-labels";
+import { formatDateTime } from "@/lib/dates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -18,6 +21,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
  * own and simply reads via `listAuditLog(session, entityType, entityId)`
  * inline (no extra API route), which is itself business-scoped by
  * `session.businessId`.
+ *
+ * Rows are shown business-readable, not raw: the `action` enum becomes a
+ * Spanish label (`formatAuditAction`), the actor is the resolved name
+ * (`actorFullName`, else the short username from the email, else the raw id
+ * as a last resort), and the timestamp is localized (`formatDateTime`).
  */
 export type MovementsPanelProps = {
   session: Session;
@@ -37,7 +45,7 @@ export async function MovementsPanel({ session, entityType, entityId }: Movement
         <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow>
-              <TableHead>Accion</TableHead>
+              <TableHead>Acción</TableHead>
               <TableHead>Usuario</TableHead>
               <TableHead>Detalle</TableHead>
               <TableHead>Fecha</TableHead>
@@ -53,10 +61,13 @@ export async function MovementsPanel({ session, entityType, entityId }: Movement
             ) : (
               entries.map((entry) => (
                 <TableRow key={entry.id}>
-                  <TableCell>{entry.action}</TableCell>
-                  <TableCell>{entry.actorUserId}</TableCell>
+                  <TableCell>{formatAuditAction(entry.action)}</TableCell>
+                  <TableCell>
+                    {entry.actorFullName ??
+                      (entry.actorEmail ? emailToUsername(entry.actorEmail) : entry.actorUserId)}
+                  </TableCell>
                   <TableCell>{entry.detail ?? "-"}</TableCell>
-                  <TableCell>{entry.createdAt}</TableCell>
+                  <TableCell>{formatDateTime(entry.createdAt)}</TableCell>
                 </TableRow>
               ))
             )}

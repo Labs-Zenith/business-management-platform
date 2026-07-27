@@ -118,4 +118,44 @@ describe("createAuditLogRepository.list", () => {
 
     expect(result).toEqual([]);
   });
+
+  it("resolves the actor's full name and email from the matching profile", async () => {
+    const repo = createAuditLogRepository(store);
+    store.profiles.set("p1", {
+      id: "p1",
+      userId: ACTOR_USER_ID,
+      businessId: BUSINESS_ID,
+      fullName: "Ana Demo",
+      email: "ana@zenith.app",
+      role: "admin",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    });
+    await repo.create(BUSINESS_ID, buildInput());
+
+    const [entry] = await repo.list(BUSINESS_ID, "invoice", INVOICE_ID);
+
+    expect(entry!.actorFullName).toBe("Ana Demo");
+    expect(entry!.actorEmail).toBe("ana@zenith.app");
+  });
+
+  it("returns null actor identity when no profile matches the actor's business", async () => {
+    const repo = createAuditLogRepository(store);
+    store.profiles.set("p2", {
+      id: "p2",
+      userId: ACTOR_USER_ID,
+      businessId: OTHER_BUSINESS_ID, // right user, WRONG business → no match
+      fullName: "Ana Demo",
+      email: "ana@zenith.app",
+      role: "admin",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    });
+    await repo.create(BUSINESS_ID, buildInput());
+
+    const [entry] = await repo.list(BUSINESS_ID, "invoice", INVOICE_ID);
+
+    expect(entry!.actorFullName).toBeNull();
+    expect(entry!.actorEmail).toBeNull();
+  });
 });

@@ -30,6 +30,8 @@ function row(overrides: Partial<Record<string, unknown>> = {}) {
     actor_user_id: "20000000-0000-4000-8000-000000000001",
     detail: "FAC-0001",
     created_at: "2026-07-13T00:00:00.000Z",
+    actor_full_name: "Ana Demo",
+    actor_email: "ana@zenith.app",
     ...overrides,
   };
 }
@@ -58,6 +60,8 @@ describe("db auditLogRepo.list", () => {
       actorUserId: "20000000-0000-4000-8000-000000000001",
       detail: "FAC-0001",
       createdAt: "2026-07-13T01:00:00.000Z",
+      actorFullName: "Ana Demo",
+      actorEmail: "ana@zenith.app",
     });
 
     // Prove businessId/entityType/entityId are bound as substitution values,

@@ -1,4 +1,4 @@
-import type { AuditLogCreate, AuditLogEntry, AuditLogRepository } from "@/lib/services/ports";
+import type { AuditLogCreate, AuditLogEntry, AuditLogListEntry, AuditLogRepository } from "@/lib/services/ports";
 import { generateId, store as defaultStore, type MockStore } from "./store";
 
 /**
@@ -10,15 +10,28 @@ import { generateId, store as defaultStore, type MockStore } from "./store";
  * already committed, by `lib/services/audit-log-service.ts#recordAuditLog` —
  * this repository itself has no knowledge of that contract, it is a plain
  * append-only store.
+ *
+ * `list` resolves each entry's actor identity from `store.profiles` (matched
+ * on `userId` + `businessId`), mirroring the db repo's `profiles` JOIN, so
+ * the "Movimientos" panel shows a name instead of a raw UUID.
  */
 export function createAuditLogRepository(store: MockStore): AuditLogRepository {
   return {
-    async list(businessId: string, entityType: string, entityId: string): Promise<AuditLogEntry[]> {
+    async list(businessId: string, entityType: string, entityId: string): Promise<AuditLogListEntry[]> {
       const entries = [...store.auditLogs.values()].filter(
         (entry) => entry.businessId === businessId && entry.entityType === entityType && entry.entityId === entityId,
       );
       entries.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)); // newest first
-      return entries;
+      return entries.map((entry) => {
+        const profile = [...store.profiles.values()].find(
+          (p) => p.userId === entry.actorUserId && p.businessId === businessId,
+        );
+        return {
+          ...entry,
+          actorFullName: profile?.fullName ?? null,
+          actorEmail: profile?.email ?? null,
+        };
+      });
     },
 
     async create(businessId: string, data: AuditLogCreate): Promise<AuditLogEntry> {

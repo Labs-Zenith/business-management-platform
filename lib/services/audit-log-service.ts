@@ -18,7 +18,7 @@
  */
 
 import { repositories } from "@/lib/services/repositories";
-import type { AuditLogEntry, Session } from "@/lib/services/ports";
+import type { AuditLogListEntry, Session } from "@/lib/services/ports";
 
 /**
  * Upper bound on how long `recordAuditLog` may wait on the underlying
@@ -92,6 +92,6 @@ export async function recordAuditLog(
  * entity's audit history, ordered `createdAt` DESC (per
  * `AuditLogRepository.list`'s contract).
  */
-export async function listAuditLog(session: Session, entityType: string, entityId: string): Promise<AuditLogEntry[]> {
+export async function listAuditLog(session: Session, entityType: string, entityId: string): Promise<AuditLogListEntry[]> {
   return repositories.auditLog.list(session.businessId, entityType, entityId);
 }
