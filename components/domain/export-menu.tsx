@@ -44,7 +44,17 @@ export function ExportMenu({ path, params }: ExportMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="outline" className="w-full sm:w-auto">
+          // `data-slot` is set EXPLICITLY here, and must stay. Without it this
+          // trigger hydration-mismatches: base-ui merges `render.props` LAST
+          // (`useRenderElement`'s `mergeProps(props, render.props)`), while
+          // `Button` spreads incoming props last too (`components/ui/button.tsx`).
+          // In a Server Component the `<Button>` element is evaluated during RSC
+          // serialization, so `data-slot="button"` is already inside
+          // `render.props` and wins server-side; on the client base-ui's own
+          // `data-slot="dropdown-menu-trigger"` reaches Button as an incoming
+          // prop and wins instead. Writing the value literally makes both paths
+          // agree. Same fix as `components/ui/date-picker.tsx`'s popover trigger.
+          <Button variant="outline" data-slot="dropdown-menu-trigger" className="w-full sm:w-auto">
             <Download className="size-4" />
             Exportar
             <ChevronDownIcon className="size-4 text-muted-foreground" />
