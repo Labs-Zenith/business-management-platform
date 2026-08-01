@@ -40,20 +40,21 @@ describe("ExpenseChartCards", () => {
     expect(screen.getByText("Egresos por categoría")).toBeInTheDocument();
     expect(screen.getByText("Egresos por mes")).toBeInTheDocument();
     expect(screen.getByText("En qué se va el dinero, por tipo de egreso.")).toBeInTheDocument();
-    expect(screen.getByText("Total de egresos de cada mes.")).toBeInTheDocument();
-    expect(screen.queryByText("Sin egresos para graficar.")).not.toBeInTheDocument();
-    expect(screen.queryByText("Sin egresos en los últimos meses.")).not.toBeInTheDocument();
+    expect(screen.getByText("Cuánto gastaste cada uno de los últimos seis meses.")).toBeInTheDocument();
+    // Both charts share one empty-state phrasing now, so count instead of
+    // matching two different strings.
+    expect(screen.queryAllByText("Todavía no hay datos para esta gráfica.")).toHaveLength(0);
   });
 
   it("shows the empty state for gastos por categoria when every category total is 0", () => {
     render(<ExpenseChartCards charts={{ byCategory: ZERO_BY_CATEGORY, byMonth: BY_MONTH }} />);
 
-    expect(screen.getByText("Sin egresos para graficar.")).toBeInTheDocument();
+    expect(screen.getAllByText("Todavía no hay datos para esta gráfica.")).toHaveLength(1);
   });
 
   it("shows the empty state for gastos por mes when no month has amount > 0", () => {
     render(<ExpenseChartCards charts={{ byCategory: BY_CATEGORY, byMonth: ZERO_BY_MONTH }} />);
 
-    expect(screen.getByText("Sin egresos en los últimos meses.")).toBeInTheDocument();
+    expect(screen.getAllByText("Todavía no hay datos para esta gráfica.")).toHaveLength(1);
   });
 });

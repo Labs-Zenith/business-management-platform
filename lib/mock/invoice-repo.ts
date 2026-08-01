@@ -200,6 +200,14 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
       return paginate(invoices, query.page, query.pageSize);
     },
 
+    /** Mirrors `lib/db/invoice-repo.ts#listActiveMonths`. */
+    async listActiveMonths(businessId: string): Promise<string[]> {
+      const months = [...store.invoices.values()]
+        .filter((invoice) => invoice.businessId === businessId)
+        .map((invoice) => invoice.issueDate.slice(0, 7));
+      return [...new Set(months)];
+    },
+
     async getById(businessId: string, id: string): Promise<InvoiceDetail | null> {
       const invoice = store.invoices.get(id);
       if (!invoice || invoice.businessId !== businessId) {

@@ -718,3 +718,26 @@ describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety
     expect(mockSql).not.toHaveBeenCalled();
   });
 });
+
+describe("db invoiceRepo.listActiveMonths", () => {
+  beforeEach(() => {
+    mockSql.mockReset();
+  });
+
+  it("aggregates distinct issue-date months in SQL, scoped to the business", async () => {
+    mockSql.mockResolvedValueOnce([{ month: "2026-07" }, { month: "2026-03" }]);
+
+    const months = await invoiceRepo.listActiveMonths(BUSINESS_ID);
+
+    expect(months).toEqual(["2026-07", "2026-03"]);
+    const [strings, param] = mockSql.mock.calls[0]!;
+    expect(strings.join("?")).toContain("DISTINCT to_char(issue_date, 'YYYY-MM')");
+    expect(param).toBe(BUSINESS_ID);
+  });
+
+  it("returns an empty list for a business with no invoices", async () => {
+    mockSql.mockResolvedValueOnce([]);
+
+    expect(await invoiceRepo.listActiveMonths(OTHER_BUSINESS_ID)).toEqual([]);
+  });
+});

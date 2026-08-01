@@ -37,7 +37,7 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
         </CardHeader>
         <CardContent>
           {!hasCategoryTotals ? (
-            <EmptyChart label="Sin egresos para graficar." />
+            <EmptyChart label="Todavía no hay datos para esta gráfica." />
           ) : (
             <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -64,11 +64,11 @@ export function ExpenseChartCards({ charts }: ExpenseChartCardsProps) {
       <Card className="min-w-0">
         <CardHeader>
           <CardTitle>Egresos por mes</CardTitle>
-          <CardDescription>Total de egresos de cada mes.</CardDescription>
+          <CardDescription>Cuánto gastaste cada uno de los últimos seis meses.</CardDescription>
         </CardHeader>
         <CardContent>
           {!hasMonthlyAmounts ? (
-            <EmptyChart label="Sin egresos en los últimos meses." />
+            <EmptyChart label="Todavía no hay datos para esta gráfica." />
           ) : (
             <ChartFrame className="h-52 min-w-0">
               <ResponsiveContainer width="100%" height="100%">

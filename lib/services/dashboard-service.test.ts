@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import { lineTotal } from "@/lib/money";
 import { repositories } from "@/lib/services/repositories";
 import type { InvoicePersist, Session } from "@/lib/services/ports";
+import { parsePeriodParam } from "@/lib/services/dashboard-period";
 import {
   getDashboardCharts,
   getDashboardSummary,
-  getInvoicedThisMonth,
+  getPeriodCharts,
+  getPortfolioCharts,
+  getInvoicedInPeriod,
   getOverdueInvoices,
-  getPaidThisMonth,
+  getPaidInPeriod,
   getPendingBalance,
   getRecentPayments,
   getTopDebtors,
@@ -31,14 +34,29 @@ import {
  */
 
 // Fixed reference "now" so "current calendar month" assertions never flake
-// depending on when the suite actually runs.
+// depending on when the suite actually runs. Dates are built from LOCAL
+// getters, never `toISOString()`: the services resolve their month from local
+// time (see `lib/dates.ts`), so a UTC-derived fixture would silently land in
+// the wrong month whenever the suite runs late in the day at UTC-5.
+function isoLocalDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 const NOW = new Date();
-const THIS_MONTH_DATE = NOW.toISOString().slice(0, 10);
+const THIS_MONTH_DATE = isoLocalDate(NOW);
 const THIS_MONTH_KEY = THIS_MONTH_DATE.slice(0, 7);
 // Two months back (not one) so the boundary is never ambiguous even if NOW
 // is near a month edge.
-const PREVIOUS_MONTH_DATE = new Date(NOW.getFullYear(), NOW.getMonth() - 2, 15).toISOString().slice(0, 10);
+const PREVIOUS_MONTH_DATE = isoLocalDate(new Date(NOW.getFullYear(), NOW.getMonth() - 2, 15));
 const PREVIOUS_MONTH_KEY = PREVIOUS_MONTH_DATE.slice(0, 7);
+
+// The CURRENT CALENDAR MONTH, requested explicitly — `parsePeriodParam(undefined)`
+// now resolves to the dashboard's rolling 30-day window instead.
+const CURRENT_MONTH_PERIOD = parsePeriodParam(THIS_MONTH_KEY, NOW);
+// The period a user picks to go back and look at an earlier month.
+const PREVIOUS_MONTH_PERIOD = parsePeriodParam(PREVIOUS_MONTH_KEY, NOW);
 
 const PAST_DUE_DATE = "2020-01-01"; // always in the past, regardless of when the suite runs
 const FUTURE_DUE_DATE = "2099-01-01"; // always in the future
@@ -131,8 +149,8 @@ describe("dashboard-service", () => {
       invoicePersist(customerB1.id, 50_000_000, PAST_DUE_DATE, THIS_MONTH_DATE),
     );
 
-    const summaryA = await getDashboardSummary(sessionA, NOW);
-    const summaryB = await getDashboardSummary(sessionB, NOW);
+    const summaryA = await getDashboardSummary(sessionA, CURRENT_MONTH_PERIOD);
+    const summaryB = await getDashboardSummary(sessionB, CURRENT_MONTH_PERIOD);
 
     // (1) Total pendiente por cobrar: sum of balance across non-paid invoices only.
     // invoiceA1 balance=100000, invoiceA2 balance=50000, invoiceA4 balance=40000.
@@ -149,10 +167,23 @@ describe("dashboard-service", () => {
     expect(summaryA.overdueInvoiceList.map((invoice) => invoice.id)).toEqual([invoiceA2.id]);
     expect(summaryA.overdueInvoiceList.some((invoice) => invoice.id === invoiceB1.id)).toBe(false);
 
-    // (4) Pagos recientes: business A's own 2 payments only, newest first.
-    expect(summaryA.recentPayments).toHaveLength(2);
-    expect(summaryA.recentPayments[0]!.paymentDate >= summaryA.recentPayments[1]!.paymentDate).toBe(true);
+    // (4) Pagos recientes: period-scoped, so only business A's CURRENT-month
+    // payment shows — invoiceA4's payment two months back is deliberately
+    // excluded, otherwise a "Julio 2026" heading would list August payments.
+    expect(summaryA.recentPayments).toHaveLength(1);
+    expect(summaryA.recentPayments[0]!.paymentDate).toBe(THIS_MONTH_DATE);
     expect(summaryA.recentPayments.every((payment) => payment.customer.id !== customerB1.id)).toBe(true);
+
+    // ...and asking for that earlier month DOES surface it — the whole point
+    // of the period selector.
+    const previousMonthSummaryA = await getDashboardSummary(sessionA, PREVIOUS_MONTH_PERIOD);
+    expect(previousMonthSummaryA.paidThisMonth).toBe(20_000);
+    expect(previousMonthSummaryA.recentPayments.map((payment) => payment.paymentDate)).toEqual([
+      PREVIOUS_MONTH_DATE,
+    ]);
+    // Portfolio figures are "a hoy" and therefore identical across periods.
+    expect(previousMonthSummaryA.pendingBalance).toBe(summaryA.pendingBalance);
+    expect(previousMonthSummaryA.overdueInvoices).toBe(summaryA.overdueInvoices);
 
     // (5) Clientes con mayor saldo: ranked within business A only.
     // customerA1 balance = 100000 + 50000 = 150000; customerA2 balance = 40000 (A3 fully paid).
@@ -220,7 +251,13 @@ describe("dashboard-service", () => {
       method: "cash",
     });
 
-    const charts = await getDashboardCharts(sessionA, NOW);
+    // The screen fetches the two halves separately (they live in different
+    // sections now), so both granular functions are exercised — plus the
+    // composer, which the export/summary routes still call.
+    const portfolio = await getPortfolioCharts(sessionA);
+    const periodCharts = await getPeriodCharts(sessionA, CURRENT_MONTH_PERIOD);
+    const charts = await getDashboardCharts(sessionA, CURRENT_MONTH_PERIOD);
+    expect(charts).toEqual({ ...portfolio, ...periodCharts });
 
     expect(charts.receivablesByStatus).toEqual([
       { status: "pending", label: "Pendiente", count: 1, balance: 100_000, total: 100_000 },
@@ -306,12 +343,12 @@ describe("dashboard-service", () => {
     });
 
     expect(await getPendingBalance(sessionA)).toBe(10_000);
-    expect(await getPaidThisMonth(sessionA, NOW)).toBe(0);
-    expect((await getRecentPayments(sessionA)).length).toBe(0);
+    expect(await getPaidInPeriod(sessionA, CURRENT_MONTH_PERIOD)).toBe(0);
+    expect((await getRecentPayments(sessionA, CURRENT_MONTH_PERIOD)).length).toBe(0);
     expect((await getTopDebtors(sessionA)).some((debtor) => debtor.id === customerB.id)).toBe(false);
   });
 
-  it("getInvoicedThisMonth sums invoice `total` for invoices issued in the current calendar month, scoped to session.businessId", async () => {
+  it("getInvoicedInPeriod sums invoice `total` for invoices issued inside the period, scoped to session.businessId", async () => {
     const businessA = newBusinessId();
     const businessB = newBusinessId();
     const sessionA = sessionFor(businessA);
@@ -337,8 +374,11 @@ describe("dashboard-service", () => {
     // Business B: far larger amount, this month -> must never bleed into A's total.
     await repositories.invoices.create(businessB, invoicePersist(customerB.id, 50_000_000, FUTURE_DUE_DATE, THIS_MONTH_DATE));
 
-    const invoicedThisMonthA = await getInvoicedThisMonth(sessionA, NOW);
-
-    expect(invoicedThisMonthA).toBe(200_000);
+    expect(await getInvoicedInPeriod(sessionA, CURRENT_MONTH_PERIOD)).toBe(200_000);
+    // Selecting the earlier month swaps which invoices count — the previously
+    // unreachable figure the period selector exists to expose.
+    expect(await getInvoicedInPeriod(sessionA, PREVIOUS_MONTH_PERIOD)).toBe(999_000);
+    // "Todo" is unbounded and therefore sums every issue date.
+    expect(await getInvoicedInPeriod(sessionA, parsePeriodParam("all", NOW))).toBe(1_199_000);
   });
 });

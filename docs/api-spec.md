@@ -280,6 +280,11 @@ Respuesta incluye:
 
 Devuelve resumen del negocio autenticado.
 
+Parametro opcional `period`: `last30` (por defecto), `last3`, `last6`,
+`thisYear`, `all`, o un mes `YYYY-MM`. Sin el parametro devuelve los ultimos
+30 dias, que es la ventana que muestra el dashboard. `pendingBalance` y
+`overdueInvoices` no dependen de `period`: son la foto del momento.
+
 Respuesta:
 
 ```json

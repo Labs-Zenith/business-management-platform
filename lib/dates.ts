@@ -9,13 +9,60 @@
  * the wrong day.
  */
 
-/** Today's date as a local `YYYY-MM-DD` string (not UTC). */
-export function todayIsoDate(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+/** A `Date` as a local `YYYY-MM-DD` string (not UTC). */
+function isoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Today's date as a local `YYYY-MM-DD` string (not UTC). `now` is injectable
+ * so callers that must be deterministic under test (the dashboard's rolling
+ * window) don't have to freeze the clock.
+ */
+export function todayIsoDate(now: Date = new Date()): string {
+  return isoDate(now);
+}
+
+/**
+ * The date `days` before `now`, as a local `YYYY-MM-DD` string.
+ *
+ * `new Date(y, m, d - days)` is deliberate: the `Date` constructor normalizes
+ * an out-of-range day, so stepping back across a month boundary, a year
+ * boundary or a leap day needs no special casing. Doing the same arithmetic on
+ * a timestamp (`getTime() - days * 86_400_000`) would be wrong across a DST
+ * change; doing it via `toISOString()` would be wrong every evening at UTC-5.
+ */
+export function daysAgoIsoDate(days: number, now: Date = new Date()): string {
+  return isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() - days));
+}
+
+/**
+ * Day + month, no year: "3 de jul". For naming a date range in UI copy, where
+ * the year is either obvious or stated once. Same Colombian locale/timezone
+ * rationale as `formatDateTime` below.
+ */
+const DAY_MONTH_FORMATTER = new Intl.DateTimeFormat("es-CO", {
+  day: "numeric",
+  month: "short",
+  timeZone: "America/Bogota",
+});
+
+/**
+ * Two local `YYYY-MM-DD` strings → "Del 3 de jul al 1 de ago". Used for the
+ * dashboard's rolling window, so the heading "Últimos 30 días" is backed by
+ * the actual dates rather than leaving the reader to guess them.
+ *
+ * Parsed as `YYYY-MM-DDT12:00:00` (local midday, NOT bare `new Date(iso)`,
+ * which JS parses as UTC midnight and would render the previous day at UTC-5).
+ */
+export function formatDateRange(fromIso: string, toIso: string): string {
+  const from = new Date(`${fromIso}T12:00:00`);
+  const to = new Date(`${toIso}T12:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return `${fromIso} - ${toIso}`;
+  return `Del ${DAY_MONTH_FORMATTER.format(from)} al ${DAY_MONTH_FORMATTER.format(to)}`;
 }
 
 /**

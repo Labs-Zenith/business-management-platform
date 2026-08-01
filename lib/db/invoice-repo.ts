@@ -592,4 +592,14 @@ export const invoiceRepo: InvoiceRepository = {
     // returned detail.
     return buildDetail(toInvoice(updatedRows[0]!));
   },
+
+  /** SQL-side aggregate — see `lib/db/expense-repo.ts#listActiveMonths` for why. */
+  async listActiveMonths(businessId: string): Promise<string[]> {
+    const rows = (await sql`
+      SELECT DISTINCT to_char(issue_date, 'YYYY-MM') AS month
+      FROM invoices
+      WHERE business_id = ${businessId}
+    `) as unknown as { month: string }[];
+    return rows.map((row) => row.month);
+  },
 };

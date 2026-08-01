@@ -20,6 +20,10 @@ const CUSTOMER_LOOKUP_PAGE_SIZE = 50;
  * Invoice `status` comes from `getOverdueInvoices`
  * (`lib/services/dashboard-service.ts`), which is always the
  * repository-recomputed value, never a stale persisted field.
+ *
+ * Takes NO `period`: "vencida" is derived against today, so this is a live
+ * snapshot. It sits under the "Cobros pendientes" heading, which is what says
+ * so — the title itself needs no qualifier.
  */
 export async function OverdueList() {
   await loadStoreFromCookie();
@@ -49,7 +53,7 @@ export async function OverdueList() {
             {invoices.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  No hay facturas vencidas.
+                  No tienes facturas vencidas.
                 </TableCell>
               </TableRow>
             ) : (

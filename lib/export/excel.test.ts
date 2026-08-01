@@ -33,6 +33,7 @@ function buildChartImages(): DashboardChartImages {
 
 function buildDashboardData(): DashboardExportData {
   return {
+    periodLabel: "Julio 2026",
     summary: {
       pendingBalance: 500_000,
       paidThisMonth: 200_000,
@@ -153,6 +154,7 @@ function buildDashboardData(): DashboardExportData {
 
 function buildEmptyDashboardData(): DashboardExportData {
   return {
+    periodLabel: "Julio 2026",
     summary: {
       pendingBalance: 0,
       paidThisMonth: 0,
@@ -204,15 +206,19 @@ describe("renderDashboardWorkbook", () => {
 
     const resumen = workbook.getWorksheet("Resumen")!;
     expect(resumen.getRow(1).values).toEqual([undefined, "Concepto", "Valor"]);
-    expect(resumen.rowCount).toBe(5);
-    expect(resumen.getRow(2).getCell(1).value).toBe("Saldo pendiente por cobrar");
-    expect(resumen.getRow(2).getCell(2).value).toBe(formatCOP(500_000));
-    expect(resumen.getRow(3).getCell(1).value).toBe("Pagado este mes");
-    expect(resumen.getRow(3).getCell(2).value).toBe(formatCOP(200_000));
-    expect(resumen.getRow(4).getCell(1).value).toBe("Facturas vencidas");
+    expect(resumen.rowCount).toBe(6);
+    // The exported period is named first, then the two point-in-time figures
+    // (which do NOT move with it), then the two that do.
+    expect(resumen.getRow(2).getCell(1).value).toBe("Periodo");
+    expect(resumen.getRow(2).getCell(2).value).toBe("Julio 2026");
+    expect(resumen.getRow(3).getCell(1).value).toBe("Por cobrar (al momento de exportar)");
+    expect(resumen.getRow(3).getCell(2).value).toBe(formatCOP(500_000));
+    expect(resumen.getRow(4).getCell(1).value).toBe("Facturas vencidas (al momento de exportar)");
     expect(resumen.getRow(4).getCell(2).value).toBe(2);
-    expect(resumen.getRow(5).getCell(1).value).toBe("Gastos del mes");
-    expect(resumen.getRow(5).getCell(2).value).toBe(formatCOP(150_000));
+    expect(resumen.getRow(5).getCell(1).value).toBe("Pagado — Julio 2026");
+    expect(resumen.getRow(5).getCell(2).value).toBe(formatCOP(200_000));
+    expect(resumen.getRow(6).getCell(1).value).toBe("Gastos — Julio 2026");
+    expect(resumen.getRow(6).getCell(2).value).toBe(formatCOP(150_000));
 
     const saldoPorEstado = workbook.getWorksheet("Saldo por estado")!;
     expect(saldoPorEstado.getRow(1).values).toEqual([undefined, "Estado", "Cantidad", "Saldo", "Total"]);
@@ -368,7 +374,7 @@ describe("renderDashboardWorkbook", () => {
     // The 8 pre-existing data sheets are untouched.
     const dataSheetNames = SHEET_NAMES.filter((name) => name !== "Gráficos");
     expect(dataSheetNames.every((name) => workbook.getWorksheet(name) !== undefined)).toBe(true);
-    expect(workbook.getWorksheet("Resumen")!.rowCount).toBe(5);
+    expect(workbook.getWorksheet("Resumen")!.rowCount).toBe(6);
   });
 
   it("renders header-only sheets for an empty-state business without throwing", async () => {
@@ -401,10 +407,11 @@ describe("renderDashboardWorkbook", () => {
     expect(pagosPorMes.rowCount).toBe(1);
 
     const resumen = workbook.getWorksheet("Resumen")!;
-    expect(resumen.rowCount).toBe(5);
-    expect(resumen.getRow(2).getCell(2).value).toBe(formatCOP(0));
+    expect(resumen.rowCount).toBe(6);
+    expect(resumen.getRow(2).getCell(2).value).toBe("Julio 2026");
     expect(resumen.getRow(3).getCell(2).value).toBe(formatCOP(0));
     expect(resumen.getRow(4).getCell(2).value).toBe(0);
     expect(resumen.getRow(5).getCell(2).value).toBe(formatCOP(0));
+    expect(resumen.getRow(6).getCell(2).value).toBe(formatCOP(0));
   });
 });

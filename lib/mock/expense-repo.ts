@@ -47,6 +47,14 @@ export function createExpenseRepository(store: MockStore): ExpenseRepository {
       return paginate(expenses, query.page, query.pageSize);
     },
 
+    /** Mirrors `lib/db/expense-repo.ts#listActiveMonths`. Dates are `YYYY-MM-DD`, so the month is a slice. */
+    async listActiveMonths(businessId: string): Promise<string[]> {
+      const months = [...store.expenses.values()]
+        .filter((expense) => expense.businessId === businessId)
+        .map((expense) => expense.expenseDate.slice(0, 7));
+      return [...new Set(months)];
+    },
+
     async create(businessId: string, data: ExpenseInput): Promise<Expense> {
       const now = new Date().toISOString();
       // `categoryId` is resolved from `category`'s catalog code when the

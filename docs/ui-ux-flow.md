@@ -64,20 +64,26 @@ No incluir registro publico.
 
 Objetivo:
 
-- Dar claridad inmediata sobre cartera.
+- Responder dos preguntas: cuanto te deben, y como vas ultimamente.
+
+Ventana:
+
+- Fija: los ultimos 30 dias. No hay selector de periodo en pantalla. Un mes
+  calendario se elige al exportar, no al mirar.
 
 Contenido:
 
-- Total pendiente por cobrar.
-- Pagos del mes.
-- Facturas vencidas.
-- Pagos recientes.
-- Clientes con mayor saldo.
+- Cobros pendientes (foto del momento, sin rango de fechas): por cobrar,
+  facturas vencidas (numero y listado), por cobrar por estado, clientes que
+  mas te deben.
+- Ultimos 30 dias, en dos pestanas:
+  - Ingresos: facturado, cobrado, facturado vs cobrado por mes, pagos recientes.
+  - Egresos: total, por categoria, por mes, egresos recientes.
 
 Acciones:
 
-- Crear cliente.
-- Crear factura.
+- Exportar (Excel o PDF), eligiendo los ultimos 30 dias o un mes concreto.
+- Solo lectura: crear cliente/factura/egreso vive en sus propias pantallas.
 
 ### Clientes
 

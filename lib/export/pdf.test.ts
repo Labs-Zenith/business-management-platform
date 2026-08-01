@@ -1,9 +1,9 @@
 import PDFDocument from "pdfkit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatCOP } from "@/lib/money";
-import { renderDashboardExportPdf } from "@/lib/export/pdf";
-import type { DashboardChartImages, DashboardExportData } from "@/lib/export/excel";
-import type { InvoiceWithFinance } from "@/lib/services/ports";
+import { renderDashboardExportPdf, renderInvoicePdf, renderInvoicesExportPdf, renderPaymentsExportPdf } from "@/lib/export/pdf";
+import type { DashboardChartImages, DashboardExportData, InvoiceExportRow } from "@/lib/export/excel";
+import type { Business, InvoiceDetail, InvoiceWithFinance, PaymentWithRefs } from "@/lib/services/ports";
 
 /** 1x1 transparent PNG — smallest valid PNG buffer, sufficient for `doc.image`. */
 const FAKE_PNG_BUFFER = Buffer.from(
@@ -23,6 +23,7 @@ function buildChartImages(): DashboardChartImages {
 
 function buildDashboardData(): DashboardExportData {
   return {
+    periodLabel: "Julio 2026",
     summary: {
       pendingBalance: 500_000,
       paidThisMonth: 200_000,
@@ -172,6 +173,7 @@ function buildLargeOverdueInvoiceList(count: number): InvoiceWithFinance[] {
 
 function buildEmptyDashboardData(): DashboardExportData {
   return {
+    periodLabel: "Julio 2026",
     summary: {
       pendingBalance: 0,
       paidThisMonth: 0,
@@ -200,6 +202,99 @@ function buildEmptyDashboardData(): DashboardExportData {
       recentExpenses: [],
     },
   };
+}
+
+function buildBusiness(): Business {
+  return {
+    id: "biz-1",
+    name: "Negocio de Prueba",
+    email: "negocio@example.com",
+    phone: "555-0100",
+    address: "Calle Falsa 123",
+    currency: "COP",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+function buildInvoiceDetail(): InvoiceDetail {
+  return {
+    id: "inv-1",
+    businessId: "biz-1",
+    customerId: "cust-1",
+    invoiceTypeId: "c1000000-0000-4000-8000-000000000001",
+    number: "F-0001",
+    issueDate: "2026-07-01",
+    dueDate: "2026-07-15",
+    subtotal: 100_000,
+    total: 100_000,
+    status: "pending",
+    notes: null,
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T00:00:00.000Z",
+    paidAmount: 0,
+    balance: 100_000,
+    customer: {
+      id: "cust-1",
+      businessId: "biz-1",
+      name: "Cliente de Prueba",
+      documentNumber: null,
+      email: null,
+      phone: null,
+      address: null,
+      notes: null,
+      isActive: true,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    },
+    items: [
+      { id: "item-1", invoiceId: "inv-1", description: "Producto de prueba", quantity: 1, unitPrice: 100_000, productId: null, lineTotal: 100_000 },
+    ],
+    payments: [],
+  };
+}
+
+function buildInvoiceExportRows(): InvoiceExportRow[] {
+  return [
+    {
+      id: "inv-1",
+      businessId: "biz-1",
+      customerId: "cust-1",
+      invoiceTypeId: "c1000000-0000-4000-8000-000000000001",
+      number: "F-0001",
+      issueDate: "2026-07-01",
+      dueDate: "2026-07-15",
+      subtotal: 100_000,
+      total: 100_000,
+      status: "pending",
+      notes: null,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+      paidAmount: 0,
+      balance: 100_000,
+      customerName: "Cliente de Prueba",
+    },
+  ];
+}
+
+function buildPaymentRows(): PaymentWithRefs[] {
+  return [
+    {
+      id: "pay-1",
+      businessId: "biz-1",
+      invoiceId: "inv-1",
+      customerId: "cust-1",
+      paymentDate: "2026-07-01",
+      amount: 50_000,
+      method: "efectivo",
+      methodId: null,
+      notes: null,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+      customer: { id: "cust-1", name: "Cliente de Prueba" },
+      invoice: { id: "inv-1", number: "F-0001" },
+    },
+  ];
 }
 
 /**
@@ -282,7 +377,9 @@ describe("renderDashboardExportPdf", () => {
       "Saldo por estado": 1,
       "Mayores saldos": 1,
       "Pagos por mes": 1,
-      "Facturas vencidas": 2,
+      // Once, as its section heading: the Resumen row now reads "Facturas
+      // vencidas (a hoy)", which is a different string.
+      "Facturas vencidas": 1,
       "Pagos recientes": 1,
       "Gastos por categoría": 1,
       "Gastos por mes": 1,
@@ -302,14 +399,18 @@ describe("renderDashboardExportPdf", () => {
     });
     const [, , , , facturasVencidasSlice, pagosRecientesSlice, , , gastosRecientesSlice] = sectionSlices;
 
-    // 1. Resumen — plain count row (not currency-formatted) alongside money rows.
-    expect(rendered).toContain("Saldo pendiente por cobrar");
+    // 1. Resumen — names the exported period, then the two point-in-time
+    // "(a hoy)" figures, then the two that follow the period. Includes a
+    // plain count row (not currency-formatted) alongside the money rows.
+    expect(rendered).toContain("Periodo");
+    expect(rendered).toContain("Julio 2026");
+    expect(rendered).toContain("Por cobrar (al momento de exportar)");
     expect(rendered).toContain(formatCOP(500_000));
-    expect(rendered).toContain("Pagado este mes");
-    expect(rendered).toContain(formatCOP(200_000));
-    expect(rendered).toContain("Facturas vencidas");
+    expect(rendered).toContain("Facturas vencidas (al momento de exportar)");
     expect(rendered).toContain("2");
-    expect(rendered).toContain("Gastos del mes");
+    expect(rendered).toContain("Pagado — Julio 2026");
+    expect(rendered).toContain(formatCOP(200_000));
+    expect(rendered).toContain("Gastos — Julio 2026");
     expect(rendered).toContain(formatCOP(150_000));
 
     // 2. Saldo por estado — Estado/Cantidad/Saldo/Total, all 4 fixed rows.
@@ -426,8 +527,11 @@ describe("renderDashboardExportPdf", () => {
     await renderDashboardExportPdf(data, buildChartImages());
     const rendered = calls();
 
-    // 45 rows at pdfkit's 22pt row height (~990pt) is far taller than an A4
-    // page's usable height (~760pt after margins), so `ensureRoom` must have
+    // 45 rows, each at `writeTable`'s 22pt row-height floor (none of these
+    // fixture values are long enough to wrap and grow past it) — ~990pt
+    // total — is far taller than landscape A4's usable height (~515.28pt
+    // after margins; smaller than portrait's ~761.89pt because width and
+    // height swap under `layout: "landscape"`), so `ensureRoom` must have
     // triggered at least one page break inside this table.
     expect(addPageSpy).toHaveBeenCalled();
 
@@ -458,5 +562,145 @@ describe("renderDashboardExportPdf", () => {
 
     // The last row's data must still have rendered after the page break.
     expect(facturasVencidasSlice).toContain("F-0045");
+  });
+});
+
+/**
+ * `writeTable`'s header band draws its shaded background via a single
+ * `doc.rect(startX, y, tableWidth, headerHeight)` call per table (repeated
+ * once per page the table spans, on header repeat) — the one place the
+ * table's total column width is passed to pdfkit as a real number. Spying
+ * on `rect` (rather than re-deriving column widths from spied `text` calls)
+ * gives a direct, real geometry assertion instead of a restatement of the
+ * column-width literals already in `pdf.ts`.
+ */
+function captureTableWidths(): { entries: () => { tableWidth: number; contentWidth: number }[] } {
+  const entries: { tableWidth: number; contentWidth: number }[] = [];
+  vi.spyOn(PDFDocument.prototype, "rect").mockImplementation(function (this: PDFKit.PDFDocument, ...args: unknown[]) {
+    const w = args[2] as number;
+    entries.push({
+      tableWidth: w,
+      contentWidth: this.page.width - this.page.margins.left - this.page.margins.right,
+    });
+    return this;
+  });
+  return { entries: () => entries };
+}
+
+describe("table geometry", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Regression test for the horizontal-overflow half of the bug: before this
+   * fix, `renderInvoicesExportPdf`'s columns summed to 640pt and
+   * `renderPaymentsExportPdf`'s to 600pt against a portrait page's 515.28pt
+   * content width — both silently clipped or dropped columns off the page
+   * edge, and nothing in this file asserted on width/position at all. This
+   * exercises every exporter (the portrait customer-facing invoice included)
+   * and asserts the real invariant `writeTable` never checked itself:
+   * `Σ column.width <= contentWidth(doc)`, for that document's own layout.
+   */
+  it("keeps every rendered table's total column width within its own page's content width", async () => {
+    const { entries } = captureTableWidths();
+
+    await renderInvoicePdf(buildBusiness(), buildInvoiceDetail());
+    await renderInvoicesExportPdf(buildInvoiceExportRows());
+    await renderPaymentsExportPdf(buildPaymentRows());
+    await renderDashboardExportPdf(buildDashboardData(), buildChartImages());
+
+    const captured = entries();
+    // Sanity: every render above draws at least one table, so this must be
+    // non-empty — otherwise the assertion below would vacuously pass.
+    expect(captured.length).toBeGreaterThan(0);
+    for (const { tableWidth, contentWidth } of captured) {
+      expect(tableWidth).toBeLessThanOrEqual(contentWidth);
+    }
+  });
+
+  /**
+   * Regression test for the vertical-overlap half of the bug: `writeTable`
+   * used to advance `doc.y` by a hardcoded 22pt per row regardless of how
+   * tall the cell text actually rendered, so a wrapped multi-line cell (e.g.
+   * a long customer name in the "Cliente" column) bled into the next row.
+   * This renders a real long value through `renderPaymentsExportPdf`,
+   * captures the exact `(value, x, y)` pdfkit drew each cell at, and asserts
+   * the following row starts below where the wrapped cell's text actually
+   * ends — not merely that some row height increased.
+   */
+  it("does not let a long wrapped cell value overlap the following row", async () => {
+    const longCustomerName =
+      "Comercializadora Internacional de Suministros Industriales y Servicios Unidos S.A.S.";
+    const rows: PaymentWithRefs[] = [
+      {
+        id: "pay-1",
+        businessId: "biz-1",
+        invoiceId: "inv-1",
+        customerId: "cust-1",
+        paymentDate: "2026-07-01",
+        amount: 50_000,
+        method: "efectivo",
+        methodId: null,
+        notes: null,
+        createdAt: "2026-07-01T00:00:00.000Z",
+        updatedAt: "2026-07-01T00:00:00.000Z",
+        customer: { id: "cust-1", name: longCustomerName },
+        invoice: { id: "inv-1", number: "F-0001" },
+      },
+      {
+        id: "pay-2",
+        businessId: "biz-1",
+        invoiceId: "inv-2",
+        customerId: "cust-2",
+        paymentDate: "2026-07-02",
+        amount: 20_000,
+        method: "efectivo",
+        methodId: null,
+        notes: null,
+        createdAt: "2026-07-02T00:00:00.000Z",
+        updatedAt: "2026-07-02T00:00:00.000Z",
+        customer: { id: "cust-2", name: "Cliente Normal" },
+        invoice: { id: "inv-2", number: "F-0002" },
+      },
+    ];
+
+    const positioned: { value: string; y: number }[] = [];
+    const originalText = PDFDocument.prototype.text;
+    vi.spyOn(PDFDocument.prototype, "text").mockImplementation(function (this: PDFKit.PDFDocument, ...args: unknown[]) {
+      const [value, x, y] = args as [string, number | undefined, number | undefined, unknown?];
+      if (typeof x === "number" && typeof y === "number") {
+        positioned.push({ value, y });
+      }
+      return originalText.apply(this, args as Parameters<typeof originalText>);
+    });
+
+    await renderPaymentsExportPdf(rows);
+
+    const longNameCall = positioned.find((call) => call.value === longCustomerName);
+    // The row after the wrapped "Cliente" cell — identified by its own
+    // "Fecha" cell value, which is only ever drawn once, so this can't
+    // accidentally match the wrapped row itself or a header repeat.
+    const nextRowCall = positioned.find((call) => call.value === "2026-07-02");
+    expect(longNameCall).toBeDefined();
+    expect(nextRowCall).toBeDefined();
+
+    // Measure with a real (unmocked) document using the exact font/size and
+    // "Cliente" column width `renderPaymentsExportPdf` renders with (200pt,
+    // minus the 8pt of horizontal cell padding `writeTable` reserves).
+    const measureDoc = new PDFDocument({ size: "A4", margin: 40, layout: "landscape" });
+    measureDoc.font("Helvetica").fontSize(8);
+    const wrappedHeight = measureDoc.heightOfString(longCustomerName, { width: 200 - 8 });
+
+    // Confirms this value actually exercises wrapping (more than one 8pt
+    // Helvetica line, ~9.25pt) — otherwise the assertion below would pass
+    // trivially without ever having tested the overlap-prone path.
+    expect(wrappedHeight).toBeGreaterThan(9.5);
+
+    // The text baseline every cell is drawn at is `y + 7` from the row's
+    // top; the wrapped cell's rendered text therefore ends at
+    // `longNameCall.y + wrappedHeight`. The next row must start no earlier
+    // than that.
+    expect(nextRowCall!.y).toBeGreaterThan(longNameCall!.y + wrappedHeight);
   });
 });

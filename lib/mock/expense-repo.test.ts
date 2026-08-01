@@ -196,3 +196,24 @@ describe("createExpenseRepository.list", () => {
     expect(result.total).toBe(3);
   });
 });
+
+describe("createExpenseRepository.listActiveMonths", () => {
+  it("returns each month with an expense exactly once, scoped to the business", async () => {
+    const repo = createExpenseRepository(store);
+    await repo.create(BUSINESS_ID, buildInput({ expenseDate: "2026-07-01" }));
+    await repo.create(BUSINESS_ID, buildInput({ expenseDate: "2026-07-28" })); // same month
+    await repo.create(BUSINESS_ID, buildInput({ expenseDate: "2026-04-15" }));
+    await repo.create(OTHER_BUSINESS_ID, buildInput({ expenseDate: "2025-01-09" }));
+
+    const months = await repo.listActiveMonths(BUSINESS_ID);
+
+    expect([...months].sort()).toEqual(["2026-04", "2026-07"]);
+    expect(months).not.toContain("2025-01");
+  });
+
+  it("returns an empty list for a business with no expenses", async () => {
+    const repo = createExpenseRepository(store);
+
+    expect(await repo.listActiveMonths(BUSINESS_ID)).toEqual([]);
+  });
+});

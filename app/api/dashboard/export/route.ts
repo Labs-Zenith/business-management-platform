@@ -2,6 +2,7 @@ import { withApiHandler } from "@/lib/server/http";
 import { requireSession } from "@/lib/session";
 import { getDashboardSummary, getDashboardCharts } from "@/lib/services/dashboard-service";
 import { getExpensesByMonth, getExpensesSummary } from "@/lib/services/expense-dashboard-service";
+import { parsePeriodParam } from "@/lib/services/dashboard-period";
 import { renderDashboardWorkbook, type DashboardChartImages, type DashboardExportData } from "@/lib/export/excel";
 import { binaryAttachment, parseExportFormat } from "@/lib/export/http";
 import { renderDashboardExportPdf } from "@/lib/export/pdf";
@@ -20,14 +21,19 @@ export const GET = withApiHandler(async (request: Request) => {
   const session = await requireSession();
   const { searchParams } = new URL(request.url);
   const format = parseExportFormat(searchParams);
+  // The dashboard screen is fixed to a rolling 30-day window and offers the
+  // calendar months HERE instead, through its export menu — so this param is
+  // the only way a month is ever requested. An absent/invalid value resolves
+  // to the same 30-day window the screen shows.
+  const period = parsePeriodParam(searchParams.get("period") ?? undefined);
 
   const [summary, charts, expenses, expensesByMonth] = await Promise.all([
-    getDashboardSummary(session),
-    getDashboardCharts(session),
-    getExpensesSummary(session),
-    getExpensesByMonth(session),
+    getDashboardSummary(session, period),
+    getDashboardCharts(session, period),
+    getExpensesSummary(session, period),
+    getExpensesByMonth(session, period),
   ]);
-  const data: DashboardExportData = { summary, charts, expenses };
+  const data: DashboardExportData = { summary, charts, expenses, periodLabel: period.label };
 
   // Each chart PNG is rendered via `safeChartPng` so a single chart's render
   // failure (e.g. a latent `sharp`/SVG bug) never fails the whole export —

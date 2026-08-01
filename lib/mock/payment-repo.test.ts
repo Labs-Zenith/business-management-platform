@@ -176,3 +176,46 @@ describe("paymentRepo.createForInvoice — overpay race (safety-critical)", () =
     expect(updated.status).toBe("paid");
   });
 });
+
+describe("paymentRepo.listActiveMonths", () => {
+  it("returns each payment month exactly once, scoped to the business", async () => {
+    resetStore();
+    const LOCAL_BUSINESS_ID = "10000000-0000-4000-8000-000000000081";
+    const FOREIGN_BUSINESS_ID = "10000000-0000-4000-8000-000000000082";
+
+    const localInvoice = await invoiceRepo.create(LOCAL_BUSINESS_ID, buildInvoicePersist(100_000));
+    await paymentRepo.createForInvoice(LOCAL_BUSINESS_ID, localInvoice.id, {
+      paymentDate: "2026-07-10",
+      amount: 10_000,
+      method: "cash",
+    });
+    await paymentRepo.createForInvoice(LOCAL_BUSINESS_ID, localInvoice.id, {
+      paymentDate: "2026-07-22", // same month
+      amount: 10_000,
+      method: "cash",
+    });
+    await paymentRepo.createForInvoice(LOCAL_BUSINESS_ID, localInvoice.id, {
+      paymentDate: "2026-02-05",
+      amount: 10_000,
+      method: "cash",
+    });
+
+    const foreignInvoice = await invoiceRepo.create(FOREIGN_BUSINESS_ID, buildInvoicePersist(50_000));
+    await paymentRepo.createForInvoice(FOREIGN_BUSINESS_ID, foreignInvoice.id, {
+      paymentDate: "2023-09-09",
+      amount: 5_000,
+      method: "cash",
+    });
+
+    const months = await paymentRepo.listActiveMonths(LOCAL_BUSINESS_ID);
+
+    expect([...months].sort()).toEqual(["2026-02", "2026-07"]);
+    expect(months).not.toContain("2023-09");
+  });
+
+  it("returns an empty list for a business with no payments", async () => {
+    resetStore();
+
+    expect(await paymentRepo.listActiveMonths("10000000-0000-4000-8000-000000000083")).toEqual([]);
+  });
+});

@@ -1,14 +1,18 @@
 import { requireSession } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getExpensesByCategory, getExpensesByMonth } from "@/lib/services/expense-dashboard-service";
+import type { DashboardPeriod } from "@/lib/services/dashboard-period";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExpenseChartCards } from "./expense-chart-cards";
 
-export async function ExpenseCharts() {
+export async function ExpenseCharts({ period }: { period: DashboardPeriod }) {
   await loadStoreFromCookie();
   const session = await requireSession();
-  const [byCategory, byMonth] = await Promise.all([getExpensesByCategory(session), getExpensesByMonth(session)]);
+  const [byCategory, byMonth] = await Promise.all([
+    getExpensesByCategory(session, period),
+    getExpensesByMonth(session, period),
+  ]);
 
   return <ExpenseChartCards charts={{ byCategory, byMonth }} />;
 }

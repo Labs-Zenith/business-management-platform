@@ -620,3 +620,31 @@ describe("invoiceRepo — product-line inventory decrement (safety-critical)", (
     expect(found!.currentQuantity).toBe(6);
   });
 });
+
+describe("createInvoiceRepository.listActiveMonths", () => {
+  const LOCAL_BUSINESS_ID = "10000000-0000-4000-8000-000000000077";
+  const FOREIGN_BUSINESS_ID = "10000000-0000-4000-8000-000000000078";
+
+  // The default store (not `createEmptyStore()`): `create` resolves the
+  // customer through the store, and `buildInvoicePersist` points at a fixture
+  // customer that only exists there.
+  it("returns each issue month exactly once, scoped to the business", async () => {
+    resetStore();
+
+    await invoiceRepo.create(LOCAL_BUSINESS_ID, buildInvoicePersist({ issueDate: "2026-07-08" }));
+    await invoiceRepo.create(LOCAL_BUSINESS_ID, buildInvoicePersist({ issueDate: "2026-07-25" })); // same month
+    await invoiceRepo.create(LOCAL_BUSINESS_ID, buildInvoicePersist({ issueDate: "2025-12-01" }));
+    await invoiceRepo.create(FOREIGN_BUSINESS_ID, buildInvoicePersist({ issueDate: "2024-02-02" }));
+
+    const months = await invoiceRepo.listActiveMonths(LOCAL_BUSINESS_ID);
+
+    expect([...months].sort()).toEqual(["2025-12", "2026-07"]);
+    expect(months).not.toContain("2024-02");
+  });
+
+  it("returns an empty list for a business with no invoices", async () => {
+    resetStore();
+
+    expect(await invoiceRepo.listActiveMonths("10000000-0000-4000-8000-000000000079")).toEqual([]);
+  });
+});

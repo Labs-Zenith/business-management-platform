@@ -11,6 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
  * "Clientes con mayor saldo" dashboard section, per `docs/ui-ux-flow.md`'s
  * "Dashboard" content list. Its own independently-streamed Suspense section
  * — see `components/domain/dashboard/kpi-cards.tsx` for the shared rationale.
+ *
+ * Takes NO `period`: an outstanding balance is by definition current. It sits
+ * under the "Cobros pendientes" heading, which is what says so.
+ *
+ * This is the ONLY place top debtors appear on screen; `portfolio-chart-cards.tsx`
+ * used to plot the same rows as a second card until the duplication was removed.
  */
 export async function TopDebtors() {
   await loadStoreFromCookie();
@@ -20,7 +26,7 @@ export async function TopDebtors() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Clientes con mayor saldo</CardTitle>
+        <CardTitle>Clientes que más te deben</CardTitle>
       </CardHeader>
       <CardContent>
         <Table className="min-w-[360px]">
@@ -34,7 +40,7 @@ export async function TopDebtors() {
             {debtors.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={2} className="text-center text-muted-foreground">
-                  Sin clientes con saldo pendiente.
+                  Nadie te debe en este momento.
                 </TableCell>
               </TableRow>
             ) : (

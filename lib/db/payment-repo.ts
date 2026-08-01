@@ -93,6 +93,16 @@ export const paymentRepo: PaymentRepository = {
     return paginate(withRefs, query.page, query.pageSize) as Paged<PaymentWithRefs>;
   },
 
+  /** SQL-side aggregate — see `lib/db/expense-repo.ts#listActiveMonths` for why. */
+  async listActiveMonths(businessId: string): Promise<string[]> {
+    const rows = (await sql`
+      SELECT DISTINCT to_char(payment_date, 'YYYY-MM') AS month
+      FROM payments
+      WHERE business_id = ${businessId}
+    `) as unknown as { month: string }[];
+    return rows.map((row) => row.month);
+  },
+
   async createForInvoice(businessId: string, invoiceId: string, data: PaymentInput): Promise<InvoiceDetail> {
     // Two statements, ONE real transaction (see `client.ts`'s canonical note
     // and this file's doc comment). Shares the invoice row lock with

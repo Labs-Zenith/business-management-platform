@@ -3,6 +3,7 @@ import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getRecentPayments } from "@/lib/services/dashboard-service";
+import { periodRangeLabel, type DashboardPeriod } from "@/lib/services/dashboard-period";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,10 +13,10 @@ import { Skeleton } from "@/components/ui/skeleton";
  * "Dashboard" content list. Its own independently-streamed Suspense section
  * — see `components/domain/dashboard/kpi-cards.tsx` for the shared rationale.
  */
-export async function RecentPayments() {
+export async function RecentPayments({ period }: { period: DashboardPeriod }) {
   await loadStoreFromCookie();
   const session = await requireSession();
-  const payments = await getRecentPayments(session);
+  const payments = await getRecentPayments(session, period);
 
   return (
     <Card>
@@ -35,8 +36,13 @@ export async function RecentPayments() {
           <TableBody>
             {payments.length === 0 ? (
               <TableRow>
+                {/* `periodRangeLabel` (not `period.label` directly) so this reads
+                    naturally for every preset — "en los últimos 30 días" needs
+                    the article that `period.label` alone doesn't carry, while a
+                    month like "julio 2026" needs nothing extra. See
+                    `lib/services/dashboard-period.ts`'s doc comment. */}
                 <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  Sin pagos registrados.
+                  No recibiste pagos en {periodRangeLabel(period)}.
                 </TableCell>
               </TableRow>
             ) : (

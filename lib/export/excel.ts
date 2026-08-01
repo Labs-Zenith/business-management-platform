@@ -24,6 +24,13 @@ export type DashboardExportData = {
    */
   charts: DashboardCharts;
   expenses: ExpensesSummary;
+  /**
+   * User-facing name of the exported period ("Julio 2026", "Últimos 3 meses",
+   * "Todo") — `DashboardPeriod.label`. Without it a file exported while
+   * viewing a past month would still be headed "Pagado este mes" and read as
+   * current figures.
+   */
+  periodLabel: string;
 };
 
 function styleHeader(row: ExcelJS.Row) {
@@ -87,17 +94,22 @@ export async function renderInvoicesWorkbook(rows: InvoiceExportRow[]): Promise<
 }
 
 function addResumenSheet(workbook: ExcelJS.Workbook, data: DashboardExportData) {
-  const { summary, expenses } = data;
+  const { summary, expenses, periodLabel } = data;
   const resumen = workbook.addWorksheet("Resumen");
   resumen.columns = [
     { header: "Concepto", key: "concept", width: 32 },
     { header: "Valor", key: "value", width: 20 },
   ];
   styleHeader(resumen.getRow(1));
-  resumen.addRow({ concept: "Saldo pendiente por cobrar", value: formatCOP(summary.pendingBalance) });
-  resumen.addRow({ concept: "Pagado este mes", value: formatCOP(summary.paidThisMonth) });
-  resumen.addRow({ concept: "Facturas vencidas", value: summary.overdueInvoices });
-  resumen.addRow({ concept: "Gastos del mes", value: formatCOP(expenses.totalThisMonth) });
+  resumen.addRow({ concept: "Periodo", value: periodLabel });
+  // "al momento de exportar" rather than "a hoy": a file gets opened days
+  // later, when "hoy" no longer means anything. These two figures are live
+  // snapshots and do NOT move with the requested period; the two rows below
+  // them do. Same distinction the screen makes with its two sections.
+  resumen.addRow({ concept: "Por cobrar (al momento de exportar)", value: formatCOP(summary.pendingBalance) });
+  resumen.addRow({ concept: "Facturas vencidas (al momento de exportar)", value: summary.overdueInvoices });
+  resumen.addRow({ concept: `Pagado — ${periodLabel}`, value: formatCOP(summary.paidThisMonth) });
+  resumen.addRow({ concept: `Gastos — ${periodLabel}`, value: formatCOP(expenses.totalThisMonth) });
 }
 
 function addSaldoPorEstadoSheet(workbook: ExcelJS.Workbook, charts: DashboardCharts) {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { formatCOP } from "@/lib/money";
 import type { Expense, Session } from "@/lib/services/ports";
+import type { DashboardPeriod } from "@/lib/services/dashboard-period";
 
 const mockRequireSession = vi.fn<() => Promise<Session>>();
 const mockGetRecentExpenses = vi.fn<() => Promise<Expense[]>>();
@@ -65,6 +66,17 @@ const OTRO_EXPENSE: Expense = {
   updatedAt: "2026-07-06T00:00:00.000Z",
 };
 
+// A literal rather than `parsePeriodParam(...)` so the rendered heading stays
+// fixed no matter when the suite runs. The component only reads `label`.
+const PERIOD: DashboardPeriod = {
+  key: "2026-07",
+  preset: "month",
+  label: "Julio 2026",
+  from: "2026-07-01",
+  to: "2026-07-31",
+  chartMonths: ["2026-07"],
+};
+
 describe("RecentExpenses", () => {
   beforeEach(() => {
     mockRequireSession.mockReset();
@@ -72,18 +84,37 @@ describe("RecentExpenses", () => {
     mockRequireSession.mockResolvedValue(SESSION);
   });
 
-  it('renders the empty state ("Sin egresos registrados.") when there are no expenses', async () => {
+  it('renders the empty state for a selected month ("No registraste egresos en julio 2026.")', async () => {
     mockGetRecentExpenses.mockResolvedValue([]);
 
-    render(await RecentExpenses());
+    render(await RecentExpenses({ period: PERIOD }));
 
-    expect(screen.getByText("Sin egresos registrados.")).toBeInTheDocument();
+    expect(screen.getByText("No registraste egresos en julio 2026.")).toBeInTheDocument();
+  });
+
+  it('renders the empty state for the rolling 30-day window with its article ("... en los últimos 30 días.")', async () => {
+    mockGetRecentExpenses.mockResolvedValue([]);
+
+    const last30: DashboardPeriod = {
+      key: "last30",
+      preset: "last30",
+      label: "Últimos 30 días",
+      from: "2026-07-02",
+      to: "2026-07-31",
+      chartMonths: ["2026-07"],
+    };
+    render(await RecentExpenses({ period: last30 }));
+
+    // `period.label` alone ("Últimos 30 días") reads broken mid-sentence
+    // ("... en últimos 30 días."); `periodRangeLabel` adds the article this
+    // preset needs — see `lib/services/dashboard-period.ts`.
+    expect(screen.getByText("No registraste egresos en los últimos 30 días.")).toBeInTheDocument();
   });
 
   it("renders a populated table with the exact accented category label and formatted money", async () => {
     mockGetRecentExpenses.mockResolvedValue([NOMINA_EXPENSE, OTRO_EXPENSE]);
 
-    render(await RecentExpenses());
+    render(await RecentExpenses({ period: PERIOD }));
 
     // Exact text match — with the accent — so a regression back to the
     // unaccented "Nomina" duplicate-map bug fails this test immediately.
@@ -100,7 +131,7 @@ describe("RecentExpenses", () => {
   it("renders the Fecha/Categoría/Descripción/Monto column headers with correct accents", async () => {
     mockGetRecentExpenses.mockResolvedValue([]);
 
-    render(await RecentExpenses());
+    render(await RecentExpenses({ period: PERIOD }));
 
     expect(screen.getByText("Categoría")).toBeInTheDocument();
     expect(screen.getByText("Descripción")).toBeInTheDocument();

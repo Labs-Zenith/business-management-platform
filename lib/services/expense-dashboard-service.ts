@@ -8,14 +8,21 @@
  * `app/(dashboard)/dashboard/page.tsx` Egresos panel can wrap each in its
  * own independent `<Suspense>` boundary. Every function resolves
  * `businessId` ONLY from `session.businessId`.
+ *
+ * The month helpers this file used to duplicate from `dashboard-service.ts`
+ * (`monthKey`/`monthLabel`/`recentMonthKeys`, plus `currentMonthPrefix`) are
+ * gone: both services now share `lib/services/dashboard-period.ts`, which is
+ * where the `?period=` selector's resolved range and chart buckets come from.
+ * Keeping three copies of month arithmetic in sync stopped being defensible
+ * once the range became user-selectable.
  */
 
 import { repositories } from "@/lib/services/repositories";
 import type { Expense, ExpenseCategory, Session } from "@/lib/services/ports";
+import { monthEnd, monthShortLabel, monthStart, type DashboardPeriod } from "@/lib/services/dashboard-period";
 
 const ALL_ROWS = Number.MAX_SAFE_INTEGER;
 const DEFAULT_RECENT_EXPENSES_LIMIT = 5;
-const DEFAULT_MONTHLY_EXPENSE_BUCKETS = 6;
 
 const CATEGORY_META: Record<ExpenseCategory, { label: string }> = {
   nomina: { label: "Nómina" },
@@ -36,52 +43,52 @@ export function getCategoryLabel(category: ExpenseCategory): string {
 export type ExpensesByCategoryDatum = { category: ExpenseCategory; label: string; total: number };
 export type ExpensesByMonthDatum = { month: string; label: string; amount: number };
 export type ExpensesSummary = {
+  /**
+   * Total spent within the requested period. Keeps its `totalThisMonth` name
+   * for the composite's existing consumers; with no `?period=` the default
+   * period IS the current month, so the name stays accurate there.
+   */
   totalThisMonth: number;
   byCategory: ExpensesByCategoryDatum[];
   recentExpenses: Expense[];
 };
 
-async function listAllExpenses(session: Session): Promise<Expense[]> {
-  const paged = await repositories.expenses.list(session.businessId, { page: 1, pageSize: ALL_ROWS });
+/**
+ * Every expense figure on the dashboard is range-scoped — unlike
+ * `dashboard-service.ts`, this file has no point-in-time counterpart to
+ * `getPendingBalance`, because an expense has no running balance to be "as
+ * of today". So `period` is required, not optional, on every function here.
+ */
+async function listExpenses(session: Session, range: { from?: string; to?: string }): Promise<Expense[]> {
+  const paged = await repositories.expenses.list(session.businessId, {
+    from: range.from,
+    to: range.to,
+    page: 1,
+    pageSize: ALL_ROWS,
+  });
   return paged.data;
 }
 
-function currentMonthPrefix(now: Date): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+/** The span the trend chart covers, which is wider than `period` for a single month (6 trailing buckets). */
+function chartRange(period: DashboardPeriod): { from: string; to: string } {
+  return {
+    from: monthStart(period.chartMonths[0]),
+    to: monthEnd(period.chartMonths[period.chartMonths.length - 1]),
+  };
 }
 
-/**
- * Duplicated from `dashboard-service.ts`'s private `monthKey`/`monthLabel`/
- * `recentMonthKeys` trio rather than importing them — this file is a
- * deliberate independent parallel service (see file-level doc comment), and
- * those helpers are private (unexported) in `dashboard-service.ts`.
- */
-function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+/** "Egresos del periodo": sum of amounts whose `expenseDate` falls inside `period`. */
+export async function getExpensesTotalInPeriod(session: Session, period: DashboardPeriod): Promise<number> {
+  const expenses = await listExpenses(session, period);
+  return expenses.reduce((sum, e) => sum + e.amount, 0);
 }
 
-function monthLabel(key: string): string {
-  const [year, month] = key.split("-").map(Number);
-  return new Intl.DateTimeFormat("es-CO", { month: "short" }).format(new Date(year, month - 1, 1));
-}
-
-function recentMonthKeys(now: Date, count: number): string[] {
-  return Array.from({ length: count }, (_, index) => {
-    const offset = count - index - 1;
-    return monthKey(new Date(now.getFullYear(), now.getMonth() - offset, 1));
-  });
-}
-
-/** "Gastos del mes": sum of amounts whose `expenseDate` is in the current calendar month. */
-export async function getExpensesTotalThisMonth(session: Session, now: Date = new Date()): Promise<number> {
-  const expenses = await listAllExpenses(session);
-  const prefix = currentMonthPrefix(now);
-  return expenses.filter((e) => e.expenseDate.startsWith(prefix)).reduce((sum, e) => sum + e.amount, 0);
-}
-
-/** Totals per category, always emitting all categories in fixed order (zeros included), like receivablesByStatus. */
-export async function getExpensesByCategory(session: Session): Promise<ExpensesByCategoryDatum[]> {
-  const expenses = await listAllExpenses(session);
+/** Totals per category within `period`, always emitting all categories in fixed order (zeros included), like receivablesByStatus. */
+export async function getExpensesByCategory(
+  session: Session,
+  period: DashboardPeriod,
+): Promise<ExpensesByCategoryDatum[]> {
+  const expenses = await listExpenses(session, period);
   return CATEGORY_ORDER.map((category) => ({
     category,
     label: CATEGORY_META[category].label,
@@ -89,12 +96,16 @@ export async function getExpensesByCategory(session: Session): Promise<ExpensesB
   }));
 }
 
-/** "Gastos recientes": the `limit` most recent expenses, newest first (tiebreak by createdAt), like getRecentPayments. */
+/**
+ * "Gastos recientes": the `limit` most recent expenses inside `period`, newest
+ * first (tiebreak by createdAt), like getRecentPayments.
+ */
 export async function getRecentExpenses(
   session: Session,
+  period: DashboardPeriod,
   limit: number = DEFAULT_RECENT_EXPENSES_LIMIT,
 ): Promise<Expense[]> {
-  const expenses = await listAllExpenses(session);
+  const expenses = await listExpenses(session, period);
   return [...expenses]
     .sort((a, b) => {
       if (a.expenseDate !== b.expenseDate) return a.expenseDate < b.expenseDate ? 1 : -1;
@@ -104,18 +115,14 @@ export async function getRecentExpenses(
 }
 
 /**
- * "Gastos por mes": total expense amount per calendar month over the last
- * `monthBuckets` months, every bucket emitted (zeros included), newest-last —
+ * "Gastos por mes": total expense amount per calendar month across
+ * `period.chartMonths`, every bucket emitted (zeros included), newest-last —
  * mirrors `dashboard-service.ts`'s `getDashboardCharts`' `monthlyPayments`.
  */
-export async function getExpensesByMonth(
-  session: Session,
-  now: Date = new Date(),
-  monthBuckets: number = DEFAULT_MONTHLY_EXPENSE_BUCKETS,
-): Promise<ExpensesByMonthDatum[]> {
-  const expenses = await listAllExpenses(session);
+export async function getExpensesByMonth(session: Session, period: DashboardPeriod): Promise<ExpensesByMonthDatum[]> {
+  const expenses = await listExpenses(session, chartRange(period));
 
-  const months = recentMonthKeys(now, monthBuckets);
+  const months = period.chartMonths;
   const amountsByMonth = new Map(months.map((month) => [month, 0]));
   for (const expense of expenses) {
     const expenseMonth = expense.expenseDate.slice(0, 7);
@@ -126,17 +133,17 @@ export async function getExpensesByMonth(
 
   return months.map((month) => ({
     month,
-    label: monthLabel(month),
+    label: monthShortLabel(month),
     amount: amountsByMonth.get(month) ?? 0,
   }));
 }
 
 /** Composite for a future `/api/expenses/summary` (not built this phase) — mirrors getDashboardSummary. */
-export async function getExpensesSummary(session: Session, now: Date = new Date()): Promise<ExpensesSummary> {
+export async function getExpensesSummary(session: Session, period: DashboardPeriod): Promise<ExpensesSummary> {
   const [totalThisMonth, byCategory, recentExpenses] = await Promise.all([
-    getExpensesTotalThisMonth(session, now),
-    getExpensesByCategory(session),
-    getRecentExpenses(session),
+    getExpensesTotalInPeriod(session, period),
+    getExpensesByCategory(session, period),
+    getRecentExpenses(session, period),
   ]);
   return { totalThisMonth, byCategory, recentExpenses };
 }

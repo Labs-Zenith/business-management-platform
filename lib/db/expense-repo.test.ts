@@ -216,3 +216,30 @@ describe("db expenseRepo.create", () => {
     expect(values).toContain(EXPLICIT_CATEGORY_ID);
   });
 });
+
+describe("db expenseRepo.listActiveMonths", () => {
+  beforeEach(() => {
+    mockSql.mockReset();
+  });
+
+  it("returns the distinct months the aggregate query produced, scoped to the business", async () => {
+    mockSql.mockResolvedValueOnce([{ month: "2026-07" }, { month: "2026-05" }]);
+
+    const months = await expenseRepo.listActiveMonths(BUSINESS_ID);
+
+    expect(months).toEqual(["2026-07", "2026-05"]);
+    // Unlike `list`, this must aggregate in SQL rather than fetch every row:
+    // it feeds the dashboard's period selector, which renders ahead of every
+    // Suspense boundary.
+    const [strings, param] = mockSql.mock.calls[0]!;
+    expect(strings.join("?")).toContain("DISTINCT to_char(expense_date, 'YYYY-MM')");
+    expect(strings.join("?")).toContain("WHERE business_id");
+    expect(param).toBe(BUSINESS_ID);
+  });
+
+  it("returns an empty list for a business with no expenses", async () => {
+    mockSql.mockResolvedValueOnce([]);
+
+    expect(await expenseRepo.listActiveMonths(OTHER_BUSINESS_ID)).toEqual([]);
+  });
+});

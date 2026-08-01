@@ -343,6 +343,14 @@ export interface InvoiceRepository {
    * untouched. Items are replaced wholesale (delete + re-insert).
    */
   update(businessId: string, id: string, data: InvoicePersist): Promise<InvoiceDetail | null>;
+  /**
+   * Distinct `YYYY-MM` months (by `issueDate`) that have at least one invoice
+   * for this business, in any order. Powers the dashboard period selector,
+   * which must not offer months with no movement — see
+   * `lib/services/dashboard-period-options.ts`. Mirrored on
+   * `PaymentRepository` and `ExpenseRepository`; the selector unions all three.
+   */
+  listActiveMonths(businessId: string): Promise<string[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -404,6 +412,8 @@ export interface PaymentRepository {
    * all under `withLock(invoiceId)`.
    */
   createForInvoice(businessId: string, invoiceId: string, data: PaymentInput): Promise<InvoiceDetail>;
+  /** Distinct `YYYY-MM` months by `paymentDate` — see `InvoiceRepository.listActiveMonths`. */
+  listActiveMonths(businessId: string): Promise<string[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -456,6 +466,8 @@ export interface ExpenseRepository {
   getById(businessId: string, id: string): Promise<Expense | null>;
   /** Plain insert — no lock, no sequence, no balance invariant. */
   create(businessId: string, data: ExpenseInput): Promise<Expense>;
+  /** Distinct `YYYY-MM` months by `expenseDate` — see `InvoiceRepository.listActiveMonths`. */
+  listActiveMonths(businessId: string): Promise<string[]>;
 }
 
 // ---------------------------------------------------------------------------

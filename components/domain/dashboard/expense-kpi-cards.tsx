@@ -1,6 +1,7 @@
 import { requireSession } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
-import { getExpensesTotalThisMonth } from "@/lib/services/expense-dashboard-service";
+import { getExpensesTotalInPeriod } from "@/lib/services/expense-dashboard-service";
+import type { DashboardPeriod } from "@/lib/services/dashboard-period";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/domain/stat-card";
@@ -14,14 +15,18 @@ import { MoneyAmount } from "@/components/domain/money-amount";
  * Egresos `TabsPanel` — see `kpi-cards.tsx` for the shared Suspense
  * rationale.
  */
-export async function ExpenseKpiCards() {
+export async function ExpenseKpiCards({ period }: { period: DashboardPeriod }) {
   await loadStoreFromCookie();
   const session = await requireSession();
-  const totalThisMonth = await getExpensesTotalThisMonth(session);
+  const totalInPeriod = await getExpensesTotalInPeriod(session, period);
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <StatCard label="Egresos del mes" value={<MoneyAmount cents={totalThisMonth} size="lg" />} />
+      <StatCard
+        label="Egresos"
+        value={<MoneyAmount cents={totalInPeriod} size="lg" />}
+        hint={period.label.toLowerCase()}
+      />
     </div>
   );
 }

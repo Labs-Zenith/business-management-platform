@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { formatCOP } from "@/lib/money";
 import type { Session } from "@/lib/services/ports";
+import type { DashboardPeriod } from "@/lib/services/dashboard-period";
 
 const mockRequireSession = vi.fn<() => Promise<Session>>();
-const mockGetExpensesTotalThisMonth = vi.fn<() => Promise<number>>();
+const mockGetExpensesTotalInPeriod = vi.fn<() => Promise<number>>();
 
 vi.mock("@/lib/mock/cookie-persistence", () => ({
   loadStoreFromCookie: vi.fn().mockResolvedValue(undefined),
@@ -15,7 +16,7 @@ vi.mock("@/lib/session", () => ({
 }));
 
 vi.mock("@/lib/services/expense-dashboard-service", () => ({
-  getExpensesTotalThisMonth: () => mockGetExpensesTotalThisMonth(),
+  getExpensesTotalInPeriod: () => mockGetExpensesTotalInPeriod(),
 }));
 
 import { ExpenseKpiCards } from "./expense-kpi-cards";
@@ -33,27 +34,48 @@ const SESSION: Session = {
 // `app/(dashboard)/customers/[id]/page.test.tsx` for the same convention.
 const normalizeMoney = (value: string) => value.replace(/ /g, " ");
 
+// A literal rather than `parsePeriodParam(...)` so the expected label stays
+// fixed no matter when the suite runs. The component only reads `label`.
+const PERIOD: DashboardPeriod = {
+  key: "2026-07",
+  preset: "month",
+  label: "Julio 2026",
+  from: "2026-07-01",
+  to: "2026-07-31",
+  chartMonths: ["2026-07"],
+};
+
 describe("ExpenseKpiCards", () => {
   beforeEach(() => {
     mockRequireSession.mockReset();
-    mockGetExpensesTotalThisMonth.mockReset();
+    mockGetExpensesTotalInPeriod.mockReset();
     mockRequireSession.mockResolvedValue(SESSION);
   });
 
-  it("renders the total-this-month figure formatted as COP", async () => {
-    mockGetExpensesTotalThisMonth.mockResolvedValue(1_250_000);
+  // The period is named once, in the section heading above the tabs
+  // (`app/(dashboard)/dashboard/page.tsx`), not repeated on every card.
+  it("renders the period total formatted as COP", async () => {
+    mockGetExpensesTotalInPeriod.mockResolvedValue(1_250_000);
 
-    render(await ExpenseKpiCards());
+    render(await ExpenseKpiCards({ period: PERIOD }));
 
-    expect(screen.getByText("Egresos del mes")).toBeInTheDocument();
+    expect(screen.getByText("Egresos")).toBeInTheDocument();
     expect(screen.getByText(normalizeMoney(formatCOP(1_250_000)))).toBeInTheDocument();
   });
 
   it("renders a zero amount instead of hiding the card", async () => {
-    mockGetExpensesTotalThisMonth.mockResolvedValue(0);
+    mockGetExpensesTotalInPeriod.mockResolvedValue(0);
 
-    render(await ExpenseKpiCards());
+    render(await ExpenseKpiCards({ period: PERIOD }));
 
     expect(screen.getByText(normalizeMoney(formatCOP(0)))).toBeInTheDocument();
+  });
+
+  it("hints the card with the period label in lowercase", async () => {
+    mockGetExpensesTotalInPeriod.mockResolvedValue(1_250_000);
+
+    render(await ExpenseKpiCards({ period: PERIOD }));
+
+    expect(screen.getByText("julio 2026")).toBeInTheDocument();
   });
 });

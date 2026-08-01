@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { formatDateTime, todayIsoDate } from "./dates";
+import { daysAgoIsoDate, formatDateRange, formatDateTime, todayIsoDate } from "./dates";
 
 describe("todayIsoDate", () => {
   afterEach(() => {
@@ -68,5 +68,62 @@ describe("formatDateTime", () => {
 
   it("echoes the raw value back when it is not a valid date", () => {
     expect(formatDateTime("not-a-date")).toBe("not-a-date");
+  });
+});
+
+/**
+ * `daysAgoIsoDate` backs the dashboard's rolling 30-day window, so it takes an
+ * explicit `now` instead of needing the clock frozen.
+ */
+describe("daysAgoIsoDate", () => {
+  it("steps back within the same month", () => {
+    expect(daysAgoIsoDate(29, new Date(2026, 6, 31))).toBe("2026-07-02");
+  });
+
+  it("steps back across a month boundary", () => {
+    expect(daysAgoIsoDate(29, new Date(2026, 7, 1))).toBe("2026-07-03");
+  });
+
+  it("steps back across a year boundary", () => {
+    expect(daysAgoIsoDate(29, new Date(2026, 0, 10))).toBe("2025-12-12");
+  });
+
+  it("counts the leap day when the window crosses February", () => {
+    // 29 days back from 20 March 2024 lands on 20 February precisely because
+    // 29 February exists that year; the same step in 2026 lands on the 19th.
+    expect(daysAgoIsoDate(29, new Date(2024, 2, 20))).toBe("2024-02-20");
+    expect(daysAgoIsoDate(29, new Date(2026, 2, 20))).toBe("2026-02-19");
+  });
+
+  it("returns the same day for 0", () => {
+    expect(daysAgoIsoDate(0, new Date(2026, 6, 15))).toBe("2026-07-15");
+  });
+
+  it("stays on the LOCAL day late in the evening", () => {
+    // 23:30 local at UTC-5 is already tomorrow in UTC; the window must not slide.
+    expect(daysAgoIsoDate(29, new Date(2026, 7, 1, 23, 30))).toBe("2026-07-03");
+  });
+});
+
+describe("formatDateRange", () => {
+  it("renders both dates in a single range phrase", () => {
+    // Locale output varies by ICU build, so assert the parts rather than an
+    // exact string: what matters is that both dates survive intact.
+    const range = formatDateRange("2026-07-03", "2026-08-01");
+
+    expect(range).toMatch(/^Del /);
+    expect(range).toContain(" al ");
+    expect(range).toMatch(/\b3\b/);
+    expect(range).toMatch(/\b1\b/);
+  });
+
+  it("does not shift a date back a day (the UTC-midnight parsing trap)", () => {
+    // `new Date("2026-07-03")` is UTC midnight, which renders as 2 July at
+    // UTC-5. Parsing at local midday is what keeps this on the 3rd.
+    expect(formatDateRange("2026-07-03", "2026-07-03")).toMatch(/\b3\b.*\b3\b/);
+  });
+
+  it("echoes the raw strings back rather than throwing on bad input", () => {
+    expect(formatDateRange("no-es-fecha", "tampoco")).toBe("no-es-fecha - tampoco");
   });
 });

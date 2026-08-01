@@ -63,6 +63,21 @@ export const expenseRepo: ExpenseRepository = {
     return paginate(expenses, query.page, query.pageSize);
   },
 
+  /**
+   * Unlike `list` above, this one aggregates in SQL rather than fetching every
+   * row and reducing in JS: it feeds the dashboard's period selector, which
+   * renders BEFORE any `<Suspense>` boundary, so it sits on the critical path.
+   * `expense_date` is a real `DATE` column, so `to_char` is exact.
+   */
+  async listActiveMonths(businessId: string): Promise<string[]> {
+    const rows = (await sql`
+      SELECT DISTINCT to_char(expense_date, 'YYYY-MM') AS month
+      FROM expenses
+      WHERE business_id = ${businessId}
+    `) as unknown as { month: string }[];
+    return rows.map((row) => row.month);
+  },
+
   async create(businessId: string, data: ExpenseInput): Promise<Expense> {
     // `category_id` is resolved in the SAME statement (no extra round trip):
     // the caller-supplied `data.categoryId` wins when present, otherwise it's

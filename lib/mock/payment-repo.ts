@@ -109,6 +109,14 @@ export function createPaymentRepository(store: MockStore): PaymentRepository {
       return paginate(payments, query.page, query.pageSize);
     },
 
+    /** Mirrors `lib/db/payment-repo.ts#listActiveMonths`. */
+    async listActiveMonths(businessId: string): Promise<string[]> {
+      const months = [...store.payments.values()]
+        .filter((payment) => payment.businessId === businessId)
+        .map((payment) => payment.paymentDate.slice(0, 7));
+      return [...new Set(months)];
+    },
+
     async createForInvoice(businessId: string, invoiceId: string, data: PaymentInput): Promise<InvoiceDetail> {
       // Atomic, overpay-safe: read-check-write happens entirely inside one
       // lock holder (`withLock(invoiceId)`), so a concurrent second request

@@ -109,7 +109,7 @@ describe("GET /api/dashboard/export", () => {
 
     const resumen = workbook.getWorksheet("Resumen")!;
     expect(resumen.getRow(1).values).toEqual([undefined, "Concepto", "Valor"]);
-    expect(resumen.rowCount).toBe(5);
+    expect(resumen.rowCount).toBe(6);
 
     // 5 real chart PNGs embedded into the "Graficos" sheet.
     expect(workbook.model.media.length).toBe(5);
@@ -184,7 +184,7 @@ describe("GET /api/dashboard/export", () => {
     await workbook.xlsx.load(await xlsxResponse.arrayBuffer());
     expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(SHEET_NAMES);
     // The other 8 data sheets are completely untouched by the chart failure.
-    expect(workbook.getWorksheet("Resumen")!.rowCount).toBe(5);
+    expect(workbook.getWorksheet("Resumen")!.rowCount).toBe(6);
     // Still 5 valid embedded PNGs — the failed chart is replaced by a placeholder, not dropped.
     expect(workbook.model.media.length).toBe(5);
 

@@ -18,11 +18,25 @@
  * streaming in. `getDashboardSummary` composes all of them via
  * `Promise.all` for `app/api/dashboard/summary/route.ts`, which returns
  * everything in a single payload.
+ *
+ * Functions come in two flavors, and the distinction is load-bearing:
+ *
+ * - **Range-scoped** (`getPaidInPeriod`, `getInvoicedInPeriod`,
+ *   `getRecentPayments`, the monthly series of `getDashboardCharts`) take a
+ *   resolved `DashboardPeriod` (`lib/services/dashboard-period.ts`) and push
+ *   its `from`/`to` down into the repository `list()` filters.
+ * - **Point-in-time** (`getPendingBalance`, `getOverdueInvoices`,
+ *   `getOverdueCount`, `getTopDebtors`, `receivablesByStatus`) take NO period
+ *   and never will: `status`/`balance` are recomputed against *today* by the
+ *   repository, so these describe the portfolio as it stands now, not as it
+ *   stood at the end of some past month. Accepting a period they silently
+ *   ignored would be a trap. The dashboard labels them "a hoy" instead.
  */
 
 import { repositories } from "@/lib/services/repositories";
 import type { InvoiceWithFinance, PaymentWithRefs, Session } from "@/lib/services/ports";
 import type { InvoiceStatus } from "@/lib/services/status";
+import { monthEnd, monthShortLabel, monthStart, type DashboardPeriod } from "@/lib/services/dashboard-period";
 
 /**
  * Large enough to fetch the whole business-scoped list in one call. The
@@ -35,7 +49,6 @@ const ALL_ROWS = Number.MAX_SAFE_INTEGER;
 
 const DEFAULT_RECENT_PAYMENTS_LIMIT = 5;
 const DEFAULT_TOP_DEBTORS_LIMIT = 5;
-const DEFAULT_MONTHLY_PAYMENT_BUCKETS = 6;
 
 const INVOICE_STATUS_CHART_META: Record<InvoiceStatus, { label: string }> = {
   pending: { label: "Pendiente" },
@@ -54,6 +67,12 @@ export type TopDebtor = {
 
 export type DashboardSummary = {
   pendingBalance: number;
+  /**
+   * Total collected within the requested period. The field keeps its
+   * `paidThisMonth` name because `docs/api-spec.md` documents it and
+   * `/api/dashboard/summary` consumers read it; with no `?period=` the
+   * default period IS the current month, so the name stays accurate there.
+   */
   paidThisMonth: number;
   /** Count only, matching `docs/api-spec.md`'s documented response shape. */
   overdueInvoices: number;
@@ -77,22 +96,69 @@ export type MonthlyPaymentDatum = {
   amount: number;
 };
 
-export type DashboardCharts = {
+/** The point-in-time half of the charts: today's portfolio, unaffected by the selected period. */
+export type PortfolioCharts = {
   receivablesByStatus: ReceivablesByStatusDatum[];
   topDebtorBalances: TopDebtor[];
+};
+
+/** The range-scoped half: monthly series over `period.chartMonths`. */
+export type PeriodCharts = {
   monthlyPayments: MonthlyPaymentDatum[];
-  /** "Facturado" series, parallel to `monthlyPayments` ("cobrado") — same 6-month bucketing, aligned by index. */
+  /** "Facturado" series, parallel to `monthlyPayments` ("cobrado") — same `period.chartMonths` bucketing, aligned by index. */
   monthlyInvoiced: MonthlyPaymentDatum[];
 };
 
-async function listAllInvoices(session: Session): Promise<InvoiceWithFinance[]> {
-  const paged = await repositories.invoices.list(session.businessId, { page: 1, pageSize: ALL_ROWS });
+/**
+ * Both halves in one payload, for the export/summary routes that render
+ * everything at once. The dashboard screen calls the two halves separately —
+ * they live in different sections now ("Cartera (a hoy)" vs. the Ingresos
+ * tab), and each must fetch only what it renders.
+ */
+export type DashboardCharts = PortfolioCharts & PeriodCharts;
+
+/**
+ * Inclusive `YYYY-MM-DD` bounds, either of which may be absent. Both the
+ * resolved `DashboardPeriod` and a chart's bucket span are assignable to this,
+ * and it maps 1:1 onto the `from`/`to` filters every repository's `list()`
+ * already supports — so date filtering happens at the repository, not by
+ * pulling the whole table and filtering in JS.
+ */
+type DateRange = { from?: string; to?: string };
+
+/**
+ * `range` is optional on purpose: the point-in-time functions
+ * (`getPendingBalance`, `getOverdueInvoices`, `getTopDebtors`, and the
+ * `receivablesByStatus` slice of the charts) are "as of now" by construction —
+ * the repository recomputes `status`/`balance` against today — so they read
+ * the whole ledger regardless of which period the screen is showing.
+ */
+async function listInvoices(session: Session, range?: DateRange): Promise<InvoiceWithFinance[]> {
+  const paged = await repositories.invoices.list(session.businessId, {
+    from: range?.from,
+    to: range?.to,
+    page: 1,
+    pageSize: ALL_ROWS,
+  });
   return paged.data;
 }
 
-async function listAllPayments(session: Session): Promise<PaymentWithRefs[]> {
-  const paged = await repositories.payments.list(session.businessId, { page: 1, pageSize: ALL_ROWS });
+async function listPayments(session: Session, range?: DateRange): Promise<PaymentWithRefs[]> {
+  const paged = await repositories.payments.list(session.businessId, {
+    from: range?.from,
+    to: range?.to,
+    page: 1,
+    pageSize: ALL_ROWS,
+  });
   return paged.data;
+}
+
+/** The span the trend charts cover, which is wider than `period` for a single month (6 trailing buckets). */
+function chartRange(period: DashboardPeriod): DateRange {
+  return {
+    from: monthStart(period.chartMonths[0]),
+    to: monthEnd(period.chartMonths[period.chartMonths.length - 1]),
+  };
 }
 
 async function listAllCustomers(session: Session) {
@@ -100,48 +166,27 @@ async function listAllCustomers(session: Session) {
   return paged.data;
 }
 
-function currentMonthPrefix(now: Date): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthLabel(key: string): string {
-  const [year, month] = key.split("-").map(Number);
-  return new Intl.DateTimeFormat("es-CO", { month: "short" }).format(new Date(year, month - 1, 1));
-}
-
-function recentMonthKeys(now: Date, count: number): string[] {
-  return Array.from({ length: count }, (_, index) => {
-    const offset = count - index - 1;
-    return monthKey(new Date(now.getFullYear(), now.getMonth() - offset, 1));
-  });
-}
-
-/** "Total pendiente por cobrar": sum of `balance` across every non-paid invoice, scoped to `session.businessId`. */
+/**
+ * "Total pendiente por cobrar": sum of `balance` across every non-paid
+ * invoice, scoped to `session.businessId`. Point-in-time — deliberately takes
+ * NO period: it is the portfolio as it stands today, and the dashboard labels
+ * it "a hoy" so a past-month view can't be misread as a historical snapshot.
+ */
 export async function getPendingBalance(session: Session): Promise<number> {
-  const invoices = await listAllInvoices(session);
+  const invoices = await listInvoices(session);
   return invoices.filter((invoice) => invoice.status !== "paid").reduce((sum, invoice) => sum + invoice.balance, 0);
 }
 
-/** "Total pagado del mes": sum of payment amounts whose `paymentDate` falls in the current calendar month. */
-export async function getPaidThisMonth(session: Session, now: Date = new Date()): Promise<number> {
-  const payments = await listAllPayments(session);
-  const monthPrefix = currentMonthPrefix(now);
-  return payments
-    .filter((payment) => payment.paymentDate.startsWith(monthPrefix))
-    .reduce((sum, payment) => sum + payment.amount, 0);
+/** "Total pagado": sum of payment amounts whose `paymentDate` falls inside `period`. */
+export async function getPaidInPeriod(session: Session, period: DashboardPeriod): Promise<number> {
+  const payments = await listPayments(session, period);
+  return payments.reduce((sum, payment) => sum + payment.amount, 0);
 }
 
-/** "Total facturado del mes": sum of invoice `total` whose `issueDate` falls in the current calendar month. */
-export async function getInvoicedThisMonth(session: Session, now: Date = new Date()): Promise<number> {
-  const invoices = await listAllInvoices(session);
-  const monthPrefix = currentMonthPrefix(now);
-  return invoices
-    .filter((invoice) => invoice.issueDate.startsWith(monthPrefix))
-    .reduce((sum, invoice) => sum + invoice.total, 0);
+/** "Total facturado": sum of invoice `total` whose `issueDate` falls inside `period`. */
+export async function getInvoicedInPeriod(session: Session, period: DashboardPeriod): Promise<number> {
+  const invoices = await listInvoices(session, period);
+  return invoices.reduce((sum, invoice) => sum + invoice.total, 0);
 }
 
 /**
@@ -149,7 +194,7 @@ export async function getInvoicedThisMonth(session: Session, now: Date = new Dat
  * `"overdue"` — never a persisted/stale status field.
  */
 export async function getOverdueInvoices(session: Session): Promise<InvoiceWithFinance[]> {
-  const invoices = await listAllInvoices(session);
+  const invoices = await listInvoices(session);
   return invoices.filter((invoice) => invoice.status === "overdue");
 }
 
@@ -159,12 +204,17 @@ export async function getOverdueCount(session: Session): Promise<number> {
   return overdue.length;
 }
 
-/** "Pagos recientes": the `limit` most recent payments, newest first. */
+/**
+ * "Pagos recientes": the `limit` most recent payments inside `period`, newest
+ * first. Scoped to the period rather than all-time so that viewing July never
+ * lists August payments under a "Julio 2026" heading.
+ */
 export async function getRecentPayments(
   session: Session,
+  period: DashboardPeriod,
   limit: number = DEFAULT_RECENT_PAYMENTS_LIMIT,
 ): Promise<PaymentWithRefs[]> {
-  const payments = await listAllPayments(session);
+  const payments = await listPayments(session, period);
   return [...payments]
     .sort((a, b) => {
       if (a.paymentDate !== b.paymentDate) {
@@ -188,16 +238,13 @@ export async function getTopDebtors(
     .map((customer) => ({ id: customer.id, name: customer.name, balance: customer.balance }));
 }
 
-export async function getDashboardCharts(
-  session: Session,
-  now: Date = new Date(),
-  monthBuckets: number = DEFAULT_MONTHLY_PAYMENT_BUCKETS,
-): Promise<DashboardCharts> {
-  const [invoices, payments, topDebtorBalances] = await Promise.all([
-    listAllInvoices(session),
-    listAllPayments(session),
-    getTopDebtors(session),
-  ]);
+/**
+ * Point-in-time charts: how the portfolio stands TODAY, by invoice status and
+ * by debtor. Takes no period — these belong to the dashboard's "Cartera (a
+ * hoy)" section, which sits outside the period-scoped tabs.
+ */
+export async function getPortfolioCharts(session: Session): Promise<PortfolioCharts> {
+  const [invoices, topDebtorBalances] = await Promise.all([listInvoices(session), getTopDebtors(session)]);
 
   const receivablesByStatus = INVOICE_STATUS_CHART_ORDER.map((status) => {
     const matchingInvoices = invoices.filter((invoice) => invoice.status === status);
@@ -210,9 +257,25 @@ export async function getDashboardCharts(
     };
   });
 
-  const months = recentMonthKeys(now, monthBuckets);
+  return { receivablesByStatus, topDebtorBalances };
+}
+
+/**
+ * Range-scoped charts: "facturado" and "cobrado" bucketed over
+ * `period.chartMonths` — which, for a single selected month, is the 6 months
+ * ENDING at it, so the trend context survives rather than collapsing to one bar.
+ */
+export async function getPeriodCharts(session: Session, period: DashboardPeriod): Promise<PeriodCharts> {
+  const range = chartRange(period);
+  const [chartInvoices, chartPayments] = await Promise.all([
+    listInvoices(session, range),
+    listPayments(session, range),
+  ]);
+
+  const months = period.chartMonths;
+
   const amountsByMonth = new Map(months.map((month) => [month, 0]));
-  for (const payment of payments) {
+  for (const payment of chartPayments) {
     const paymentMonth = payment.paymentDate.slice(0, 7);
     if (amountsByMonth.has(paymentMonth)) {
       amountsByMonth.set(paymentMonth, amountsByMonth.get(paymentMonth)! + payment.amount);
@@ -220,7 +283,7 @@ export async function getDashboardCharts(
   }
 
   const invoicedAmountsByMonth = new Map(months.map((month) => [month, 0]));
-  for (const invoice of invoices) {
+  for (const invoice of chartInvoices) {
     const invoiceMonth = invoice.issueDate.slice(0, 7);
     if (invoicedAmountsByMonth.has(invoiceMonth)) {
       invoicedAmountsByMonth.set(invoiceMonth, invoicedAmountsByMonth.get(invoiceMonth)! + invoice.total);
@@ -228,28 +291,40 @@ export async function getDashboardCharts(
   }
 
   return {
-    receivablesByStatus,
-    topDebtorBalances,
     monthlyPayments: months.map((month) => ({
       month,
-      label: monthLabel(month),
+      label: monthShortLabel(month),
       amount: amountsByMonth.get(month) ?? 0,
     })),
     monthlyInvoiced: months.map((month) => ({
       month,
-      label: monthLabel(month),
+      label: monthShortLabel(month),
       amount: invoicedAmountsByMonth.get(month) ?? 0,
     })),
   };
 }
 
+/**
+ * Both halves at once, for `/api/dashboard/export` and `/summary`, which
+ * render the whole dashboard in one payload. Kept as a composer so the export
+ * pipeline (`lib/export/excel.ts`, `lib/export/chart-image.ts`) and the
+ * `DashboardCharts` shape are untouched by the screen's section split.
+ */
+export async function getDashboardCharts(session: Session, period: DashboardPeriod): Promise<DashboardCharts> {
+  const [portfolio, periodCharts] = await Promise.all([
+    getPortfolioCharts(session),
+    getPeriodCharts(session, period),
+  ]);
+  return { ...portfolio, ...periodCharts };
+}
+
 /** Combines all 5 KPIs in one payload, for `app/api/dashboard/summary/route.ts`. */
-export async function getDashboardSummary(session: Session, now: Date = new Date()): Promise<DashboardSummary> {
+export async function getDashboardSummary(session: Session, period: DashboardPeriod): Promise<DashboardSummary> {
   const [pendingBalance, paidThisMonth, overdueInvoiceList, recentPayments, topDebtors] = await Promise.all([
     getPendingBalance(session),
-    getPaidThisMonth(session, now),
+    getPaidInPeriod(session, period),
     getOverdueInvoices(session),
-    getRecentPayments(session),
+    getRecentPayments(session, period),
     getTopDebtors(session),
   ]);
 

@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { formatCOP } from "@/lib/money";
 import { requireSession } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getCategoryLabel, getRecentExpenses } from "@/lib/services/expense-dashboard-service";
+import { periodRangeLabel, type DashboardPeriod } from "@/lib/services/dashboard-period";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,10 +14,10 @@ import { Skeleton } from "@/components/ui/skeleton";
  * empty-state row). Its own independently-streamed Suspense section — see
  * `kpi-cards.tsx` for the shared rationale.
  */
-export async function RecentExpenses() {
+export async function RecentExpenses({ period }: { period: DashboardPeriod }) {
   await loadStoreFromCookie();
   const session = await requireSession();
-  const expenses = await getRecentExpenses(session);
+  const expenses = await getRecentExpenses(session, period);
 
   return (
     <Card>
@@ -35,8 +37,16 @@ export async function RecentExpenses() {
           <TableBody>
             {expenses.length === 0 ? (
               <TableRow>
+                {/* An empty state should offer the way out. The link only
+                    navigates — this screen stays read-only, per Fase 5 Lane 4.
+                    `periodRangeLabel` (not `period.label` directly) so this
+                    reads naturally for every preset — see
+                    `recent-payments.tsx`'s identical use. */}
                 <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  Sin egresos registrados.
+                  No registraste egresos en {periodRangeLabel(period)}.{" "}
+                  <Link href="/egresos" className="text-foreground underline underline-offset-4">
+                    Registrar un egreso
+                  </Link>
                 </TableCell>
               </TableRow>
             ) : (

@@ -57,7 +57,7 @@ describe("GET /api/dashboard/summary", () => {
   });
 
   it("rejects unauthenticated requests with 401 UNAUTHENTICATED", async () => {
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/dashboard/summary"));
 
     expect(response.status).toBe(401);
     const body = await response.json();
@@ -67,7 +67,7 @@ describe("GET /api/dashboard/summary", () => {
   it("returns all 5 KPIs, Cache-Control: no-store, scoped to the session's own business", async () => {
     await signIn();
 
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/dashboard/summary"));
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("no-store");
@@ -97,7 +97,7 @@ describe("GET /api/dashboard/summary", () => {
       notes: null,
     });
 
-    const response = await GET();
+    const response = await GET(new Request("http://localhost/api/dashboard/summary"));
     const body = await response.json();
 
     expect(body.data.pendingBalance).not.toBe(999_999_999);

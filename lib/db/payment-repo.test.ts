@@ -193,3 +193,26 @@ describe("db paymentRepo.createForInvoice — overpay guard against a concurrent
     );
   });
 });
+
+describe("db paymentRepo.listActiveMonths", () => {
+  beforeEach(() => {
+    mockSql.mockReset();
+  });
+
+  it("aggregates distinct payment-date months in SQL, scoped to the business", async () => {
+    mockSql.mockResolvedValueOnce([{ month: "2026-06" }]);
+
+    const months = await paymentRepo.listActiveMonths(BUSINESS_ID);
+
+    expect(months).toEqual(["2026-06"]);
+    const [strings, param] = mockSql.mock.calls[0]!;
+    expect(strings.join("?")).toContain("DISTINCT to_char(payment_date, 'YYYY-MM')");
+    expect(param).toBe(BUSINESS_ID);
+  });
+
+  it("returns an empty list for a business with no payments", async () => {
+    mockSql.mockResolvedValueOnce([]);
+
+    expect(await paymentRepo.listActiveMonths(BUSINESS_ID)).toEqual([]);
+  });
+});

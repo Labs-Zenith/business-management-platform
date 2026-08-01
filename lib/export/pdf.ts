@@ -12,8 +12,15 @@ type PdfTableColumn<T> = {
   value: (row: T) => string;
 };
 
-function createDocument() {
-  return new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
+/**
+ * `layout` defaults to pdfkit's own default ("portrait") when omitted.
+ * `doc.addPage()` (called with no arguments by `ensureRoom`) inherits the
+ * document's original options — including `layout` — per pdfkit's
+ * `PDFDocument#addPage`, so every subsequent page in a landscape document
+ * stays landscape automatically; nothing downstream needs to special-case it.
+ */
+function createDocument(options?: { layout?: "portrait" | "landscape" }) {
+  return new PDFDocument({ size: "A4", margin: 40, bufferPages: true, ...options });
 }
 
 function collectDocument(doc: PDFKit.PDFDocument): Promise<Buffer> {
@@ -87,14 +94,19 @@ function ensureRoom(doc: PDFKit.PDFDocument, neededHeight: number) {
 
 /**
  * Fitted width for a dashboard chart PNG (rendered at ~640x320 by
- * `lib/export/chart-image.ts`) — scaled down to fit comfortably within an
- * A4 page's content width after margins. `pdfkit`'s `doc.image` preserves
- * aspect ratio when only `width` is given, so the resulting height is
- * always `CHART_IMAGE_WIDTH * (320 / 640)`.
+ * `lib/export/chart-svg.ts`) — scaled down to fit comfortably within the
+ * page's content width after margins, and derived from `contentWidth()`
+ * rather than hardcoded so it does not rot when the page layout changes
+ * (the dashboard export — the only caller — is landscape A4, giving
+ * ~761.89pt of content width; this caps at 560pt so the chart doesn't
+ * balloon to the full page width, well under the 640px source PNG's native
+ * size so it never pixelates). `pdfkit`'s `doc.image` preserves aspect
+ * ratio when only `width` is given, so the resulting height is always
+ * `width * (320 / 640)`.
  */
-const CHART_IMAGE_WIDTH = 340;
-const CHART_IMAGE_HEIGHT = (CHART_IMAGE_WIDTH * 320) / 640;
-const CHART_IMAGE_RESERVED_HEIGHT = CHART_IMAGE_HEIGHT + 16;
+function chartImageWidth(doc: PDFKit.PDFDocument) {
+  return Math.min(560, contentWidth(doc) * 0.8);
+}
 
 /**
  * Writes a single chart PNG horizontally centered on the page, guarded by
@@ -106,38 +118,79 @@ const CHART_IMAGE_RESERVED_HEIGHT = CHART_IMAGE_HEIGHT + 16;
  * cursor — `doc.y` is advanced manually past the image's rendered height.
  */
 function writeChartImage(doc: PDFKit.PDFDocument, png: Buffer) {
-  ensureRoom(doc, CHART_IMAGE_RESERVED_HEIGHT);
+  const width = chartImageWidth(doc);
+  const height = (width * 320) / 640;
+  ensureRoom(doc, height + 16);
   const left = doc.page.margins.left;
-  const x = left + (contentWidth(doc) - CHART_IMAGE_WIDTH) / 2;
+  const x = left + (contentWidth(doc) - width) / 2;
   const y = doc.y;
-  doc.image(png, x, y, { width: CHART_IMAGE_WIDTH });
-  doc.y = y + CHART_IMAGE_HEIGHT;
+  doc.image(png, x, y, { width });
+  doc.y = y + height;
   doc.moveDown(1);
   doc.x = left;
 }
 
+/**
+ * Floor for a row's rendered height — matches the table's previous fixed
+ * row height, kept as a MINIMUM so short single-line rows still look the
+ * same as before.
+ */
+const MIN_ROW_HEIGHT = 22;
+
+/**
+ * Vertical room a row needs around its text besides the text's own measured
+ * height: 7pt above (matching the `y + 7` offset every cell is drawn at)
+ * plus a matching 7pt below, so a wrapped multi-line cell's last line still
+ * has breathing room before the next row's top rule.
+ */
+const ROW_VERTICAL_PADDING = 14;
+
+/**
+ * Measures how tall a row needs to be to fit every cell's rendered text
+ * (accounting for `lineBreak: true` wrapping — pdfkit's default — in cells
+ * whose value is wider than `column.width - 8`), so `writeTable` can size
+ * each row to its actual content instead of assuming every cell is a single
+ * line. `doc.heightOfString` reads the document's *currently set* font/size,
+ * so callers must set those before calling this (both `writeHeader` and the
+ * data-row loop below already do, once, before iterating).
+ */
+function measureRowHeight(doc: PDFKit.PDFDocument, values: string[], columns: { width: number }[]): number {
+  let maxTextHeight = 0;
+  for (let i = 0; i < columns.length; i += 1) {
+    const height = doc.heightOfString(values[i], { width: columns[i].width - 8 });
+    if (height > maxTextHeight) {
+      maxTextHeight = height;
+    }
+  }
+  return Math.max(MIN_ROW_HEIGHT, maxTextHeight + ROW_VERTICAL_PADDING);
+}
+
 function writeTable<T>(doc: PDFKit.PDFDocument, rows: T[], columns: PdfTableColumn<T>[]) {
   const startX = doc.page.margins.left;
-  const rowHeight = 22;
   const tableWidth = columns.reduce((sum, column) => sum + column.width, 0);
 
   function writeHeader() {
-    ensureRoom(doc, rowHeight * 2);
+    doc.font("Helvetica-Bold").fontSize(8).fillColor("#171717");
+    const headerValues = columns.map((column) => column.header);
+    const headerHeight = measureRowHeight(doc, headerValues, columns);
+    ensureRoom(doc, headerHeight + MIN_ROW_HEIGHT);
     let x = startX;
     const y = doc.y;
-    doc.rect(startX, y, tableWidth, rowHeight).fill("#f5f5f5");
+    doc.rect(startX, y, tableWidth, headerHeight).fill("#f5f5f5");
     doc.font("Helvetica-Bold").fontSize(8).fillColor("#171717");
-    for (const column of columns) {
-      doc.text(column.header, x + 4, y + 7, { width: column.width - 8, align: column.align ?? "left" });
-      x += column.width;
+    for (let i = 0; i < columns.length; i += 1) {
+      doc.text(headerValues[i], x + 4, y + 7, { width: columns[i].width - 8, align: columns[i].align ?? "left" });
+      x += columns[i].width;
     }
-    doc.y = y + rowHeight;
+    doc.y = y + headerHeight;
   }
 
   writeHeader();
   doc.font("Helvetica").fontSize(8).fillColor("#171717");
 
   for (const row of rows) {
+    const values = columns.map((column) => column.value(row));
+    const rowHeight = measureRowHeight(doc, values, columns);
     ensureRoom(doc, rowHeight);
     if (doc.y < doc.page.margins.top + rowHeight) {
       writeHeader();
@@ -146,11 +199,11 @@ function writeTable<T>(doc: PDFKit.PDFDocument, rows: T[], columns: PdfTableColu
     const y = doc.y;
     let x = startX;
     doc.strokeColor("#ebebeb").moveTo(startX, y).lineTo(startX + tableWidth, y).stroke();
-    for (const column of columns) {
+    for (let i = 0; i < columns.length; i += 1) {
       doc
         .fillColor("#171717")
-        .text(column.value(row), x + 4, y + 7, { width: column.width - 8, align: column.align ?? "left" });
-      x += column.width;
+        .text(values[i], x + 4, y + 7, { width: columns[i].width - 8, align: columns[i].align ?? "left" });
+      x += columns[i].width;
     }
     doc.y = y + rowHeight;
   }
@@ -184,7 +237,10 @@ export async function renderInvoicePdf(business: Business, invoice: InvoiceDetai
   ]);
 
   doc.font("Helvetica").fontSize(10);
-  const summaryX = 350;
+  // Derived (not a hardcoded portrait coordinate) so it stays correct if this
+  // document's page geometry ever changes — unlike the three report exports,
+  // `renderInvoicePdf` stays portrait, but this keeps the block from rotting.
+  const summaryX = doc.page.width - doc.page.margins.right - 200;
   const summary = [
     ["Subtotal", formatCOP(invoice.subtotal)],
     ["Total", formatCOP(invoice.total)],
@@ -201,52 +257,71 @@ export async function renderInvoicePdf(business: Business, invoice: InvoiceDetai
   return done;
 }
 
+/**
+ * Landscape — this is a wide, column-heavy report table (Número/Cliente/
+ * Fecha/Vence/Total/Pagado/Saldo/Estado), not a document handed to a
+ * customer, so widening the page beats fighting for portrait's 515.28pt of
+ * content width. Column widths sum to 735pt against landscape A4's
+ * 761.89pt content width (~27pt slack) — comfortably under, with "Cliente"
+ * and "Estado" widened enough that neither clips nor wraps for realistic
+ * values (a long business name; "Parcialmente pagada").
+ */
 export async function renderInvoicesExportPdf(rows: InvoiceExportRow[]): Promise<Buffer> {
-  const doc = createDocument();
+  const doc = createDocument({ layout: "landscape" });
   const done = collectDocument(doc);
 
   writeTitle(doc, "Exportación de facturas", `${rows.length} registros`);
   writeTable(doc, rows, [
-    { header: "Número", width: 70, value: (invoice) => invoice.number },
-    { header: "Cliente", width: 120, value: (invoice) => invoice.customerName },
+    { header: "Número", width: 65, value: (invoice) => invoice.number },
+    { header: "Cliente", width: 195, value: (invoice) => invoice.customerName },
     { header: "Fecha", width: 65, value: (invoice) => invoice.issueDate },
     { header: "Vence", width: 65, value: (invoice) => invoice.dueDate ?? "-" },
-    { header: "Total", width: 80, align: "right", value: (invoice) => formatCOP(invoice.total) },
-    { header: "Pagado", width: 80, align: "right", value: (invoice) => formatCOP(invoice.paidAmount) },
-    { header: "Saldo", width: 80, align: "right", value: (invoice) => formatCOP(invoice.balance) },
-    { header: "Estado", width: 80, value: (invoice) => INVOICE_STATUS_LABELS[invoice.status] },
+    { header: "Total", width: 85, align: "right", value: (invoice) => formatCOP(invoice.total) },
+    { header: "Pagado", width: 85, align: "right", value: (invoice) => formatCOP(invoice.paidAmount) },
+    { header: "Saldo", width: 85, align: "right", value: (invoice) => formatCOP(invoice.balance) },
+    { header: "Estado", width: 90, value: (invoice) => INVOICE_STATUS_LABELS[invoice.status] },
   ]);
   doc.end();
   return done;
 }
 
+/**
+ * Landscape, for the same reason as `renderInvoicesExportPdf` above. Column
+ * widths sum to 720pt against landscape A4's 761.89pt content width (~42pt
+ * slack), with "Cliente" and "Notas" widened enough to comfortably fit a
+ * long customer name and a full sentence of notes without wrapping.
+ */
 export async function renderPaymentsExportPdf(rows: PaymentWithRefs[]): Promise<Buffer> {
-  const doc = createDocument();
+  const doc = createDocument({ layout: "landscape" });
   const done = collectDocument(doc);
 
   writeTitle(doc, "Exportación de pagos", `${rows.length} registros`);
   writeTable(doc, rows, [
-    { header: "Fecha", width: 75, value: (payment) => payment.paymentDate },
-    { header: "Cliente", width: 145, value: (payment) => payment.customer.name },
-    { header: "Factura", width: 90, value: (payment) => payment.invoice.number },
-    { header: "Monto", width: 90, align: "right", value: (payment) => formatCOP(payment.amount) },
-    { header: "Método", width: 90, value: (payment) => payment.method ?? "-" },
-    { header: "Notas", width: 110, value: (payment) => payment.notes ?? "-" },
+    { header: "Fecha", width: 80, value: (payment) => payment.paymentDate },
+    { header: "Cliente", width: 200, value: (payment) => payment.customer.name },
+    { header: "Factura", width: 100, value: (payment) => payment.invoice.number },
+    { header: "Monto", width: 100, align: "right", value: (payment) => formatCOP(payment.amount) },
+    { header: "Método", width: 100, value: (payment) => payment.method ?? "-" },
+    { header: "Notas", width: 140, value: (payment) => payment.notes ?? "-" },
   ]);
   doc.end();
   return done;
 }
 
 function writeResumenSection(doc: PDFKit.PDFDocument, data: DashboardExportData) {
-  const { summary, expenses } = data;
+  const { summary, expenses, periodLabel } = data;
   writeSectionHeading(doc, "Resumen");
   writeTable(
     doc,
     [
-      { concept: "Saldo pendiente por cobrar", value: formatCOP(summary.pendingBalance) },
-      { concept: "Pagado este mes", value: formatCOP(summary.paidThisMonth) },
-      { concept: "Facturas vencidas", value: String(summary.overdueInvoices) },
-      { concept: "Gastos del mes", value: formatCOP(expenses.totalThisMonth) },
+      { concept: "Periodo", value: periodLabel },
+      // "al momento de exportar" rather than "a hoy": a file gets opened days
+      // later. These two are live snapshots and do NOT move with the requested
+      // period; the two below them do.
+      { concept: "Por cobrar (al momento de exportar)", value: formatCOP(summary.pendingBalance) },
+      { concept: "Facturas vencidas (al momento de exportar)", value: String(summary.overdueInvoices) },
+      { concept: `Pagado — ${periodLabel}`, value: formatCOP(summary.paidThisMonth) },
+      { concept: `Gastos — ${periodLabel}`, value: formatCOP(expenses.totalThisMonth) },
     ],
     [
       { header: "Concepto", width: 280, value: (row) => row.concept },
@@ -286,26 +361,35 @@ function writePagosPorMesSection(doc: PDFKit.PDFDocument, charts: DashboardExpor
 
 function writeFacturasVencidasSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"]) {
   writeSectionHeading(doc, "Facturas vencidas");
+  // "Estado" widened from 75 to 100 (avail. 92pt) — at w=75 (avail. 67pt) a
+  // value like "Parcialmente pagada" (~75.3pt at 8pt Helvetica) wrapped and
+  // overlapped the next row; content-driven row height in `writeTable` now
+  // guards against overlap even if a value still wraps, but the extra width
+  // makes wrapping rare instead of routine for this column's real values.
   writeTable(doc, summary.overdueInvoiceList, [
-    { header: "Número", width: 65, value: (row) => row.number },
-    { header: "Fecha", width: 60, value: (row) => row.issueDate },
-    { header: "Vencimiento", width: 65, value: (row) => row.dueDate ?? "-" },
-    { header: "Total", width: 75, align: "right", value: (row) => formatCOP(row.total) },
-    { header: "Pagado", width: 75, align: "right", value: (row) => formatCOP(row.paidAmount) },
-    { header: "Saldo", width: 75, align: "right", value: (row) => formatCOP(row.balance) },
-    { header: "Estado", width: 75, value: (row) => INVOICE_STATUS_LABELS[row.status] },
+    { header: "Número", width: 70, value: (row) => row.number },
+    { header: "Fecha", width: 65, value: (row) => row.issueDate },
+    { header: "Vencimiento", width: 75, value: (row) => row.dueDate ?? "-" },
+    { header: "Total", width: 85, align: "right", value: (row) => formatCOP(row.total) },
+    { header: "Pagado", width: 85, align: "right", value: (row) => formatCOP(row.paidAmount) },
+    { header: "Saldo", width: 85, align: "right", value: (row) => formatCOP(row.balance) },
+    { header: "Estado", width: 100, value: (row) => INVOICE_STATUS_LABELS[row.status] },
   ]);
 }
 
 function writePagosRecientesSection(doc: PDFKit.PDFDocument, summary: DashboardExportData["summary"]) {
   writeSectionHeading(doc, "Pagos recientes");
+  // "Cliente" widened from 110 to 160 and "Notas" from 85 to 130 — at their
+  // old widths a long business name (~118.7pt) and a full-sentence note
+  // (~84.5pt) both wrapped past `writeTable`'s old fixed 22pt row height and
+  // overlapped the next row's text.
   writeTable(doc, summary.recentPayments, [
-    { header: "Fecha", width: 65, value: (row) => row.paymentDate },
-    { header: "Cliente", width: 110, value: (row) => row.customer.name },
-    { header: "Factura", width: 75, value: (row) => row.invoice.number },
-    { header: "Monto", width: 75, align: "right", value: (row) => formatCOP(row.amount) },
-    { header: "Método", width: 70, value: (row) => row.method ?? "-" },
-    { header: "Notas", width: 85, value: (row) => row.notes ?? "-" },
+    { header: "Fecha", width: 70, value: (row) => row.paymentDate },
+    { header: "Cliente", width: 160, value: (row) => row.customer.name },
+    { header: "Factura", width: 80, value: (row) => row.invoice.number },
+    { header: "Monto", width: 80, align: "right", value: (row) => formatCOP(row.amount) },
+    { header: "Método", width: 80, value: (row) => row.method ?? "-" },
+    { header: "Notas", width: 130, value: (row) => row.notes ?? "-" },
   ]);
 }
 
@@ -334,12 +418,15 @@ function writeGastosPorMesSection(doc: PDFKit.PDFDocument, chartPng: Buffer) {
 
 function writeGastosRecientesSection(doc: PDFKit.PDFDocument, expenses: DashboardExportData["expenses"]) {
   writeSectionHeading(doc, "Gastos recientes");
+  // "Descripción" widened from 150 to 220 and "Notas" from 90 to 140 for the
+  // same reason as "Pagos recientes" above — longer free-text values in
+  // these two columns were the most likely to wrap under the old widths.
   writeTable(doc, expenses.recentExpenses, [
-    { header: "Fecha", width: 65, value: (row) => row.expenseDate },
-    { header: "Categoría", width: 90, value: (row) => getCategoryLabel(row.category) },
-    { header: "Descripción", width: 150, value: (row) => row.description },
-    { header: "Monto", width: 80, align: "right", value: (row) => formatCOP(row.amount) },
-    { header: "Notas", width: 90, value: (row) => row.notes ?? "-" },
+    { header: "Fecha", width: 70, value: (row) => row.expenseDate },
+    { header: "Categoría", width: 110, value: (row) => getCategoryLabel(row.category) },
+    { header: "Descripción", width: 220, value: (row) => row.description },
+    { header: "Monto", width: 90, align: "right", value: (row) => formatCOP(row.amount) },
+    { header: "Notas", width: 140, value: (row) => row.notes ?? "-" },
   ]);
 }
 
@@ -357,12 +444,20 @@ function writeGastosRecientesSection(doc: PDFKit.PDFDocument, expenses: Dashboar
  * section's table, and a new chart-only "Gastos por mes" section inserted
  * right after "Gastos por categoria" (see `writeGastosPorMesSection`'s doc
  * comment for why it has no table of its own).
+ *
+ * Landscape: several of these tables (widest is "Gastos recientes" at
+ * 630pt) benefit from more than portrait A4's 515.28pt of content width so
+ * their widened columns (see each section's own comment) don't clip.
+ * Landscape drops usable page height from ~761.89pt to ~515.28pt, so page
+ * breaks inside a section's table happen more often — `contentWidth()` and
+ * `ensureRoom()` both read the page's live geometry, so nothing else here
+ * needs to change for that.
  */
 export async function renderDashboardExportPdf(
   data: DashboardExportData,
   chartImages: DashboardChartImages,
 ): Promise<Buffer> {
-  const doc = createDocument();
+  const doc = createDocument({ layout: "landscape" });
   const done = collectDocument(doc);
 
   writeTitle(doc, "Reporte de Dashboard", undefined, "center");
