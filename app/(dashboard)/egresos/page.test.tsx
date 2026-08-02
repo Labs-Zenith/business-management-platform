@@ -65,7 +65,7 @@ describe("EgresosPage", () => {
 
     render(await EgresosPage({ searchParams: Promise.resolve({}) }));
 
-    expect(mockListExpenses).toHaveBeenCalledWith(SESSION, { page: 1, pageSize: 20 });
+    expect(mockListExpenses).toHaveBeenCalledWith(SESSION, { sortBy: "expenseDate", sortDir: "desc", page: 1, pageSize: 20 });
     expect(screen.getByText("2026-07-06")).toBeInTheDocument();
     expect(screen.getByText("Otro")).toBeInTheDocument();
     expect(screen.getByText("Papeleria")).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe("EgresosPage", () => {
 
     render(await EgresosPage({ searchParams: Promise.resolve({ page: "2" }) }));
 
-    expect(mockListExpenses).toHaveBeenCalledWith(SESSION, { page: 2, pageSize: 20 });
+    expect(mockListExpenses).toHaveBeenCalledWith(SESSION, { sortBy: "expenseDate", sortDir: "desc", page: 2, pageSize: 20 });
   });
 
   it("renders TablePagination page links for the current page", async () => {
@@ -118,4 +118,32 @@ describe("EgresosPage", () => {
 
     expect(await screen.findByRole("button", { name: /registrar egreso/i })).toBeInTheDocument();
   });
+
+  it("threads a whitelisted sort through, and falls back for an unknown column", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListExpenses.mockResolvedValue({ data: [EXPENSE], page: 1, pageSize: 20, total: 1 });
+
+    render(await EgresosPage({ searchParams: Promise.resolve({ sort: "amount", dir: "asc" }) }));
+    expect(mockListExpenses).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ sortBy: "amount", sortDir: "asc" }),
+    );
+
+    mockListExpenses.mockClear();
+    render(await EgresosPage({ searchParams: Promise.resolve({ sort: "nope", dir: "asc" }) }));
+    expect(mockListExpenses).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ sortBy: "expenseDate", sortDir: "desc" }),
+    );
+  });
+
+  it("renders sort links that reset the page", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListExpenses.mockResolvedValue({ data: [EXPENSE], page: 2, pageSize: 20, total: 40 });
+
+    render(await EgresosPage({ searchParams: Promise.resolve({ page: "2" }) }));
+
+    expect(screen.getByRole("link", { name: /^monto/i })).toHaveAttribute("href", "/egresos?sort=amount&dir=desc");
+  });
+
 });

@@ -5,12 +5,14 @@ import { listExpenses } from "@/lib/services/expense-service";
 import { getCategoryLabel } from "@/lib/services/expense-dashboard-service";
 import { listExpenseCategories } from "@/lib/services/catalog-service";
 import { formatCOP } from "@/lib/money";
+import { expenseSorter } from "@/lib/services/sorting";
 import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table";
 import { TablePagination } from "@/components/domain/table-pagination";
+import { TableSortHeader } from "@/components/domain/table-sort-header";
 import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog";
 
 /**
@@ -36,7 +38,7 @@ import ExpenseFormDialog from "@/components/domain/dashboard/expense-form-dialog
 const PAGE_SIZE = 20;
 
 type EgresosPageProps = {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{ sort?: string; dir?: string; page?: string }>;
 };
 
 export default async function EgresosPage({ searchParams }: EgresosPageProps) {
@@ -44,13 +46,24 @@ export default async function EgresosPage({ searchParams }: EgresosPageProps) {
   const session = await requireSessionOrRedirect();
   const params = await searchParams;
 
+  const sort = expenseSorter.parse(params.sort, params.dir);
+
   const [result, categories] = await Promise.all([
     listExpenses(session, {
+      sortBy: sort.sortBy,
+      sortDir: sort.sortDir,
       page: parsePageParam(params.page),
       pageSize: PAGE_SIZE,
     }),
     listExpenseCategories(),
   ]);
+
+  const sortHeaderProps = {
+    current: sort,
+    defaultSort: expenseSorter.defaultSort,
+    pathname: "/egresos",
+    params,
+  };
 
   return (
     <PageShell>
@@ -73,10 +86,10 @@ export default async function EgresosPage({ searchParams }: EgresosPageProps) {
       <Table className="min-w-[640px]">
         <TableHeader>
           <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Categoría</TableHead>
-            <TableHead>Descripción</TableHead>
-            <TableHead className="text-right">Monto</TableHead>
+            <TableSortHeader label="Fecha" sortBy="expenseDate" firstDir="desc" {...sortHeaderProps} />
+            <TableSortHeader label="Categoría" sortBy="category" {...sortHeaderProps} />
+            <TableSortHeader label="Descripción" sortBy="description" {...sortHeaderProps} />
+            <TableSortHeader label="Monto" sortBy="amount" firstDir="desc" align="right" {...sortHeaderProps} />
           </TableRow>
         </TableHeader>
         <TableBody>

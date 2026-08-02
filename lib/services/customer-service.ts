@@ -29,6 +29,39 @@ export async function listCustomers(
   return repositories.customers.list(session.businessId, query);
 }
 
+/** Page size for `listAllCustomers`'s internal walk — an implementation detail, not a cap. */
+const ALL_CUSTOMERS_PAGE_SIZE = 200;
+
+/**
+ * Every customer of the business, unpaginated — for the id-to-name lookups and
+ * Cliente dropdowns that must cover the whole book rather than an arbitrary
+ * first page. `/invoices` previously fetched `pageSize: 50` for this, so past
+ * 50 customers the filter silently lost options and the Cliente column
+ * rendered "-" for everyone after the 50th (customers come back name-sorted).
+ *
+ * `lib/export/collect.ts#collectAllCustomers` delegates here, so the paging
+ * walk exists once.
+ *
+ * A business with thousands of customers wants a searchable combobox rather
+ * than a `<Select>` listing all of them; this fixes the correctness bug, not
+ * that ergonomic ceiling.
+ */
+export async function listAllCustomers(session: Session): Promise<CustomerWithBalance[]> {
+  const all: CustomerWithBalance[] = [];
+  let page = 1;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (all.length < total) {
+    const result = await listCustomers(session, { page, pageSize: ALL_CUSTOMERS_PAGE_SIZE });
+    all.push(...result.data);
+    total = result.total;
+    if (result.data.length === 0) break;
+    page += 1;
+  }
+
+  return all;
+}
+
 export async function getCustomer(session: Session, id: string): Promise<CustomerDetail> {
   const customer = await repositories.customers.getById(session.businessId, id);
   if (!customer) {
