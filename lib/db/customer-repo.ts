@@ -13,6 +13,7 @@ import type {
 } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
 import { runTransaction, sql } from "./client";
+import { customerSorter } from "@/lib/services/sorting";
 
 /**
  * Same strategy throughout `lib/db/*`: fetch business-scoped rows in bulk
@@ -160,15 +161,15 @@ export const customerRepo: CustomerRepository = {
         [c.name, c.documentNumber, c.email, c.phone].some((field) => field?.toLowerCase().includes(needle))
       );
     }
-    customers.sort((a, b) => a.name.localeCompare(b.name));
-
     const withBalance: CustomerWithBalance[] = customers.map((c) => {
       const invoiced = invoiceRows.filter((i) => String(i.customer_id) === String(c.id)).reduce((s, i) => s + Number(i.total), 0);
       const paid = paymentRows.filter((p) => String(p.customer_id) === String(c.id)).reduce((s, p) => s + Number(p.amount), 0);
       return { ...c, balance: invoiced - paid };
     });
 
-    return paginate(withBalance, query.page, query.pageSize);
+    // Sorted AFTER the balance map, not before it (as the old fixed name sort
+    // was): `balance` is a sortable column and does not exist until here.
+    return paginate(customerSorter.sort(withBalance, query), query.page, query.pageSize);
   },
 
   async getById(businessId: string, id: string): Promise<CustomerDetail | null> {

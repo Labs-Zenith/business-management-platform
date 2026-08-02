@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/server/api-error";
 import type { InvoiceDetail, Paged, PaymentInput, PaymentListQuery, PaymentRepository, PaymentWithRefs } from "@/lib/services/ports";
 import { runTransaction, sql } from "./client";
 import { invoiceRepo } from "./invoice-repo";
+import { paymentSorter } from "@/lib/services/sorting";
 
 /**
  * `createForInvoice`'s overpay guard, which must serialize with
@@ -89,8 +90,7 @@ export const paymentRepo: PaymentRepository = {
     if (query.from) withRefs = withRefs.filter((p) => p.paymentDate >= query.from!);
     if (query.to) withRefs = withRefs.filter((p) => p.paymentDate <= query.to!);
 
-    withRefs.sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1));
-    return paginate(withRefs, query.page, query.pageSize) as Paged<PaymentWithRefs>;
+    return paginate(paymentSorter.sort(withRefs, query), query.page, query.pageSize) as Paged<PaymentWithRefs>;
   },
 
   /** SQL-side aggregate — see `lib/db/expense-repo.ts#listActiveMonths` for why. */

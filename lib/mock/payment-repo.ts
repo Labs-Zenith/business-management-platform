@@ -11,6 +11,7 @@ import type {
 import { computeStatus } from "@/lib/services/status";
 import { withLock } from "./lock";
 import { findCatalogIdByCode, generateId, store as defaultStore, type MockStore } from "./store";
+import { paymentSorter } from "@/lib/services/sorting";
 
 function paymentsForInvoice(store: MockStore, invoiceId: string): Payment[] {
   return [...store.payments.values()].filter((payment) => payment.invoiceId === invoiceId);
@@ -104,9 +105,7 @@ export function createPaymentRepository(store: MockStore): PaymentRepository {
         payments = payments.filter((payment) => payment.paymentDate <= query.to!);
       }
 
-      payments.sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1));
-
-      return paginate(payments, query.page, query.pageSize);
+      return paginate(paymentSorter.sort(payments, query), query.page, query.pageSize);
     },
 
     /** Mirrors `lib/db/payment-repo.ts#listActiveMonths`. */

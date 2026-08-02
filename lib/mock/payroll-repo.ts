@@ -9,6 +9,7 @@ import type {
   PayrollPaymentWithEmployee,
 } from "@/lib/services/ports";
 import { generateId, resolveCatalogId, store as defaultStore, type MockStore } from "./store";
+import { payrollPaymentSorter } from "@/lib/services/sorting";
 
 function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
   const start = (page - 1) * pageSize;
@@ -55,10 +56,9 @@ export function createPayrollRepository(store: MockStore): PayrollPaymentReposit
         payments = payments.filter((payment) => payment.paymentDate <= query.to!);
       }
 
-      payments.sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1)); // newest first, matches expenses
-
+      // Sorted AFTER the employee join — mirrors `lib/db/payroll-repo.ts`.
       const withEmployee = payments.map((payment) => toPayrollPaymentWithEmployee(store, payment));
-      return paginate(withEmployee, query.page, query.pageSize);
+      return paginate(payrollPaymentSorter.sort(withEmployee, query), query.page, query.pageSize);
     },
 
     async getById(businessId: string, id: string): Promise<PayrollPaymentWithEmployee | null> {

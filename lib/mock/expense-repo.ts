@@ -1,5 +1,6 @@
 import type { Expense, ExpenseInput, ExpenseListQuery, ExpenseRepository, Paged } from "@/lib/services/ports";
 import { generateId, resolveCatalogId, store as defaultStore, type MockStore } from "./store";
+import { expenseSorter } from "@/lib/services/sorting";
 
 function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
   const start = (page - 1) * pageSize;
@@ -42,9 +43,7 @@ export function createExpenseRepository(store: MockStore): ExpenseRepository {
         expenses = expenses.filter((expense) => expense.expenseDate <= query.to!);
       }
 
-      expenses.sort((a, b) => (a.expenseDate < b.expenseDate ? 1 : -1)); // newest first, matches payments
-
-      return paginate(expenses, query.page, query.pageSize);
+      return paginate(expenseSorter.sort(expenses, query), query.page, query.pageSize);
     },
 
     /** Mirrors `lib/db/expense-repo.ts#listActiveMonths`. Dates are `YYYY-MM-DD`, so the month is a slice. */
