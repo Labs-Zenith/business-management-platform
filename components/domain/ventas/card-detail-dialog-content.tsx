@@ -161,7 +161,13 @@ export default function CardDetailDialogContent({ open, onOpenChange, card, cust
     setIsDeleting(true);
     setError(null);
     try {
-      const response = await fetch(`/api/ventas/${card.id}`, { method: "DELETE" });
+      // `content-type` is REQUIRED even with no body: `checkOrigin`
+      // (`lib/server/origin-check.ts`) rejects any mutation without it, so
+      // omitting it made this delete fail with a 400 on every attempt.
+      const response = await fetch(`/api/ventas/${card.id}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+      });
 
       if (!response.ok) {
         const body: { error?: { message?: string } } | null = await response.json().catch(() => null);
