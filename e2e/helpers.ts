@@ -40,7 +40,15 @@ export function formatCOP(cents: number): string {
 
 /**
  * Logs in with the demo credentials and waits for the dashboard to load.
- * Mirrors `smoke.spec.ts`'s inline login steps exactly.
+ *
+ * The field is labelled "Usuario", not "Email": `login-form.tsx` switched to
+ * username-based sign-in (commit `fbc1056`), mapping the typed value to an
+ * `@zenith.app` address via `lib/auth/username.ts` — but only when it has no
+ * `@` already, so passing the full demo email still works unchanged.
+ *
+ * `exact: true` on the password field is required: the same form renders a
+ * "Mostrar contraseña" visibility toggle, whose aria-label a substring match
+ * would also hit.
  */
 export async function login(
   page: Page,
@@ -48,8 +56,8 @@ export async function login(
   password: string = DEMO_LOGIN_PASSWORD,
 ): Promise<void> {
   await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Contrasena").fill(password);
+  await page.getByLabel("Usuario").fill(email);
+  await page.getByLabel("Contraseña", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
