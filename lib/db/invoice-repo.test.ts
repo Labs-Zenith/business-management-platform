@@ -264,11 +264,16 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     expect(updated!.number).toBe("FAC-0001");
     expect(updated!.total).toBe(60000);
 
-    // --- Statement 1: locks the invoice row, scoped to id + business_id. ---
+    // --- Statement 1: locks the invoice row, scoped to id + business_id, and
+    // reads back the invoice type's code (which decides whether this
+    // invoice's lines move stock `out` or, for a credit note, back `in`).
+    // `FOR UPDATE OF i` keeps the lock on `invoices` only — `invoice_types`
+    // is a global read-only catalog and must never be locked by an edit. ---
     const [lockStrings, ...lockValues] = mockTx.mock.calls[0]!;
     const lockText = Array.from(lockStrings as unknown as string[]).join("");
-    expect(lockText).toContain("SELECT id FROM invoices");
-    expect(lockText).toContain("FOR UPDATE");
+    expect(lockText).toContain("FROM invoices i");
+    expect(lockText).toContain("t.code");
+    expect(lockText).toContain("FOR UPDATE OF i");
     expect(lockText).not.toContain("UPDATE invoices SET");
     expect(lockValues).toEqual([INVOICE_ID, BUSINESS_ID]);
 
@@ -636,6 +641,64 @@ describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety
     // First interpolated value is the COALESCE's explicit-id slot — null,
     // since `data.invoiceTypeId` was not supplied.
     expect(seqValues[0]).toBeNull();
+  });
+
+  /**
+   * A credit note is a RETURN, so its lines put units BACK — the one type
+   * that flips the movement direction. The direction is read from the
+   * catalog `code` returned by the sequence statement, and an `in` needs no
+   * floor-at-zero guard because adding units can never underflow.
+   */
+  it("inserts an UNGUARDED `in` movement for a credit note's product line", async () => {
+    const PRODUCT_ID = "80000000-0000-4000-8000-000000000001";
+    mockTx
+      .mockResolvedValueOnce([{ invoice_type_id: INVOICE_TYPE_ID, seq: 1, prefix: "NC", code: "nota_credito" }])
+      .mockResolvedValueOnce([invoiceRow({ number: "NC-0001" })])
+      .mockResolvedValueOnce([]) // item insert
+      .mockResolvedValueOnce([{ id: PRODUCT_ID }]) // product lock
+      .mockResolvedValueOnce([]); // movement insert
+    mockSql.mockResolvedValueOnce([customerRow()]);
+    mockSql.mockResolvedValueOnce([]);
+    mockSql.mockResolvedValueOnce([]);
+
+    await invoiceRepo.create(
+      BUSINESS_ID,
+      buildPersist({ items: [{ description: "Crema", quantity: 2, unitPrice: 40000, productId: PRODUCT_ID, lineTotal: 80000 }] }),
+    );
+
+    // The product is still locked — that is also the business-scoping check.
+    const lockText = Array.from(mockTx.mock.calls[3]![0] as unknown as string[]).join("");
+    expect(lockText).toContain("FROM products");
+    expect(lockText).toContain("FOR UPDATE");
+
+    const movementText = Array.from(mockTx.mock.calls[4]![0] as unknown as string[]).join("");
+    expect(movementText).toContain("INSERT INTO inventory_movements");
+    expect(movementText).toContain("'in'");
+    expect(movementText).not.toContain("'out'");
+    // No floor-at-zero guard: adding units cannot drive stock negative.
+    expect(movementText).not.toContain("current_qty");
+  });
+
+  it("still emits a guarded `out` for a debit note — it bills MORE, never less", async () => {
+    const PRODUCT_ID = "80000000-0000-4000-8000-000000000001";
+    mockTx
+      .mockResolvedValueOnce([{ invoice_type_id: INVOICE_TYPE_ID, seq: 1, prefix: "ND", code: "nota_debito" }])
+      .mockResolvedValueOnce([invoiceRow({ number: "ND-0001" })])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: PRODUCT_ID }])
+      .mockResolvedValueOnce([{ id: "movement-1" }]);
+    mockSql.mockResolvedValueOnce([customerRow()]);
+    mockSql.mockResolvedValueOnce([]);
+    mockSql.mockResolvedValueOnce([]);
+
+    await invoiceRepo.create(
+      BUSINESS_ID,
+      buildPersist({ items: [{ description: "Crema", quantity: 1, unitPrice: 40000, productId: PRODUCT_ID, lineTotal: 40000 }] }),
+    );
+
+    const movementText = Array.from(mockTx.mock.calls[4]![0] as unknown as string[]).join("");
+    expect(movementText).toContain("'out'");
+    expect(movementText).toContain("current_qty");
   });
 
   it("locks the product row and inserts a guarded `out` inventory movement, in the SAME transaction, for an item linked to a real product (productId != null)", async () => {

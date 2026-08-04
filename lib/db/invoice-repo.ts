@@ -12,6 +12,7 @@ import type {
   PaymentWithRefs,
 } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
+import { movementDirectionFor, reverseMovementDirection } from "@/lib/services/inventory-stock";
 import { runTransaction, sql } from "./client";
 
 type InvoiceRow = {
@@ -275,12 +276,16 @@ export const invoiceRepo: InvoiceRepository = {
           ON CONFLICT (business_id, invoice_type_id) DO UPDATE SET seq = invoice_sequences.seq + 1
           RETURNING business_id, invoice_type_id, seq
         )
-        SELECT bumped.invoice_type_id, bumped.seq, it.prefix
+        SELECT bumped.invoice_type_id, bumped.seq, it.prefix, it.code
         FROM bumped
         JOIN invoice_types it ON it.id = bumped.invoice_type_id
-      `) as unknown as { invoice_type_id: string; seq: number; prefix: string }[];
-      const { invoice_type_id: invoiceTypeId, seq, prefix } = seqRows[0]!;
+      `) as unknown as { invoice_type_id: string; seq: number; prefix: string; code: string }[];
+      const { invoice_type_id: invoiceTypeId, seq, prefix, code } = seqRows[0]!;
       const number = `${prefix}-${String(seq).padStart(4, "0")}`;
+      // A credit note is a RETURN: its lines put goods back on the shelf, so
+      // they move stock in the opposite direction to a sale. See
+      // `movementDirectionFor`.
+      const movementType = movementDirectionFor(code);
 
       // Statement 2: header INSERT, using the resolved type + number.
       const invoiceRows = (await tx`
@@ -292,17 +297,18 @@ export const invoiceRepo: InvoiceRepository = {
 
       // Statements 3..N: one INSERT per item, same transaction. For any item
       // that links to a real product (`item.productId != null`), this ALSO
-      // decrements that product's stock via a guarded `out` inventory
-      // movement — inserted in this SAME transaction, replicating
-      // `inventory-repo.ts#create`'s two-statement floor-at-zero guard (row
-      // lock, then a fresh-snapshot `SUM`-guarded conditional INSERT) rather
-      // than calling that repository (which would open its OWN separate
-      // transaction — the movement must commit/rollback atomically with the
-      // invoice+items here, in ONE transaction). Sequential item inserts
-      // inside the SAME `tx` mean two lines of the SAME product correctly
-      // accumulate: the second line's `SUM` sees the first line's
-      // already-inserted movement. A "Otro"/free-text line (`productId ===
-      // null`) never touches inventory at all.
+      // moves that product's stock via an inventory movement inserted in this
+      // SAME transaction (the movement must commit/rollback atomically with
+      // the invoice+items, so this replicates `inventory-repo.ts#create`'s
+      // logic inline rather than calling that repository, which would open
+      // its OWN transaction). Sequential item inserts inside the SAME `tx`
+      // mean two lines of the SAME product correctly accumulate: the second
+      // line's `SUM` sees the first line's already-inserted movement. A
+      // "Otro"/free-text line (`productId === null`) never touches inventory.
+      //
+      // DIRECTION depends on the invoice type (`movementDirectionFor`): a
+      // sale takes goods `out`, a credit note is a RETURN and puts them back
+      // `in`. That also decides whether a guard is needed at all — see below.
       for (const item of data.items) {
         await tx`
           INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total, product_id)
@@ -314,12 +320,24 @@ export const invoiceRepo: InvoiceRepository = {
           // remainder of this transaction — same two-statement pattern
           // `inventory-repo.ts#create` uses, so two concurrent invoice
           // creates against the SAME product serialize correctly (see
-          // `client.ts`'s canonical note).
+          // `client.ts`'s canonical note). Needed for BOTH directions: it is
+          // also the check that the product belongs to this business.
           const productLockRows = (await tx`
             SELECT id FROM products WHERE id = ${item.productId} AND business_id = ${businessId} FOR UPDATE
           `) as unknown as { id: string }[];
           if (productLockRows.length === 0) {
             throw new ApiError("VALIDATION_ERROR", `Producto no encontrado para la línea "${item.description}"`);
+          }
+
+          if (movementType === "in") {
+            // A return only ADDS units, so it can never drive the computed
+            // quantity below zero — no floor guard, and nothing to reject.
+            await tx`
+              INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+              VALUES (gen_random_uuid(), ${businessId}, ${item.productId}, 'in',
+                (SELECT id FROM movement_types WHERE code = 'in'), ${item.quantity}, NULL)
+            `;
+            continue;
           }
 
           // Statement: fresh-snapshot SUM guard + conditional insert, run
@@ -389,9 +407,26 @@ export const invoiceRepo: InvoiceRepository = {
       // Statement 1: acquire and HOLD the invoice row lock for the whole
       // transaction. Empty result -> NOT_FOUND (missing/cross-business),
       // returned as `null`, without leaking cross-business existence.
+      //
+      // Also carries back the invoice TYPE's code, which decides which way
+      // this invoice's lines move stock (`movementDirectionFor`). The type is
+      // immutable after creation, so reading it here — under the lock — is
+      // authoritative for the whole edit. `FOR UPDATE OF i` restricts the
+      // lock to `invoices`: `invoice_types` is a global read-only catalog and
+      // must never be locked by an edit.
       const lockRows = (await tx`
-        SELECT id FROM invoices WHERE id = ${id} AND business_id = ${businessId} FOR UPDATE
-      `) as unknown as { id: string }[];
+        SELECT i.id, t.code AS type_code
+        FROM invoices i
+        JOIN invoice_types t ON t.id = i.invoice_type_id
+        WHERE i.id = ${id} AND i.business_id = ${businessId}
+        FOR UPDATE OF i
+      `) as unknown as { id: string; type_code: string }[];
+      // Direction for the NEW lines; the reversal of the OLD ones is its
+      // mirror image (an applied `out` is undone with an `in`, and vice
+      // versa). Both old and new lines belong to the same invoice, hence the
+      // same type.
+      const movementType = movementDirectionFor(lockRows[0]?.type_code);
+      const reversalType = reverseMovementDirection(movementType);
 
       // Statement 2 (inventory support, read-only): evaluates the EXACT SAME
       // compound guard the DELETE/INSERT/header UPDATE below embed in SQL —
@@ -465,18 +500,50 @@ export const invoiceRepo: InvoiceRepository = {
         `;
       }
 
-      // Inventory reversal/decrement — ONLY when the edit itself is allowed
-      // (see statement 2's doc comment). Order matters: ALL old product
-      // lines are restored (`in`) BEFORE any new line is decremented (`out`),
-      // so a line moved between two invoice items for the SAME product (or a
-      // quantity reduced then re-applied) sees the restored balance first —
-      // mirrors `create`'s "sequential inserts in one tx accumulate
-      // correctly" reasoning, just reversal-then-reapply instead of
-      // multiple `out`s.
+      // Inventory reversal/re-apply — ONLY when the edit itself is allowed
+      // (see statement 2's doc comment). Order matters: ALL old product lines
+      // are reversed BEFORE any new line is applied, so a line moved between
+      // two invoice items for the SAME product (or a quantity reduced then
+      // re-applied) sees the restored balance first — mirrors `create`'s
+      // "sequential inserts in one tx accumulate correctly" reasoning.
+      //
+      // For a SALE that reads reverse-with-`in` then re-apply-with-`out`; for
+      // a CREDIT NOTE both flip, so the reversal is the guarded direction
+      // instead. Whichever side emits `out` is the side that can underflow,
+      // and that is the side that carries the floor-at-zero guard.
       if (editAllowed) {
-        // Reversal: one `in` movement per OLD product line, restoring
-        // exactly the quantity that line had reserved.
+        // Reversal: one compensating movement per OLD product line, undoing
+        // exactly the quantity that line had moved.
         for (const old of oldProductItemRows) {
+          if (reversalType === "out") {
+            // Undoing a credit note REMOVES units again, so it can underflow
+            // — e.g. the returned goods were already re-sold. Same guarded
+            // shape as the re-apply loop below; zero rows means the reversal
+            // would drive stock negative, and the whole edit rolls back.
+            const reversalRows = (await tx`
+              WITH bal AS (
+                SELECT p.id,
+                  COALESCE((SELECT SUM(CASE WHEN m.type = 'in' THEN m.quantity ELSE -m.quantity END)
+                            FROM inventory_movements m WHERE m.product_id = p.id), 0) AS current_qty
+                FROM products p
+                WHERE p.id = ${old.product_id} AND p.business_id = ${businessId}
+              )
+              INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+              SELECT gen_random_uuid(), ${businessId}, bal.id, 'out',
+                (SELECT id FROM movement_types WHERE code = 'out'), ${old.quantity}, NULL
+              FROM bal
+              WHERE ${old.quantity} <= bal.current_qty
+              RETURNING *
+            `) as unknown as { id: string }[];
+            if (reversalRows.length === 0) {
+              throw new ApiError(
+                "VALIDATION_ERROR",
+                "Stock insuficiente para revertir la devolución: esas unidades ya salieron del inventario.",
+              );
+            }
+            continue;
+          }
+
           await tx`
             INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
             VALUES (gen_random_uuid(), ${businessId}, ${old.product_id}, 'in',
@@ -484,9 +551,8 @@ export const invoiceRepo: InvoiceRepository = {
           `;
         }
 
-        // Decrement: one guarded `out` movement per NEW product line,
-        // replicating `inventory-repo.ts#create`'s floor-at-zero guard (see
-        // `create`'s identical block above in this file for the full
+        // Re-apply: one movement per NEW product line, guarded when it is an
+        // `out` (see `create`'s identical block above for the full
         // rationale). Zero rows inserted -> over-draw -> throw, rolling back
         // the WHOLE transaction (including the reversal above and the item
         // DELETE/INSERTs) — never a partial edit.
@@ -507,6 +573,16 @@ export const invoiceRepo: InvoiceRepository = {
           `) as unknown as { id: string }[];
           if (productLockRows.length === 0) {
             throw new ApiError("VALIDATION_ERROR", `Producto no encontrado para la línea "${item.description}"`);
+          }
+
+          if (movementType === "in") {
+            // A credit note's line only ADDS units — no floor guard needed.
+            await tx`
+              INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+              VALUES (gen_random_uuid(), ${businessId}, ${item.productId}, 'in',
+                (SELECT id FROM movement_types WHERE code = 'in'), ${item.quantity}, NULL)
+            `;
+            continue;
           }
 
           const movementRows = (await tx`

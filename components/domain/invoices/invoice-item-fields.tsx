@@ -38,6 +38,28 @@ import { OTRO_PRODUCT_VALUE, type InvoiceFormValues } from "./invoice-form-schem
  * `<Input>` instead. Quantity and unit price stay directly editable in both
  * cases — this change never auto-fills price from the product's cost (see
  * the parent plan's "Notas / fuera de alcance").
+ *
+ * STOCK AFFORDANCE (`enforceStock`): the server already refuses an over-draw
+ * atomically (`lib/db/invoice-repo.ts`'s floor-at-zero guard rejects the
+ * whole invoice with "Stock insuficiente"), but doing so only at submit means
+ * the user fills the entire form before finding out. When `enforceStock` is
+ * set, out-of-stock products are shown as "sin stock" and cannot be picked,
+ * and a line whose quantity exceeds what's available is flagged inline. The
+ * check sums the quantity of EVERY line pointing at the same product, since
+ * two lines of one product accumulate against the same balance server-side.
+ *
+ * It applies ONLY when creating a SALE — it is deliberately OFF in two cases:
+ *
+ *   - EDIT mode: the invoice being edited has already moved its own stock, so
+ *     `currentQuantity` is net of it. The server reverses those movements
+ *     before re-applying the new lines, meaning a line that looks like an
+ *     over-draw here is perfectly valid there.
+ *   - CREDIT NOTES: a return ADDS units, so it can never over-draw — and an
+ *     out-of-stock product is precisely the one being returned. Disabling it
+ *     would make the common case impossible to record.
+ *
+ * Both exclusions are decided by the caller (`invoice-form-content.tsx`). The
+ * server stays the authority in every mode.
  */
 export type InvoiceItemFieldsProduct = { id: string; name: string; currentQuantity: number };
 
@@ -48,6 +70,8 @@ export type InvoiceItemFieldsProps = {
   setValue: UseFormSetValue<InvoiceFormValues>;
   /** Active inventory products only — populates the product select. */
   products: InvoiceItemFieldsProduct[];
+  /** Set only when creating a SALE — see the stock-affordance note in this file's doc comment. */
+  enforceStock?: boolean;
 };
 
 type InvoiceItemRowProps = {
@@ -57,6 +81,9 @@ type InvoiceItemRowProps = {
   errors: FieldErrors<InvoiceFormValues>;
   setValue: UseFormSetValue<InvoiceFormValues>;
   products: InvoiceItemFieldsProduct[];
+  enforceStock: boolean;
+  /** Total quantity this row's product is claiming across ALL rows, or null when stock isn't enforced. */
+  claimedForProduct: number | null;
   onRemove: () => void;
   canRemove: boolean;
 };
@@ -68,6 +95,8 @@ function InvoiceItemRow({
   errors,
   setValue,
   products,
+  enforceStock,
+  claimedForProduct,
   onRemove,
   canRemove,
 }: InvoiceItemRowProps) {
@@ -77,12 +106,26 @@ function InvoiceItemRow({
   const productId = useWatch({ control, name: `items.${index}.productId` as const });
   const isOtro = productId === OTRO_PRODUCT_VALUE;
 
+  const selectedProduct = products.find((product) => product.id === productId);
+  const overdrawn =
+    enforceStock &&
+    selectedProduct !== undefined &&
+    claimedForProduct !== null &&
+    claimedForProduct > selectedProduct.currentQuantity;
+
   const selectItems = [
     ...products.map((product) => ({
       value: product.id,
-      label: `${product.name} · stock ${product.currentQuantity}`,
+      label:
+        enforceStock && product.currentQuantity <= 0
+          ? `${product.name} · sin stock`
+          : `${product.name} · stock ${product.currentQuantity}`,
+      // Never disable the CURRENTLY selected option: base-ui would otherwise
+      // render an unselectable value, and in practice this only happens when
+      // stock ran out in another tab after the pick.
+      disabled: enforceStock && product.currentQuantity <= 0 && product.id !== productId,
     })),
-    { value: OTRO_PRODUCT_VALUE, label: "Otro…" },
+    { value: OTRO_PRODUCT_VALUE, label: "Otro…", disabled: false },
   ];
 
   return (
@@ -115,7 +158,7 @@ function InvoiceItemRow({
               </SelectTrigger>
               <SelectContent>
                 {selectItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
+                  <SelectItem key={item.value} value={item.value} disabled={item.disabled}>
                     {item.label}
                   </SelectItem>
                 ))}
@@ -145,7 +188,13 @@ function InvoiceItemRow({
           className="w-full"
           {...register(`items.${index}.quantity` as const, { valueAsNumber: true })}
         />
-        {itemErrors?.quantity ? <p className="text-xs text-destructive">{itemErrors.quantity.message}</p> : null}
+        {itemErrors?.quantity ? (
+          <p className="text-xs text-destructive">{itemErrors.quantity.message}</p>
+        ) : overdrawn ? (
+          <p role="alert" className="text-xs text-destructive">
+            Solo hay {selectedProduct!.currentQuantity} en stock
+          </p>
+        ) : null}
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor={`items.${index}.unitPrice`}>Valor unitario (COP)</Label>
@@ -179,8 +228,31 @@ function InvoiceItemRow({
   );
 }
 
-export function InvoiceItemFields({ control, register, errors, setValue, products }: InvoiceItemFieldsProps) {
+export function InvoiceItemFields({
+  control,
+  register,
+  errors,
+  setValue,
+  products,
+  enforceStock = false,
+}: InvoiceItemFieldsProps) {
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
+
+  // Watched at the LIST level (not per row) because the claim is per PRODUCT,
+  // not per line: two rows selling the same product draw from one balance, and
+  // the server sees their combined total. Only subscribed when stock is
+  // actually enforced, so edit mode keeps the previous render behavior.
+  const watchedItems = useWatch({ control, name: "items", disabled: !enforceStock });
+  const claimedByProduct = new Map<string, number>();
+  if (enforceStock && Array.isArray(watchedItems)) {
+    for (const item of watchedItems) {
+      const id = item?.productId;
+      if (!id || id === OTRO_PRODUCT_VALUE) continue;
+      const quantity = Number(item?.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+      claimedByProduct.set(id, (claimedByProduct.get(id) ?? 0) + quantity);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -194,6 +266,14 @@ export function InvoiceItemFields({ control, register, errors, setValue, product
           errors={errors}
           setValue={setValue}
           products={products}
+          enforceStock={enforceStock}
+          claimedForProduct={
+            enforceStock
+              ? (claimedByProduct.get(
+                  (Array.isArray(watchedItems) ? watchedItems[index]?.productId : undefined) ?? "",
+                ) ?? null)
+              : null
+          }
           onRemove={() => remove(index)}
           canRemove={fields.length > 1}
         />

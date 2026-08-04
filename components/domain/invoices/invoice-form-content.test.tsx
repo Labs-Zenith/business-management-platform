@@ -701,10 +701,52 @@ describe("InvoiceFormContent", () => {
       expect(
         await screen.findByRole("option", { name: `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}` }),
       ).toBeInTheDocument();
-      expect(
-        screen.getByRole("option", { name: `${PRODUCT_B.name} · stock ${PRODUCT_B.currentQuantity}` }),
-      ).toBeInTheDocument();
+      // PRODUCT_B is at zero, so create mode labels it "sin stock" rather than
+      // "stock 0" — see the next test for the accompanying disabled state.
+      expect(screen.getByRole("option", { name: `${PRODUCT_B.name} · sin stock` })).toBeInTheDocument();
       expect(screen.getByRole("option", { name: /otro…/i })).toBeInTheDocument();
+    });
+
+    it("disables the out-of-stock product in create mode so it cannot be invoiced", async () => {
+      const user = userEvent.setup();
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={REAL_PRODUCTS} />);
+
+      await user.click(screen.getByLabelText(/producto/i));
+
+      const outOfStock = await screen.findByRole("option", { name: `${PRODUCT_B.name} · sin stock` });
+      expect(outOfStock).toHaveAttribute("data-disabled");
+      // The in-stock product stays selectable.
+      expect(
+        screen.getByRole("option", { name: `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}` }),
+      ).not.toHaveAttribute("data-disabled");
+    });
+
+    it("flags a quantity above the available stock inline, before submit", async () => {
+      const user = userEvent.setup();
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={REAL_PRODUCTS} />);
+
+      await selectOption(user, /producto/i, `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}`);
+
+      const quantity = screen.getByLabelText(/cantidad/i);
+      await user.clear(quantity);
+      await user.type(quantity, String(PRODUCT_A.currentQuantity + 1));
+
+      expect(
+        await screen.findByText(`Solo hay ${PRODUCT_A.currentQuantity} en stock`),
+      ).toBeInTheDocument();
+    });
+
+    it("does not flag a quantity within the available stock", async () => {
+      const user = userEvent.setup();
+      render(<InvoiceFormContent customers={[CUSTOMER]} invoiceTypes={INVOICE_TYPES} products={REAL_PRODUCTS} />);
+
+      await selectOption(user, /producto/i, `${PRODUCT_A.name} · stock ${PRODUCT_A.currentQuantity}`);
+
+      const quantity = screen.getByLabelText(/cantidad/i);
+      await user.clear(quantity);
+      await user.type(quantity, String(PRODUCT_A.currentQuantity));
+
+      expect(screen.queryByText(/en stock$/)).not.toBeInTheDocument();
     });
 
     it("picking a real product hides the free-text description input and submits that product's id as productId", async () => {

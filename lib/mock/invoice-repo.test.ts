@@ -648,3 +648,136 @@ describe("createInvoiceRepository.listActiveMonths", () => {
     expect(await invoiceRepo.listActiveMonths("10000000-0000-4000-8000-000000000079")).toEqual([]);
   });
 });
+
+/**
+ * A credit note is a RETURN: the customer gives the goods back, so its lines
+ * must ADD units to inventory rather than consume them. Before this, every
+ * invoice type emitted `out` movements, so recording a return actually
+ * subtracted the returned stock a second time.
+ */
+describe("createInvoiceRepository — credit note returns stock", () => {
+  const LOCAL_BUSINESS_ID = "10000000-0000-4000-8000-000000000043";
+
+  async function setup(initialStock: number) {
+    const store = createEmptyStore();
+    const customers = createCustomerRepository(store);
+    const products = createProductRepository(store);
+    const movements = createInventoryMovementRepository(store);
+    const invoices = createInvoiceRepository(store);
+
+    const customer = await customers.create(LOCAL_BUSINESS_ID, { name: "Cliente Devolución" });
+    const product = await products.create(LOCAL_BUSINESS_ID, { name: "Crema", unitCost: 40000 });
+    if (initialStock > 0) {
+      await movements.create(LOCAL_BUSINESS_ID, { productId: product.id, type: "in", quantity: initialStock });
+    }
+
+    const creditNoteTypeId = [...store.invoiceTypes.values()].find((t) => t.code === "nota_credito")!.id;
+    const saleTypeId = [...store.invoiceTypes.values()].find((t) => t.code === "venta")!.id;
+
+    return { store, products, invoices, customer, product, creditNoteTypeId, saleTypeId };
+  }
+
+  function persist(
+    customerId: string,
+    productId: string,
+    quantity: number,
+    invoiceTypeId?: string,
+  ): InvoicePersist {
+    const total = lineTotal(quantity, 40000);
+    return {
+      customerId,
+      issueDate: "2026-08-04",
+      dueDate: null,
+      invoiceTypeId,
+      items: [{ description: "Crema", quantity, unitPrice: 40000, productId, lineTotal: total }],
+      subtotal: total,
+      total,
+      status: computeStatus(total, 0, null, new Date("2026-08-04")),
+      notes: null,
+    };
+  }
+
+  async function stockOf(store: ReturnType<typeof createEmptyStore>, productId: string) {
+    const products = createProductRepository(store);
+    return (await products.getById(LOCAL_BUSINESS_ID, productId))!.currentQuantity;
+  }
+
+  it("ADDS the returned units back to stock — the user's case: return 2, stock goes up by 2", async () => {
+    const { store, invoices, customer, product, saleTypeId, creditNoteTypeId } = await setup(10);
+
+    // Sell 2 -> 8 left.
+    await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 2, saleTypeId));
+    expect(await stockOf(store, product.id)).toBe(8);
+
+    // The customer returns both -> back to 10, NOT down to 6.
+    await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 2, creditNoteTypeId));
+    expect(await stockOf(store, product.id)).toBe(10);
+  });
+
+  it("records the movement as 'in', not 'out'", async () => {
+    const { store, invoices, customer, product, creditNoteTypeId } = await setup(5);
+
+    await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 3, creditNoteTypeId));
+
+    const returned = [...store.inventoryMovements.values()].filter((m) => m.quantity === 3);
+    expect(returned).toHaveLength(1);
+    expect(returned[0]!.type).toBe("in");
+  });
+
+  it("is never blocked by insufficient stock — a return only adds", async () => {
+    // Zero on hand: a SALE of 1 would be rejected, a return must not be.
+    const { store, invoices, customer, product, creditNoteTypeId } = await setup(0);
+    expect(await stockOf(store, product.id)).toBe(0);
+
+    await expect(
+      invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 4, creditNoteTypeId)),
+    ).resolves.toBeDefined();
+
+    expect(await stockOf(store, product.id)).toBe(4);
+  });
+
+  it("still refuses a SALE that overdraws, proving the guard is direction-specific", async () => {
+    const { invoices, customer, product, saleTypeId } = await setup(1);
+
+    await expect(
+      invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 2, saleTypeId)),
+    ).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("numbers a credit note with the NC prefix, on its own sequence", async () => {
+    const { invoices, customer, product, creditNoteTypeId } = await setup(0);
+
+    const created = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 1, creditNoteTypeId));
+
+    expect(created.number).toBe("NC-0001");
+  });
+
+  it("editing a credit note reverses with 'out' and re-applies 'in', netting the new quantity", async () => {
+    const { store, invoices, customer, product, creditNoteTypeId } = await setup(10);
+
+    const note = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 3, creditNoteTypeId));
+    expect(await stockOf(store, product.id)).toBe(13); // 10 + 3 returned
+
+    // Correct the return down to 1 unit -> 10 + 1.
+    await invoices.update(LOCAL_BUSINESS_ID, note.id, persist(customer.id, product.id, 1, creditNoteTypeId));
+
+    expect(await stockOf(store, product.id)).toBe(11);
+  });
+
+  it("refuses to reverse a return whose units were already re-sold", async () => {
+    const { store, invoices, customer, product, creditNoteTypeId, saleTypeId } = await setup(0);
+
+    // Return 2 (stock 0 -> 2), then sell them again (2 -> 0).
+    const note = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 2, creditNoteTypeId));
+    await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 2, saleTypeId));
+    expect(await stockOf(store, product.id)).toBe(0);
+
+    // Editing the note now would have to take those 2 back out — impossible.
+    await expect(
+      invoices.update(LOCAL_BUSINESS_ID, note.id, persist(customer.id, product.id, 1, creditNoteTypeId)),
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+
+    // And the rejection left stock untouched.
+    expect(await stockOf(store, product.id)).toBe(0);
+  });
+});

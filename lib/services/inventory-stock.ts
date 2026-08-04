@@ -56,3 +56,36 @@ export function computeProductStock(product: ProductStockInput, movements: Stock
 
   return { currentQuantity, totalValue, isLowStock };
 }
+
+/**
+ * Which way an invoice's product lines move stock, decided by the invoice
+ * TYPE's catalog `code` (`lib/mock/fixtures/catalogs.ts` /
+ * `migrations/1700000010000_catalogs.sql`).
+ *
+ * A `nota_credito` is a RETURN — the customer gives the goods back, so its
+ * lines put units BACK on the shelf (`in`). Every other type moves goods out
+ * to the customer (`out`): `venta` obviously, and `nota_debito` too, since a
+ * debit note bills MORE (an extra charge or an additional shipment), never
+ * less.
+ *
+ * Shared by BOTH invoice repos on purpose — same precedent as
+ * `computeProductStock` above and `lib/services/status.ts`: the direction is
+ * a business rule, and letting `lib/db/invoice-repo.ts` and
+ * `lib/mock/invoice-repo.ts` each hardcode their own copy is exactly how they
+ * would silently drift apart.
+ *
+ * NOTE the asymmetry in guarding: an `out` needs the atomic floor-at-zero
+ * check (you cannot sell what you do not have), while an `in` never can
+ * underflow and needs none. Reversing them on an edit flips that too — see
+ * each repo's `update`.
+ */
+export const CREDIT_NOTE_CODE = "nota_credito";
+
+export function movementDirectionFor(invoiceTypeCode: string | null | undefined): "in" | "out" {
+  return invoiceTypeCode === CREDIT_NOTE_CODE ? "in" : "out";
+}
+
+/** The compensating direction used when an edit reverses an already-applied line. */
+export function reverseMovementDirection(type: "in" | "out"): "in" | "out" {
+  return type === "in" ? "out" : "in";
+}

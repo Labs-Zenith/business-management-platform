@@ -44,6 +44,7 @@ import { todayIsoDate } from "@/lib/dates";
 import { formatCOP, lineTotal, pesosToCents } from "@/lib/money";
 import { InvoiceItemFields, type InvoiceItemFieldsProduct } from "./invoice-item-fields";
 import { invoiceFormSchema, OTRO_PRODUCT_VALUE, type InvoiceFormValues } from "./invoice-form-schema";
+import { CREDIT_NOTE_CODE } from "@/lib/services/inventory-stock";
 
 const CREATE_ERROR_MESSAGE = "No se pudo crear la factura. Verifica los datos e intenta de nuevo.";
 const EDIT_ERROR_MESSAGE = "No se pudo guardar los cambios. Verifica los datos e intenta de nuevo.";
@@ -192,6 +193,14 @@ export default function InvoiceFormContent({
   // safely memoizable and avoids the React Compiler "incompatible library"
   // bail-out that `watch()` triggers.
   const items = useWatch({ control, name: "items" });
+
+  // A credit note is a RETURN: it ADDS stock, so none of the sale-side
+  // affordances apply to it. Leaving them on would label an out-of-stock
+  // product "sin stock" and DISABLE it — making it impossible to record the
+  // return of the very product that ran out, which is the common case.
+  const selectedInvoiceTypeId = useWatch({ control, name: "invoiceTypeId" });
+  const isCreditNote =
+    invoiceTypes.find((type) => type.id === selectedInvoiceTypeId)?.code === CREDIT_NOTE_CODE;
   const totalCents = useMemo(
     () =>
       items.reduce((sum, item) => {
@@ -339,7 +348,20 @@ export default function InvoiceFormContent({
         </div>
       </div>
 
-      <InvoiceItemFields control={control} register={register} errors={errors} setValue={setValue} products={products} />
+      {/* Stock is only enforced client-side while CREATING A SALE — see
+          `invoice-item-fields.tsx`'s stock-affordance note for why edit mode
+          must not (the invoice's own consumption is already netted out of
+          `currentQuantity`, and the server reverses it before re-applying),
+          and why a credit note must not either (it ADDS stock, so an
+          out-of-stock product is exactly the one being returned). */}
+      <InvoiceItemFields
+        control={control}
+        register={register}
+        errors={errors}
+        setValue={setValue}
+        products={products}
+        enforceStock={!isEditing && !isCreditNote}
+      />
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="invoice-notes">Nota</Label>

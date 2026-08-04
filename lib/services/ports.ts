@@ -259,9 +259,12 @@ export type InvoiceItemInput = {
   unitPrice: number;
   /**
    * Links this line to an inventory `products.id` when the user picked a real
-   * product (the invoice then decrements that product's stock via an `out`
-   * inventory movement on create/update — see `InvoiceRepository`). `null`
-   * for a free-text "Otro" line, which touches no inventory.
+   * product — the invoice then moves that product's stock via an inventory
+   * movement on create/update. WHICH WAY it moves depends on the invoice
+   * type: a sale takes units `out`, a credit note is a return and puts them
+   * back `in` (see `movementDirectionFor` in
+   * `lib/services/inventory-stock.ts`, and `InvoiceRepository`). `null` for a
+   * free-text "Otro" line, which touches no inventory.
    */
   productId: string | null;
 };

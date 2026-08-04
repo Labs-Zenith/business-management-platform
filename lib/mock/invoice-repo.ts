@@ -6,7 +6,6 @@ import type {
   InvoiceDetail,
   InvoiceItem,
   InvoiceListQuery,
-  InvoiceItemInput,
   InvoicePersist,
   InvoiceRepository,
   InvoiceWithFinance,
@@ -16,6 +15,7 @@ import type {
   PaymentWithRefs,
 } from "@/lib/services/ports";
 import { currentQuantityFor } from "./inventory-repo";
+import { movementDirectionFor, reverseMovementDirection } from "@/lib/services/inventory-stock";
 import { withLock } from "./lock";
 import {
   defaultInvoiceTypeId,
@@ -74,41 +74,58 @@ function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
 }
 
 /**
- * Validates every product-linked item against a RUNNING per-product
- * quantity (so two lines of the SAME product in one invoice/edit accumulate
- * correctly, and — for `update` — reversed old quantities are already
- * folded in by the caller before this runs) and BUILDS the `out` movement
- * rows to persist, WITHOUT touching the store. Throws `VALIDATION_ERROR`
- * (naming the offending line) on the FIRST overdraw — mirrors
- * `lib/db/invoice-repo.ts`'s guarded-insert rollback: this function must
- * always be called (and allowed to throw) BEFORE any store mutation, so a
- * rejected create/edit never partially decrements stock. `runningQty` is
- * lazily seeded from `currentQuantityFor` for a product not already present
- * (a fresh `Map` for `create`; pre-seeded with reversed quantities for
- * `update` — see `seedRunningQtyWithReversal`). A free-text "Otro" line
- * (`item.productId == null`) is skipped entirely — it never touches
- * inventory.
+ * The minimum a movement needs: which product, how many, and enough text to
+ * name the offending line if it is rejected.
  */
-function buildOutMovements(
+type MovementEntry = { productId: string | null; quantity: number; description: string };
+
+/** `Stock insuficiente para "X"` — the message a rejected SALE line produces. */
+function insufficientStockFor(entry: MovementEntry): string {
+  return `Stock insuficiente para "${entry.description}"`;
+}
+
+/** Undoing a credit note removes units again, which can underflow if they were re-sold. */
+const REVERSE_RETURN_UNDERFLOW =
+  "Stock insuficiente para revertir la devolución: esas unidades ya salieron del inventario.";
+
+/**
+ * Walks `entries` in order against a RUNNING quantity map and BUILDS the
+ * movement rows to persist, WITHOUT touching the store.
+ *
+ * `direction` decides both the movement type and whether a guard applies: an
+ * `out` (a sale's line, or the reversal of a credit note) is checked against
+ * the running quantity and throws on the FIRST underflow — mirroring
+ * `lib/db/invoice-repo.ts`'s guarded-insert rollback, so this must always be
+ * called (and allowed to throw) BEFORE any store mutation. An `in` (a credit
+ * note's line, or the reversal of a sale) can never underflow and is never
+ * guarded.
+ *
+ * The running map is what makes two lines of the SAME product in one
+ * invoice/edit accumulate correctly, and — for `update` — lets the reversal's
+ * effect be visible to the re-apply pass that follows it.
+ */
+function buildLineMovements(
   store: MockStore,
   businessId: string,
-  items: InvoiceItemInput[],
+  entries: MovementEntry[],
   runningQty: Map<string, number>,
   now: string,
+  direction: "in" | "out",
+  describeUnderflow: (entry: MovementEntry) => string,
 ): InventoryMovement[] {
   const movements: InventoryMovement[] = [];
-  for (const item of items) {
-    if (!item.productId) continue;
-    const productId = item.productId;
+  for (const entry of entries) {
+    if (!entry.productId) continue;
+    const productId = entry.productId;
     // PARITY with `lib/db/invoice-repo.ts` (FIX 2): the real DB backend's
     // `inventory_movements.quantity` is an INTEGER column, so a fractional
     // quantity on a product-linked line would surface as a raw Postgres 500
     // there. The mock has no such column constraint, so without this guard a
     // fractional quantity here would silently "succeed" and diverge from the
     // DB backend's behavior — this makes it visible in mock-backed tests too.
-    // Free-text "Otro" lines (`item.productId == null`, skipped above) never
-    // touch inventory and may stay fractional.
-    if (!Number.isInteger(item.quantity)) {
+    // Free-text "Otro" lines (`productId == null`, skipped above) never touch
+    // inventory and may stay fractional.
+    if (!Number.isInteger(entry.quantity)) {
       throw new ApiError(
         "VALIDATION_ERROR",
         "La cantidad debe ser un número entero para productos de inventario.",
@@ -118,61 +135,30 @@ function buildOutMovements(
       runningQty.set(productId, currentQuantityFor(store, productId));
     }
     const available = runningQty.get(productId)!;
-    if (item.quantity > available) {
-      throw new ApiError("VALIDATION_ERROR", `Stock insuficiente para "${item.description}"`);
+
+    if (direction === "out") {
+      if (entry.quantity > available) {
+        throw new ApiError("VALIDATION_ERROR", describeUnderflow(entry));
+      }
+      runningQty.set(productId, available - entry.quantity);
+    } else {
+      // Adding units back can never underflow — no guard, and nothing to
+      // reject. Mirrors the unguarded `in` INSERT in the DB twin.
+      runningQty.set(productId, available + entry.quantity);
     }
-    runningQty.set(productId, available - item.quantity);
+
     movements.push({
       id: generateId(),
       businessId,
       productId,
-      type: "out",
-      typeId: resolveCatalogId(store.movementTypes, undefined, "out", "typeId"),
-      quantity: item.quantity,
+      type: direction,
+      typeId: resolveCatalogId(store.movementTypes, undefined, direction, "typeId"),
+      quantity: entry.quantity,
       note: null,
       createdAt: now,
     });
   }
   return movements;
-}
-
-/**
- * Builds the reversal `in` movements for every OLD product-linked item of an
- * edited invoice — restores exactly the quantity each pre-edit line had
- * reserved. Never throws (restoring stock can never drive it below zero).
- */
-function buildInMovements(store: MockStore, businessId: string, oldItems: InvoiceItem[], now: string): InventoryMovement[] {
-  return oldItems
-    .filter((item): item is InvoiceItem & { productId: string } => item.productId !== null)
-    .map((item) => ({
-      id: generateId(),
-      businessId,
-      productId: item.productId,
-      type: "in",
-      typeId: resolveCatalogId(store.movementTypes, undefined, "in", "typeId"),
-      quantity: item.quantity,
-      note: null,
-      createdAt: now,
-    }));
-}
-
-/**
- * Seeds a running-quantity map for `update`'s `buildOutMovements` call: every
- * OLD product line's quantity is added BACK (restored) before the NEW lines
- * are validated/decremented against it — so an edit that keeps the SAME
- * product/quantity (or reduces it) never spuriously overdraws against its
- * own pre-edit reservation.
- */
-function seedRunningQtyWithReversal(store: MockStore, oldItems: InvoiceItem[]): Map<string, number> {
-  const runningQty = new Map<string, number>();
-  for (const old of oldItems) {
-    if (!old.productId) continue;
-    if (!runningQty.has(old.productId)) {
-      runningQty.set(old.productId, currentQuantityFor(store, old.productId));
-    }
-    runningQty.set(old.productId, runningQty.get(old.productId)! + old.quantity);
-  }
-  return runningQty;
 }
 
 export function createInvoiceRepository(store: MockStore): InvoiceRepository {
@@ -241,12 +227,24 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
       return withLock(`${businessId}:${invoiceTypeId}`, async () => {
         const now = new Date().toISOString();
 
-        // Validate every product line against stock — and BUILD the `out`
+        // Validate every product line against stock — and BUILD the
         // movements — BEFORE reserving the invoice number or mutating
         // anything. An overdraw throws here, so it never consumes a
         // sequence number nor persists any partial state (mirrors
         // `lib/db/invoice-repo.ts#create`'s whole-transaction rollback).
-        const movements = buildOutMovements(store, businessId, data.items, new Map(), now);
+        //
+        // A credit note is a RETURN: its lines put units back `in` rather
+        // than taking them `out`, and so can never overdraw at all.
+        const movementType = movementDirectionFor(store.invoiceTypes.get(invoiceTypeId)?.code);
+        const movements = buildLineMovements(
+          store,
+          businessId,
+          data.items,
+          new Map(),
+          now,
+          movementType,
+          insufficientStockFor,
+        );
 
         const id = generateId();
         const number = await reserveNextInvoiceNumber(store, businessId, invoiceTypeId);
@@ -339,11 +337,36 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
         // delete below) and their quantities are restored into the running
         // balance first, so a line kept on the SAME product (or reduced)
         // never spuriously overdraws against its own pre-edit reservation.
+        //
+        // The invoice TYPE is immutable after creation, so its direction
+        // applies to both the old and the new lines: a sale reverses with
+        // `in` then re-applies `out`, a credit note does the mirror image.
+        // Whichever side emits `out` is the side that can underflow, and the
+        // shared running map is what makes the reversal's effect visible to
+        // the re-apply pass that follows it.
         const now = new Date().toISOString();
         const oldItems = itemsForInvoice(store, id);
-        const runningQty = seedRunningQtyWithReversal(store, oldItems);
-        const outMovements = buildOutMovements(store, businessId, data.items, runningQty, now);
-        const inMovements = buildInMovements(store, businessId, oldItems, now);
+        const movementType = movementDirectionFor(store.invoiceTypes.get(existing.invoiceTypeId)?.code);
+        const reversalType = reverseMovementDirection(movementType);
+        const runningQty = new Map<string, number>();
+        const reversalMovements = buildLineMovements(
+          store,
+          businessId,
+          oldItems,
+          runningQty,
+          now,
+          reversalType,
+          () => REVERSE_RETURN_UNDERFLOW,
+        );
+        const reapplyMovements = buildLineMovements(
+          store,
+          businessId,
+          data.items,
+          runningQty,
+          now,
+          movementType,
+          insufficientStockFor,
+        );
 
         // Replace items wholesale: delete all existing items for this
         // invoice, then insert the new set — only after the payment guard
@@ -367,13 +390,12 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           store.invoiceItems.set(item.id, item);
         }
 
-        // Reversal (`in`) BEFORE decrement (`out`) — matches
-        // `buildOutMovements`'s seeded running balance and the DB
-        // implementation's statement order.
-        for (const movement of inMovements) {
+        // Reversal BEFORE re-apply — matches the running balance built above
+        // and the DB implementation's statement order.
+        for (const movement of reversalMovements) {
           store.inventoryMovements.set(movement.id, movement);
         }
-        for (const movement of outMovements) {
+        for (const movement of reapplyMovements) {
           store.inventoryMovements.set(movement.id, movement);
         }
 
