@@ -7,11 +7,17 @@ import {
 } from "@/lib/mock/fixtures/data";
 
 /**
- * Idempotent seed of the demo BUSINESSES only, run via `npm run seed` as a
- * separate step from schema migrations. Reuses the same pooled `sql` client
- * as runtime repos — no DDL here, so pgbouncer/pooling is a non-issue.
- * No-ops (exit 0) when no DB is configured, so it's always safe to include
- * in `vercel-build` without breaking local/mock-only setups.
+ * Idempotent seed of the demo BUSINESSES only, run BY HAND via `npm run
+ * seed`. Reuses the same pooled `sql` client as runtime repos — no DDL here,
+ * so pgbouncer/pooling is a non-issue. No-ops (exit 0) when no DB is
+ * configured.
+ *
+ * Deliberately NOT part of `vercel-build` any more. It is idempotent
+ * (`ON CONFLICT DO NOTHING`), so running it on every deploy was harmless but
+ * pointless: it opened a write connection to the production database to do
+ * nothing. It is also why a production database ends up carrying two fake
+ * "Negocio Demo" businesses alongside the real ones. Run it deliberately when
+ * bootstrapping a fresh database, not on every ship.
  *
  * Profiles are NO LONGER seeded here: once real Supabase Auth is wired
  * (`migrations/1700000006000_link_profiles_to_auth_users.sql`), `profiles.
