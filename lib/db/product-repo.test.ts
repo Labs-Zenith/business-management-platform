@@ -13,13 +13,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * `lib/mock/product-repo.test.ts`, keeping both repos' test files
  * symmetrically thin).
  */
-const { mockSql } = vi.hoisted(() => ({
+const { mockSql, mockTx, mockRunTransaction } = vi.hoisted(() => ({
   mockSql: vi.fn(),
+  mockTx: vi.fn(),
+  mockRunTransaction: vi.fn(),
 }));
 
 vi.mock("./client", () => ({
   sql: mockSql,
   isDbConfigured: true,
+  runTransaction: mockRunTransaction,
 }));
 
 const { productRepo } = await import("./product-repo");
@@ -182,5 +185,93 @@ describe("db productRepo.update", () => {
 
     expect(result).toBeNull();
     expect(mockSql).toHaveBeenCalledTimes(1); // only the SELECT, no UPDATE issued
+  });
+});
+
+/**
+ * `delete` is the repo's only transactional writer. These assert on the
+ * EMITTED SQL TEXT (mirroring `lib/db/pipeline-repo.test.ts`'s `DELETE FROM
+ * pipeline_cards` assertion) because the ORDER and CONTENT of the statements
+ * is the contract: lock first (so a concurrent `invoice_items` insert cannot
+ * make the count stale), then count references, then drop the ledger and the
+ * product only if that count was zero.
+ */
+describe("db productRepo.delete", () => {
+  beforeEach(() => {
+    mockSql.mockReset();
+    mockTx.mockReset();
+    mockRunTransaction.mockReset();
+    mockRunTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(mockTx));
+  });
+
+  function queryTextAt(callIndex: number): string {
+    const [strings] = mockTx.mock.calls[callIndex]!;
+    return Array.from(strings as unknown as string[]).join("");
+  }
+
+  it("runs every statement inside ONE transaction, in lock → count → ledger → product order", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ id: PRODUCT_ID }]) // FOR UPDATE lock
+      .mockResolvedValueOnce([{ invoice_count: 0 }]) // reference count
+      .mockResolvedValueOnce([]) // DELETE inventory_movements
+      .mockResolvedValueOnce([]); // DELETE products
+
+    const result = await productRepo.delete(BUSINESS_ID, PRODUCT_ID);
+
+    expect(result).toEqual({ outcome: "deleted" });
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTx).toHaveBeenCalledTimes(4);
+    expect(queryTextAt(0)).toContain("FOR UPDATE");
+    expect(queryTextAt(0)).toContain("FROM products");
+    // `invoice_items` has no business_id of its own, hence the join.
+    expect(queryTextAt(1)).toContain("COUNT(DISTINCT ii.invoice_id)");
+    expect(queryTextAt(1)).toContain("JOIN invoices");
+    expect(queryTextAt(2)).toContain("DELETE FROM inventory_movements");
+    expect(queryTextAt(3)).toContain("DELETE FROM products");
+  });
+
+  it("scopes the lock to the requesting business", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ id: PRODUCT_ID }])
+      .mockResolvedValueOnce([{ invoice_count: 0 }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await productRepo.delete(BUSINESS_ID, PRODUCT_ID);
+
+    const [, ...values] = mockTx.mock.calls[0]!;
+    expect(values).toContain(BUSINESS_ID);
+    expect(values).toContain(PRODUCT_ID);
+  });
+
+  it("refuses with the invoice count and issues NO mutation once the product has been sold", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ id: PRODUCT_ID }])
+      .mockResolvedValueOnce([{ invoice_count: 3 }]);
+
+    const result = await productRepo.delete(BUSINESS_ID, PRODUCT_ID);
+
+    expect(result).toEqual({ outcome: "conflict", invoiceCount: 3 });
+    // Lock + count only: no DELETE was ever issued.
+    expect(mockTx).toHaveBeenCalledTimes(2);
+  });
+
+  it("coerces a string count from the driver to a number", async () => {
+    mockTx
+      .mockResolvedValueOnce([{ id: PRODUCT_ID }])
+      .mockResolvedValueOnce([{ invoice_count: "1" }]);
+
+    const result = await productRepo.delete(BUSINESS_ID, PRODUCT_ID);
+
+    expect(result).toEqual({ outcome: "conflict", invoiceCount: 1 });
+  });
+
+  it("returns not_found and issues NO mutation when the lock finds nothing (unknown or cross-business id)", async () => {
+    mockTx.mockResolvedValueOnce([]);
+
+    const result = await productRepo.delete(OTHER_BUSINESS_ID, PRODUCT_ID);
+
+    expect(result).toEqual({ outcome: "not_found" });
+    expect(mockTx).toHaveBeenCalledTimes(1); // only the lock — nothing was deleted
   });
 });

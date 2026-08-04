@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Capability } from "./permissions";
-import { can, canEditBusinessProfile, canViewAuditLog, canViewPayroll } from "./permissions";
+import { can, canDeleteRecords, canEditBusinessProfile, canViewAuditLog, canViewPayroll } from "./permissions";
 
 describe("can — deny-by-default capability check", () => {
   it("allows admin to viewPayroll", () => {
@@ -67,5 +67,25 @@ describe("canEditBusinessProfile", () => {
 
   it("is false for worker", () => {
     expect(canEditBusinessProfile("worker")).toBe(false);
+  });
+});
+
+describe("can — deleteRecords (mirrors viewPayroll's exact pattern)", () => {
+  it("allows admin to deleteRecords", () => {
+    expect(can("admin", "deleteRecords")).toBe(true);
+  });
+
+  it("denies worker deleteRecords", () => {
+    expect(can("worker", "deleteRecords")).toBe(false);
+  });
+});
+
+describe("canDeleteRecords", () => {
+  it("is true for admin", () => {
+    expect(canDeleteRecords("admin")).toBe(true);
+  });
+
+  it("is false for worker", () => {
+    expect(canDeleteRecords("worker")).toBe(false);
   });
 });

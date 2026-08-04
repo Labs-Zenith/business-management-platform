@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
+import { canDeleteRecords } from "@/lib/services/permissions";
 import { parsePageParam } from "@/lib/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { MoneyAmount } from "@/components/domain/money-amount";
 import { PageHeader } from "@/components/domain/page-header";
 import { TablePagination } from "@/components/domain/table-pagination";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
+import DeleteCustomerButton from "@/components/domain/customers/delete-customer-button";
 
 /**
  * Clientes screen, per `docs/ui-ux-flow.md`'s "Clientes" section and
@@ -42,6 +44,10 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
   const session = await requireSessionOrRedirect();
   const params = await searchParams;
   const status = parseStatusParam(params.status);
+  // UX only — the enforcing gate is `requireCapability("deleteRecords")` on
+  // `DELETE /api/customers/{id}`. Same pattern as `settings/page.tsx`'s
+  // `canEdit`.
+  const canDelete = canDeleteRecords(session.role);
 
   const result = await listCustomers(session, {
     q: params.q || undefined,
@@ -136,15 +142,24 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <CustomerFormDialog
-                    mode="edit"
-                    customer={customer}
-                    trigger={
-                      <Button variant="ghost" size="sm">
-                        Editar
-                      </Button>
-                    }
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <CustomerFormDialog
+                      mode="edit"
+                      customer={customer}
+                      trigger={
+                        <Button variant="ghost" size="sm">
+                          Editar
+                        </Button>
+                      }
+                    />
+                    {canDelete ? (
+                      <DeleteCustomerButton
+                        customerId={customer.id}
+                        customerName={customer.name}
+                        customerActive={customer.isActive}
+                      />
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))

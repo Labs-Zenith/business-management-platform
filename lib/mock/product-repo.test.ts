@@ -6,7 +6,8 @@ import { createEmptyStore, type MockStore } from "./store";
 
 /**
  * Mirrors `lib/mock/employee-repo.test.ts`'s scope (business_id scoping,
- * editable-CRUD, no delete), extended with an INTEGRATION-level proof that
+ * editable CRUD) plus the delete this repo has and Employee does not,
+ * extended with an INTEGRATION-level proof that
  * this repo correctly groups `store.inventoryMovements` per product before
  * delegating to the shared `computeProductStock` (`lib/services/
  * inventory-stock.ts`). The pure low-stock boundary math itself (exactly at/
@@ -124,9 +125,106 @@ describe("createProductRepository.update", () => {
     expect(store.products.get(created.id)!.name).toBe("Shampoo Profesional");
   });
 
-  it("has no delete operation — only the active toggle exists on the repository interface", async () => {
+});
+
+/**
+ * A product with no billing history is hard-deletable — the one place this
+ * repo diverges from `employee-repo.ts`'s deactivate-only contract. Once it
+ * has been invoiced the delete is REFUSED, so the invoice can always be
+ * traced back to what was sold; the caller then offers deactivation instead.
+ * Mirrors `lib/db/product-repo.ts#delete`'s transaction.
+ */
+describe("createProductRepository.delete", () => {
+  function seedInvoiceItem(itemId: string, invoiceId: string, productId: string | null) {
+    store.invoiceItems.set(itemId, {
+      id: itemId,
+      invoiceId,
+      description: "Shampoo Profesional",
+      quantity: 2,
+      unitPrice: 25000,
+      lineTotal: 50000,
+      productId,
+    });
+  }
+
+  it("removes a never-invoiced product", async () => {
     const repo = createProductRepository(store);
-    expect((repo as unknown as Record<string, unknown>).delete).toBeUndefined();
+    const created = await repo.create(BUSINESS_ID, buildInput());
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({ outcome: "deleted" });
+
+    expect(store.products.has(created.id)).toBe(false);
+  });
+
+  it("drops the product's stock ledger, leaving other products' movements intact", async () => {
+    const repo = createProductRepository(store);
+    const movementRepo = createInventoryMovementRepository(store);
+    const doomed = await repo.create(BUSINESS_ID, buildInput());
+    const survivor = await repo.create(BUSINESS_ID, buildInput({ name: "Otro", sku: "OTR-1" }));
+
+    await movementRepo.create(BUSINESS_ID, { productId: doomed.id, type: "in", quantity: 10 });
+    await movementRepo.create(BUSINESS_ID, { productId: doomed.id, type: "out", quantity: 3 });
+    await movementRepo.create(BUSINESS_ID, { productId: survivor.id, type: "in", quantity: 7 });
+
+    await repo.delete(BUSINESS_ID, doomed.id);
+
+    const remaining = [...store.inventoryMovements.values()];
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0]!.productId).toBe(survivor.id);
+  });
+
+  it("refuses with the DISTINCT invoice count once the product has been sold", async () => {
+    const repo = createProductRepository(store);
+    const created = await repo.create(BUSINESS_ID, buildInput());
+    seedInvoiceItem("item-1", "invoice-1", created.id);
+    seedInvoiceItem("item-2", "invoice-2", created.id);
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({
+      outcome: "conflict",
+      invoiceCount: 2,
+    });
+
+    // Nothing is destroyed: neither the product nor its billing history.
+    expect(store.products.has(created.id)).toBe(true);
+    expect(store.invoiceItems.size).toBe(2);
+    expect(store.invoiceItems.get("item-1")!.productId).toBe(created.id);
+  });
+
+  it("counts invoices, not lines, when one invoice sells the product twice", async () => {
+    const repo = createProductRepository(store);
+    const created = await repo.create(BUSINESS_ID, buildInput());
+    seedInvoiceItem("item-1", "invoice-1", created.id);
+    seedInvoiceItem("item-2", "invoice-1", created.id);
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({
+      outcome: "conflict",
+      invoiceCount: 1,
+    });
+  });
+
+  it("ignores another product's invoice lines when deciding", async () => {
+    const repo = createProductRepository(store);
+    const created = await repo.create(BUSINESS_ID, buildInput());
+    seedInvoiceItem("item-other", "invoice-3", "another-product-id");
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({ outcome: "deleted" });
+  });
+
+  it("returns not_found for a cross-business id, leaving the product untouched", async () => {
+    const repo = createProductRepository(store);
+    const created = await repo.create(BUSINESS_ID, buildInput());
+
+    await expect(repo.delete(OTHER_BUSINESS_ID, created.id)).resolves.toEqual({ outcome: "not_found" });
+
+    expect(store.products.has(created.id)).toBe(true);
+  });
+
+  it("returns not_found for an unknown id", async () => {
+    const repo = createProductRepository(store);
+
+    await expect(repo.delete(BUSINESS_ID, "80000000-0000-4000-8000-00000000dead")).resolves.toEqual({
+      outcome: "not_found",
+    });
   });
 });
 

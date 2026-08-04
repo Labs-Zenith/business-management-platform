@@ -52,3 +52,27 @@ export async function updateProduct(session: Session, id: string, data: ProductU
   }
   return updated;
 }
+
+/**
+ * Hard delete, refused once the product has been invoiced — same guard, and
+ * the same reasoning, as `deleteCustomer`: a catalog edit must never destroy
+ * billing history. The `CONFLICT` message is rendered verbatim in the confirm
+ * dialog's inline alert (hence Spanish, unlike the structural `NOT_FOUND`),
+ * and the dialog then offers deactivation as the way forward. Admin-only: the
+ * `deleteRecords` capability is enforced at the route.
+ */
+export async function deleteProduct(session: Session, id: string): Promise<void> {
+  const result = await repositories.products.delete(session.businessId, id);
+
+  if (result.outcome === "not_found") {
+    throw new ApiError("NOT_FOUND", "Product not found.");
+  }
+  if (result.outcome === "conflict") {
+    const n = result.invoiceCount;
+    throw new ApiError(
+      "CONFLICT",
+      `No se puede eliminar este producto porque tiene ${n} factura${n === 1 ? "" : "s"} asociada${n === 1 ? "" : "s"}. Desactívalo en su lugar.`,
+      { invoiceCount: n },
+    );
+  }
+}

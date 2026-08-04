@@ -12,13 +12,21 @@ import type { Role } from "./ports";
  * currency editing) — the security review found this mutation had NO role
  * gate, letting any member (including `worker`) edit it; this closes that
  * gap the same way `viewAuditLog` closed the movements-panel gap.
+ * `deleteRecords` gates `DELETE /api/products/{id}` and
+ * `DELETE /api/customers/{id}`: destroying a catalog record is irreversible
+ * in a way the `active`/`isActive` toggle is not, so it is reserved for
+ * `admin` while creating and editing stay open to every member (products and
+ * customers are otherwise deliberately un-gated — see the "No Role Gating on
+ * Inventory" requirement). Enforced route-side with `requireCapability`; the
+ * pages additionally hide the button, which is UX only, never the control.
  */
-export type Capability = "viewPayroll" | "viewAuditLog" | "editBusinessProfile";
+export type Capability = "viewPayroll" | "viewAuditLog" | "editBusinessProfile" | "deleteRecords";
 
 const CAPABILITY_ROLES: Record<Capability, readonly Role[]> = {
   viewPayroll: ["admin"],
   viewAuditLog: ["admin"],
   editBusinessProfile: ["admin"],
+  deleteRecords: ["admin"],
 };
 
 /** Deny-by-default: any capability not present in `CAPABILITY_ROLES` returns `false`. */
@@ -36,4 +44,8 @@ export function canViewAuditLog(role: Role): boolean {
 
 export function canEditBusinessProfile(role: Role): boolean {
   return can(role, "editBusinessProfile");
+}
+
+export function canDeleteRecords(role: Role): boolean {
+  return can(role, "deleteRecords");
 }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
 import type {
   Customer,
+  CustomerDeleteResult,
   CustomerDetail,
   CustomerListQuery,
   CustomerUpdate,
@@ -14,6 +15,7 @@ const mockList = vi.fn<(businessId: string, query: CustomerListQuery) => Promise
 const mockGetById = vi.fn<(businessId: string, id: string) => Promise<CustomerDetail | null>>();
 const mockCreate = vi.fn<(businessId: string, data: unknown) => Promise<Customer>>();
 const mockUpdate = vi.fn<(businessId: string, id: string, data: CustomerUpdate) => Promise<Customer | null>>();
+const mockDelete = vi.fn<(businessId: string, id: string) => Promise<CustomerDeleteResult>>();
 
 vi.mock("@/lib/services/repositories", () => ({
   repositories: {
@@ -22,11 +24,12 @@ vi.mock("@/lib/services/repositories", () => ({
       getById: (businessId: string, id: string) => mockGetById(businessId, id),
       create: (businessId: string, data: unknown) => mockCreate(businessId, data),
       update: (businessId: string, id: string, data: CustomerUpdate) => mockUpdate(businessId, id, data),
+      delete: (businessId: string, id: string) => mockDelete(businessId, id),
     },
   },
 }));
 
-import { createCustomer, getCustomer, listCustomers, updateCustomer } from "./customer-service";
+import { createCustomer, deleteCustomer, getCustomer, listCustomers, updateCustomer } from "./customer-service";
 
 const SESSION: Session = {
   userId: "20000000-0000-4000-8000-000000000001",
@@ -168,5 +171,85 @@ describe("updateCustomer", () => {
       code: "NOT_FOUND",
       status: 404,
     });
+  });
+});
+
+/**
+ * Unlike `deleteProduct`, this service maps a repo `conflict` into a
+ * user-facing Spanish `CONFLICT` message — it is rendered verbatim in the
+ * confirm dialog's inline alert, so the exact wording (including
+ * singular/plural) is part of the contract, not incidental.
+ */
+describe("deleteCustomer (customer-service)", () => {
+  beforeEach(() => {
+    mockDelete.mockReset();
+  });
+
+  it("always scopes the delete to session.businessId, never a client-supplied id", async () => {
+    mockDelete.mockResolvedValue({ outcome: "deleted" });
+
+    await deleteCustomer(SESSION, CUSTOMER.id);
+
+    expect(mockDelete).toHaveBeenCalledWith(SESSION.businessId, CUSTOMER.id);
+  });
+
+  it("resolves without throwing when the repo reports deleted", async () => {
+    mockDelete.mockResolvedValue({ outcome: "deleted" });
+
+    await expect(deleteCustomer(SESSION, CUSTOMER.id)).resolves.toBeUndefined();
+  });
+
+  it("throws NOT_FOUND (not FORBIDDEN, not leaking existence) for an unknown or cross-business id", async () => {
+    mockDelete.mockResolvedValue({ outcome: "not_found" });
+
+    await expect(deleteCustomer(SESSION, "cross-business-id")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      status: 404,
+    });
+  });
+
+  it("throws CONFLICT naming the invoice count, and tells the user to deactivate instead", async () => {
+    mockDelete.mockResolvedValue({ outcome: "conflict", invoiceCount: 3, paymentCount: 0 });
+
+    await expect(deleteCustomer(SESSION, CUSTOMER.id)).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      message:
+        "No se puede eliminar este cliente porque tiene 3 facturas asociadas. Desactívalo en su lugar.",
+      details: { invoiceCount: 3, paymentCount: 0 },
+    });
+  });
+
+  it("uses the singular form for a single reference", async () => {
+    mockDelete.mockResolvedValue({ outcome: "conflict", invoiceCount: 1, paymentCount: 0 });
+
+    await expect(deleteCustomer(SESSION, CUSTOMER.id)).rejects.toMatchObject({
+      message:
+        "No se puede eliminar este cliente porque tiene 1 factura asociada. Desactívalo en su lugar.",
+    });
+  });
+
+  it("joins both counts when invoices AND payments reference the customer", async () => {
+    mockDelete.mockResolvedValue({ outcome: "conflict", invoiceCount: 2, paymentCount: 1 });
+
+    await expect(deleteCustomer(SESSION, CUSTOMER.id)).rejects.toMatchObject({
+      message:
+        "No se puede eliminar este cliente porque tiene 2 facturas y 1 pago asociados. Desactívalo en su lugar.",
+    });
+  });
+
+  it("reports payments alone when there are no invoices", async () => {
+    mockDelete.mockResolvedValue({ outcome: "conflict", invoiceCount: 0, paymentCount: 2 });
+
+    await expect(deleteCustomer(SESSION, CUSTOMER.id)).rejects.toMatchObject({
+      message:
+        "No se puede eliminar este cliente porque tiene 2 pagos asociados. Desactívalo en su lugar.",
+    });
+  });
+
+  it("throws an ApiError instance so withApiHandler maps it to the documented body shape", async () => {
+    mockDelete.mockResolvedValue({ outcome: "conflict", invoiceCount: 1, paymentCount: 0 });
+
+    await expect(deleteCustomer(SESSION, CUSTOMER.id)).rejects.toBeInstanceOf(ApiError);
   });
 });

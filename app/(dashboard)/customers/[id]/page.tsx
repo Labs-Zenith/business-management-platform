@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getCustomer } from "@/lib/services/customer-service";
+import { canDeleteRecords } from "@/lib/services/permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +21,7 @@ import { MoneyAmount } from "@/components/domain/money-amount";
 import { PageHeader } from "@/components/domain/page-header";
 import { StatCard } from "@/components/domain/stat-card";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
+import DeleteCustomerButton from "@/components/domain/customers/delete-customer-button";
 
 /**
  * Detalle de cliente screen, per `docs/ui-ux-flow.md`'s "Detalle de
@@ -43,6 +45,8 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
   const session = await requireSessionOrRedirect();
   const { id } = await params;
   const customer = await getCustomer(session, id);
+  // UX only — `requireCapability("deleteRecords")` on the route is the gate.
+  const canDelete = canDeleteRecords(session.role);
 
   return (
     <PageShell>
@@ -67,15 +71,25 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
           </Badge>
         }
         actions={
-          <CustomerFormDialog
-            mode="edit"
-            customer={customer}
-            trigger={
-              <Button variant="outline" className="w-full sm:w-auto">
-                Editar
-              </Button>
-            }
-          />
+          <>
+            <CustomerFormDialog
+              mode="edit"
+              customer={customer}
+              trigger={
+                <Button variant="outline" className="w-full sm:w-auto">
+                  Editar
+                </Button>
+              }
+            />
+            {canDelete ? (
+              <DeleteCustomerButton
+                customerId={customer.id}
+                customerName={customer.name}
+                customerActive={customer.isActive}
+                redirectTo="/customers"
+              />
+            ) : null}
+          </>
         }
       />
 

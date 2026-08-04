@@ -32,7 +32,9 @@ Las convenciones técnicas transversales (dinero en centavos enteros, fechas en 
 - **2.8** **Aislamiento absoluto entre negocios:** el sistema nunca resuelve datos de un `business_id` para el que el `userId` de la sesión no tenga una fila de membresía, sin importar el rol ni qué `business_id` solicite el cliente.
 - **2.9** Capacidad `viewPayroll` (Nómina): solo `admin` la obtiene. Se aplica de extremo a extremo — la página de Nómina responde 404 y sus rutas API responden `403 FORBIDDEN` a una sesión sin la capacidad.
 - **2.10** Capacidad `viewAuditLog` (registro de auditoría): solo `admin` la obtiene; `worker` la tiene denegada. Es una capacidad **a nivel de widget** (ver regla 12.6), no un guardián a nivel de página.
-- **2.11** Inventario **no** tiene restricción de rol: cualquier usuario autenticado puede verlo y usarlo (ver regla 11.11).
+- **2.11** Inventario **no** tiene restricción de rol para ver, crear ni editar: cualquier usuario autenticado puede hacerlo (ver regla 11.11). La **eliminación** de productos es la única excepción — ver regla 2.12.
+- **2.12** Capacidad `deleteRecords` (eliminar registros de catálogo): solo `admin` la obtiene; `worker` la tiene denegada. Cubre `DELETE /api/products/{id}` y `DELETE /api/customers/{id}`. Se aplica en la ruta con el helper de capacidad; ocultar el botón en la tabla es solo UX (regla 3.4). El motivo de reservarla a `admin` es que destruir un registro es irreversible, a diferencia del flag `active`/`isActive`, que sí puede alternar cualquier miembro.
+- **2.13** `deleteRecords` **no** restringe crear ni editar: un `worker` sigue pudiendo dar de alta y modificar productos y clientes con normalidad.
 
 ## 3. Navegación por Rol
 
@@ -70,6 +72,10 @@ Las convenciones técnicas transversales (dinero en centavos enteros, fechas en 
 - **5.6** El detalle de un cliente incluye valores calculados en el servidor: total facturado, total pagado, saldo pendiente, facturas recientes y pagos recientes — todos derivados solo de las facturas y pagos de ese negocio.
 - **5.7** Solicitar el detalle de un cliente que pertenece a otro negocio responde `NOT_FOUND`: nunca se revela la existencia de datos entre negocios.
 - **5.8** La edición de un cliente (`PATCH`) solo permite campos descriptivos e `isActive`. Rechaza `business_id`, saldos, campos de auditoría, cargas vacías y campos desconocidos.
+- **5.9** Un cliente puede **eliminarse de forma definitiva**, pero **solo si no tiene ninguna factura ni ningún pago**. Con historial financiero la operación se rechaza con `CONFLICT` y un mensaje que indica cuántas facturas y pagos lo referencian y sugiere desactivarlo. A diferencia de un producto (regla 11.13), un cliente referenciado **no** se desvincula: `invoices.customer_id` y `payments.customer_id` son `NOT NULL` y la factura resuelve el nombre del cliente por búsqueda, así que borrarlo dejaría facturas huérfanas.
+- **5.10** Al eliminar un cliente, las tarjetas del pipeline de Ventas que lo referencian **se desvinculan** (`customer_id` pasa a `NULL`) en la misma transacción; la tarjeta sobrevive con su título e importe. Esa FK sí es anulable.
+- **5.11** La eliminación de clientes requiere la capacidad `deleteRecords` (solo `admin`, regla 2.12). Un id de otro negocio responde `NOT_FOUND`, nunca `CONFLICT`: no se revela la existencia de datos entre negocios.
+- **5.12** Cuando el borrado se rechaza por `CONFLICT`, el diálogo ofrece un botón **"Desactivar"** que aplica `isActive = false` sin salir del diálogo (misma afordancia que la regla 11.17). Desactivar no elimina al cliente, así que desde su página de detalle se refresca en el sitio en lugar de navegar al listado.
 
 ## 6. Facturación
 
@@ -167,7 +173,7 @@ El inventario mantiene un catálogo de productos por negocio y un libro de movim
 ### Productos
 
 - **11.1** Un producto almacena `business_id`, `name`, `sku` (opcional), `unit_cost` (entero positivo, unidades menores), `min_stock_threshold` (entero no negativo), `active` (booleano, por defecto `true`), `created_at`, `updated_at`.
-- **11.2** Nombre, sku, costo unitario, umbral mínimo de stock y estado activo son **editables**. **No existe borrado** de productos: solo se alterna el flag `active`.
+- **11.2** Nombre, sku, costo unitario, umbral mínimo de stock y estado activo son **editables**. Un producto también puede **eliminarse** de forma definitiva — ver regla 11.13. Alternar el flag `active` sigue siendo la alternativa no destructiva.
 - **11.3** El `sku` es texto libre opcional con longitud máxima razonable y **sin** restricción de unicidad: dos productos del mismo negocio pueden compartir el mismo sku. Un producto puede crearse sin sku (queda nulo/ausente).
 - **11.4** Un producto de otro negocio nunca aparece en listados y consultarlo directamente devuelve "no encontrado".
 
@@ -187,6 +193,14 @@ El inventario mantiene un catálogo de productos por negocio y un libro de movim
 
 - **11.11** Cualquier usuario autenticado, **independientemente de su rol**, puede ver y usar Inventario (productos y movimientos). No hay chequeo de capacidad que bloquee `/inventario`, `/api/products` ni `/api/inventory-movements` — a diferencia de la restricción admin-only de Nómina.
 - **11.12** El selector de producto del formulario "Registrar movimiento" ofrece **solo productos activos** (igual que el formulario de Nómina solo ofrece empleados activos).
+
+### Eliminación de productos
+
+- **11.13** Un producto puede **eliminarse de forma definitiva**, pero **solo si no aparece en ninguna factura**. Si ya se vendió, la operación se rechaza con `CONFLICT` y un mensaje que indica cuántas facturas lo referencian y sugiere desactivarlo. Es la misma regla que para clientes (regla 5.9): una edición de catálogo nunca destruye historial de facturación.
+- **11.14** El conteo del rechazo es de **facturas distintas**, no de líneas: una factura que vende el mismo producto en dos líneas cuenta como una.
+- **11.15** Cuando sí procede, el borrado ocurre en una sola transacción: se eliminan los movimientos de inventario del producto y luego el producto. La cantidad calculada deja de existir en lugar de reajustarse, así que **el borrado no es una vía para corregir stock**; para eso está el campo "Cantidad" del formulario, que registra el movimiento compensatorio.
+- **11.16** La eliminación requiere la capacidad `deleteRecords` (solo `admin`, regla 2.12) y va precedida de una confirmación explícita. Un id de otro negocio responde `NOT_FOUND`, nunca revelando su existencia.
+- **11.17** Cuando el borrado se rechaza por `CONFLICT`, el diálogo ofrece un botón **"Desactivar"** que aplica `active = false` sin salir del diálogo, convirtiendo el rechazo en una salida de un clic. El botón no se ofrece si el producto ya está inactivo (sería una operación sin efecto) ni ante fallos que no sean `CONFLICT`.
 
 ## 12. Auditoría (Audit Log)
 

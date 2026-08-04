@@ -12,11 +12,13 @@ import type { Product } from "@/lib/services/ports";
  * handler -> `product-service.ts` -> `product-repo.ts` code path, only
  * faking the underlying cookie storage.
  *
- * Unlike Nomina's employee routes, Inventario has NO role gating (per
+ * Inventario has NO role gating on reads/writes (per
  * `openspec/changes/inventario/specs/inventory-tracking/spec.md`'s "No Role
- * Gating on Inventory" requirement), so there is no worker-403 path to test
- * here — every group below only proves the plain-session-authenticated path
- * plus the shared 401/cross-business/origin concerns.
+ * Gating on Inventory" requirement), so GET/POST/PATCH below only prove the
+ * plain-session-authenticated path plus the shared 401/cross-business/origin
+ * concerns. `DELETE` is the ONE exception — it is gated on the admin-only
+ * `deleteRecords` capability — so that group additionally proves the
+ * worker-403 path, mirroring `app/api/employees/employees-routes.test.ts`.
  */
 const { mockCookieJar } = vi.hoisted(() => {
   const jarStore = new Map<string, string>();
@@ -43,7 +45,7 @@ vi.mock("next/headers", () => ({
 }));
 
 const { GET: listGet, POST: listPost } = await import("./route");
-const { PATCH: detailPatch } = await import("./[id]/route");
+const { PATCH: detailPatch, DELETE: detailDelete } = await import("./[id]/route");
 
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_BUSINESS_ID = "10000000-0000-4000-8000-000000000099";
@@ -60,6 +62,20 @@ async function signIn(): Promise<void> {
   const session = await repositories.auth.signIn(DEMO_EMAIL, DEMO_PASSWORD);
   if (!session) {
     throw new Error("Test setup failed: demo sign-in did not succeed.");
+  }
+}
+
+/**
+ * Signs in, then re-issues the session cookie with role `"worker"` in the
+ * SAME business — same technique as `employees-routes.test.ts`: this produces
+ * a real worker `Session` that flows through the REAL `requireCapability` ->
+ * `permissions.can()` check, unmocked.
+ */
+async function signInAsWorker(): Promise<void> {
+  await signIn();
+  const switched = await repositories.auth.switchBusiness(BUSINESS_ID, "worker");
+  if (!switched) {
+    throw new Error("Test setup failed: switchBusiness to worker did not succeed.");
   }
 }
 
@@ -323,5 +339,184 @@ describe("PATCH /api/products/{id}", () => {
     expect(response.status).toBe(403);
     const body = await response.json();
     expect(body.error.code).toBe("FORBIDDEN");
+  });
+});
+
+/**
+ * The ONLY role-gated handler in Inventario. `deleteRecords` is admin-only,
+ * so a worker must be refused BEFORE anything is touched, while the rest of
+ * the module stays open to them (proved by the PATCH group above, which
+ * signs in with no role manipulation at all).
+ *
+ * The delete itself is guarded: a product that has already been sold is
+ * refused with a `CONFLICT` naming the invoice count, so billing history is
+ * never destroyed by a catalog edit. The UI then offers deactivation.
+ */
+describe("DELETE /api/products/{id}", () => {
+  beforeEach(() => {
+    resetStore();
+    mockCookieJar.clear();
+    process.env.APP_ORIGIN = "http://localhost:3000";
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_APP_ORIGIN === undefined) {
+      delete process.env.APP_ORIGIN;
+    } else {
+      process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
+    }
+  });
+
+  function deleteRequest(id: string, origin = "http://localhost:3000") {
+    return new Request(`http://localhost:3000/api/products/${id}`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json", origin },
+    });
+  }
+
+  it("rejects unauthenticated requests with 401 UNAUTHENTICATED, leaving the product in place", async () => {
+    const response = await detailDelete(
+      deleteRequest(EXISTING_PRODUCT_ID),
+      buildContext(EXISTING_PRODUCT_ID),
+    );
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.error.code).toBe("UNAUTHENTICATED");
+    expect(store.products.get(EXISTING_PRODUCT_ID)).toBeDefined();
+  });
+
+  it("rejects a worker session with 403 FORBIDDEN (lacks deleteRecords) before touching the store", async () => {
+    await signInAsWorker();
+
+    const response = await detailDelete(
+      deleteRequest(EXISTING_PRODUCT_ID),
+      buildContext(EXISTING_PRODUCT_ID),
+    );
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(store.products.get(EXISTING_PRODUCT_ID)).toBeDefined();
+  });
+
+  it("deletes for an admin session, returning {data:{ok:true}}", async () => {
+    await signIn();
+
+    const response = await detailDelete(
+      deleteRequest(EXISTING_PRODUCT_ID),
+      buildContext(EXISTING_PRODUCT_ID),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ data: { ok: true } });
+    expect(store.products.get(EXISTING_PRODUCT_ID)).toBeUndefined();
+  });
+
+  it("drops the product's inventory movements alongside it", async () => {
+    await signIn();
+    const movementsBefore = [...store.inventoryMovements.values()].filter(
+      (movement) => movement.productId === EXISTING_PRODUCT_ID,
+    );
+    expect(movementsBefore.length).toBeGreaterThan(0); // guards the fixture
+
+    await detailDelete(deleteRequest(EXISTING_PRODUCT_ID), buildContext(EXISTING_PRODUCT_ID));
+
+    expect(
+      [...store.inventoryMovements.values()].filter((m) => m.productId === EXISTING_PRODUCT_ID),
+    ).toHaveLength(0);
+  });
+
+  it("refuses with 409 CONFLICT once the product has been invoiced, leaving product and invoice line intact", async () => {
+    await signIn();
+    store.invoiceItems.set("item-under-test", {
+      id: "item-under-test",
+      invoiceId: "invoice-under-test",
+      description: "Producto vendido",
+      quantity: 2,
+      unitPrice: 25000,
+      lineTotal: 50000,
+      productId: EXISTING_PRODUCT_ID,
+    });
+
+    const response = await detailDelete(
+      deleteRequest(EXISTING_PRODUCT_ID),
+      buildContext(EXISTING_PRODUCT_ID),
+    );
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toContain("No se puede eliminar este producto");
+    expect(body.error.message).toContain("Desactívalo en su lugar.");
+    // Neither the product nor its billing history was touched.
+    expect(store.products.get(EXISTING_PRODUCT_ID)).toBeDefined();
+    const item = store.invoiceItems.get("item-under-test")!;
+    expect(item.productId).toBe(EXISTING_PRODUCT_ID);
+    expect(item.lineTotal).toBe(50000);
+  });
+
+  it("still allows PATCH active:false for that same product — deactivation is the way forward", async () => {
+    await signIn();
+    store.invoiceItems.set("item-under-test", {
+      id: "item-under-test",
+      invoiceId: "invoice-under-test",
+      description: "Producto vendido",
+      quantity: 2,
+      unitPrice: 25000,
+      lineTotal: 50000,
+      productId: EXISTING_PRODUCT_ID,
+    });
+
+    const response = await detailPatch(
+      new Request(`http://localhost:3000/api/products/${EXISTING_PRODUCT_ID}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+        body: JSON.stringify({ active: false }),
+      }),
+      buildContext(EXISTING_PRODUCT_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(store.products.get(EXISTING_PRODUCT_ID)!.active).toBe(false);
+  });
+
+  it("returns 404 NOT_FOUND for an unknown id", async () => {
+    await signIn();
+
+    const unknownId = "90000000-0000-4000-8000-00000000dead";
+    const response = await detailDelete(deleteRequest(unknownId), buildContext(unknownId));
+
+    expect(response.status).toBe(404);
+    const body = await response.json();
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 NOT_FOUND for a cross-business id, leaving that product untouched", async () => {
+    await signIn();
+    const otherProduct = seedOtherBusinessProduct();
+
+    const response = await detailDelete(
+      deleteRequest(otherProduct.id),
+      buildContext(otherProduct.id),
+    );
+
+    expect(response.status).toBe(404);
+    expect(store.products.get(otherProduct.id)).toBeDefined();
+  });
+
+  it("rejects a mismatched Origin header with 403 FORBIDDEN", async () => {
+    await signIn();
+
+    const response = await detailDelete(
+      deleteRequest(EXISTING_PRODUCT_ID, "http://evil.test"),
+      buildContext(EXISTING_PRODUCT_ID),
+    );
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(store.products.get(EXISTING_PRODUCT_ID)).toBeDefined();
   });
 });

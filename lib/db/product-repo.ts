@@ -1,6 +1,6 @@
-import type { Paged, Product, ProductCreate, ProductListQuery, ProductRepository, ProductUpdate, ProductWithStock } from "@/lib/services/ports";
+import type { Paged, Product, ProductCreate, ProductDeleteResult, ProductListQuery, ProductRepository, ProductUpdate, ProductWithStock } from "@/lib/services/ports";
 import { computeProductStock } from "@/lib/services/inventory-stock";
-import { sql } from "./client";
+import { runTransaction, sql } from "./client";
 
 /**
  * Mirrors `db/employee-repo.ts`'s strategy: fetch business-scoped rows via a
@@ -115,5 +115,45 @@ export const productRepo: ProductRepository = {
       RETURNING *
     `) as unknown as ProductRow[];
     return toProduct(rows[0]!);
+  },
+
+  async delete(businessId: string, id: string): Promise<ProductDeleteResult> {
+    // Guarded hard delete: a product that has ever been invoiced is refused,
+    // so billing history can always be traced back to what was sold. Same
+    // shape and reasoning as `customer-repo.ts#delete`.
+    return runTransaction(async (tx) => {
+      // Statement 1: acquire and HOLD the product row lock for the rest of
+      // the transaction — the two-statement pattern from `client.ts`'s
+      // canonical note. This is what makes the count below race-safe: a
+      // concurrent `INSERT INTO invoice_items` needs a `FOR KEY SHARE` lock
+      // on THIS row to validate its FK, so it cannot slip a new line in
+      // between the count and the delete.
+      const lockRows = (await tx`
+        SELECT id FROM products WHERE id = ${id} AND business_id = ${businessId} FOR UPDATE
+      `) as unknown as { id: string }[];
+      if (lockRows.length === 0) return { outcome: "not_found" } as const;
+
+      // Statement 2: fresh-snapshot reference count. `invoice_items` carries
+      // no `business_id` of its own, hence the join to `invoices`. DISTINCT
+      // invoice_id, not row count — the message counts invoices, and one
+      // invoice may list the same product on several lines.
+      const countRows = (await tx`
+        SELECT COUNT(DISTINCT ii.invoice_id)::int AS invoice_count
+        FROM invoice_items ii
+        JOIN invoices i ON i.id = ii.invoice_id
+        WHERE ii.product_id = ${id} AND i.business_id = ${businessId}
+      `) as unknown as { invoice_count: number }[];
+      const invoiceCount = Number(countRows[0]!.invoice_count);
+      if (invoiceCount > 0) {
+        return { outcome: "conflict", invoiceCount } as const;
+      }
+
+      // Zero references confirmed under the lock. Drop the ledger first —
+      // `inventory_movements.product_id` is NOT NULL with ON DELETE NO ACTION,
+      // so the FK order matters.
+      await tx`DELETE FROM inventory_movements WHERE product_id = ${id} AND business_id = ${businessId}`;
+      await tx`DELETE FROM products WHERE id = ${id} AND business_id = ${businessId}`;
+      return { outcome: "deleted" } as const;
+    });
   },
 };

@@ -2,6 +2,7 @@ import { computeStatus } from "@/lib/services/status";
 import type {
   Customer,
   CustomerCreate,
+  CustomerDeleteResult,
   CustomerDetail,
   CustomerListQuery,
   CustomerRepository,
@@ -164,6 +165,33 @@ export function createCustomerRepository(store: MockStore): CustomerRepository {
       };
       store.customers.set(id, updated);
       return updated;
+    },
+
+    async delete(businessId: string, id: string): Promise<CustomerDeleteResult> {
+      const customer = store.customers.get(id);
+      if (!customer || customer.businessId !== businessId) {
+        return { outcome: "not_found" };
+      }
+
+      // Refuse once anything financial references the customer — same rule as
+      // `product-repo.ts#delete`. Both FKs are NOT NULL in Postgres and an
+      // invoice resolves its customer's name by lookup, so deleting would
+      // orphan invoices; see `CustomerDeleteResult` in `ports.ts`.
+      const invoiceCount = invoicesForCustomer(store, id).length;
+      const paymentCount = paymentsForCustomer(store, id).length;
+      if (invoiceCount > 0 || paymentCount > 0) {
+        return { outcome: "conflict", invoiceCount, paymentCount };
+      }
+
+      // `PipelineCard.customerId` is nullable — detach, don't delete the card.
+      const now = new Date().toISOString();
+      for (const [cardId, card] of store.pipelineCards) {
+        if (card.customerId === id) {
+          store.pipelineCards.set(cardId, { ...card, customerId: null, updatedAt: now });
+        }
+      }
+      store.customers.delete(id);
+      return { outcome: "deleted" };
     },
   };
 }

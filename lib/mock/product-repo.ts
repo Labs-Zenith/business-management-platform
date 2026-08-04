@@ -1,15 +1,20 @@
-import type { Paged, Product, ProductCreate, ProductListQuery, ProductRepository, ProductUpdate, ProductWithStock } from "@/lib/services/ports";
+import type { Paged, Product, ProductCreate, ProductDeleteResult, ProductListQuery, ProductRepository, ProductUpdate, ProductWithStock } from "@/lib/services/ports";
 import { computeProductStock } from "@/lib/services/inventory-stock";
 import { generateId, store as defaultStore, type MockStore } from "./store";
 
 /**
- * Employee-style mock repo (list/getById/create/update, business-scoped, no
- * delete — only the `active` toggle via `update`), extended with a computed
- * `ProductWithStock` view: `list`/`getById` filter `store.inventoryMovements`
- * per product and delegate the derivation of `currentQuantity`/`totalValue`/
- * `isLowStock` to the shared `computeProductStock` (`lib/services/
- * inventory-stock.ts`), structurally mirroring `invoice-repo.ts`'s
- * `withFinance`. `products` itself NEVER stores a quantity/value column.
+ * Business-scoped mock repo (list/getById/create/update/delete), extended
+ * with a computed `ProductWithStock` view: `list`/`getById` filter
+ * `store.inventoryMovements` per product and delegate the derivation of
+ * `currentQuantity`/`totalValue`/`isLowStock` to the shared
+ * `computeProductStock` (`lib/services/inventory-stock.ts`), structurally
+ * mirroring `invoice-repo.ts`'s `withFinance`. `products` itself NEVER stores
+ * a quantity/value column.
+ *
+ * UNLIKE `employee-repo.ts` (deactivate-only), a product with no billing
+ * history IS hard-deletable — `delete` mirrors `lib/db/product-repo.ts`'s
+ * transaction: refuse if any invoice line references it, else drop the ledger
+ * rows and the product.
  */
 
 function paginate<T>(items: T[], page: number, pageSize: number): Paged<T> {
@@ -84,6 +89,33 @@ export function createProductRepository(store: MockStore): ProductRepository {
       };
       store.products.set(id, updated);
       return updated;
+    },
+
+    async delete(businessId: string, id: string): Promise<ProductDeleteResult> {
+      const product = store.products.get(id);
+      if (!product || product.businessId !== businessId) {
+        return { outcome: "not_found" };
+      }
+
+      // Refuse once the product has been invoiced — see `ProductDeleteResult`
+      // in `ports.ts`. DISTINCT invoices, since one invoice may list the same
+      // product on several lines.
+      const referencingInvoiceIds = new Set(
+        [...store.invoiceItems.values()]
+          .filter((item) => item.productId === id)
+          .map((item) => item.invoiceId),
+      );
+      if (referencingInvoiceIds.size > 0) {
+        return { outcome: "conflict", invoiceCount: referencingInvoiceIds.size };
+      }
+
+      for (const [movementId, movement] of store.inventoryMovements) {
+        if (movement.productId === id) {
+          store.inventoryMovements.delete(movementId);
+        }
+      }
+      store.products.delete(id);
+      return { outcome: "deleted" };
     },
   };
 }

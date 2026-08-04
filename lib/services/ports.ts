@@ -220,11 +220,33 @@ export type CustomerCreate = {
 
 export type CustomerUpdate = Partial<CustomerCreate> & { isActive?: boolean };
 
+/**
+ * Outcome of `CustomerRepository.delete`. A customer is hard-deletable ONLY
+ * while nothing financial points at them: `invoices.customer_id` and
+ * `payments.customer_id` are both `NOT NULL`, and an invoice reads its
+ * customer's name by lookup (`invoice-repo.ts#buildDetail`), so deleting a
+ * referenced customer would leave orphaned invoices. Hence `conflict` carries
+ * the counts, which the service turns into the message the user actually
+ * reads. `ProductDeleteResult` is the same shape for the same reason —
+ * billing history is never destroyed by a catalog edit.
+ */
+export type CustomerDeleteResult =
+  | { outcome: "deleted" }
+  | { outcome: "not_found" }
+  | { outcome: "conflict"; invoiceCount: number; paymentCount: number };
+
 export interface CustomerRepository {
   list(businessId: string, query: CustomerListQuery): Promise<Paged<CustomerWithBalance>>;
   getById(businessId: string, id: string): Promise<CustomerDetail | null>;
   create(businessId: string, data: CustomerCreate): Promise<Customer>;
   update(businessId: string, id: string, data: CustomerUpdate): Promise<Customer | null>;
+  /**
+   * Hard delete, allowed ONLY when zero `invoices` AND zero `payments`
+   * reference this customer. On success also NULLs `pipeline_cards.customer_id`
+   * (a nullable FK — the card survives, detached) in the SAME transaction.
+   * Admin-only at the route layer via the `deleteRecords` capability.
+   */
+  delete(businessId: string, id: string): Promise<CustomerDeleteResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +591,7 @@ export interface PayrollPaymentRepository {
 }
 
 // ---------------------------------------------------------------------------
-// Products (editable — Employee-style) & Inventory Movements (append-only)
+// Products (editable AND deletable) & Inventory Movements (append-only)
 // ---------------------------------------------------------------------------
 
 /**
@@ -618,11 +640,34 @@ export type ProductListQuery = {
   pageSize: number;
 };
 
+/**
+ * Outcome of `ProductRepository.delete`, mirroring `CustomerDeleteResult`. A
+ * product that has ever been invoiced is REFUSED, not unlinked: keeping the
+ * `invoice_items.product_id` link intact is what lets an invoice still be
+ * traced back to what was actually sold. `conflict` carries the DISTINCT
+ * invoice count (not the line count) because that is what the refusal message
+ * tells the user.
+ */
+export type ProductDeleteResult =
+  | { outcome: "deleted" }
+  | { outcome: "not_found" }
+  | { outcome: "conflict"; invoiceCount: number };
+
 export interface ProductRepository {
   list(businessId: string, query: ProductListQuery): Promise<Paged<ProductWithStock>>;
   getById(businessId: string, id: string): Promise<ProductWithStock | null>;
   create(businessId: string, data: ProductCreate): Promise<Product>;
   update(businessId: string, id: string, data: ProductUpdate): Promise<Product | null>;
+  /**
+   * Hard delete, allowed ONLY when zero `invoice_items` rows reference this
+   * product — otherwise `{outcome:"conflict", invoiceCount}`, and the caller
+   * is expected to offer deactivation (`update({active:false})`) instead.
+   * UNLIKE `EmployeeRepository` (deactivate-only), a product with no billing
+   * history IS deletable; deleting also drops its `inventory_movements`
+   * ledger rows in the SAME transaction. Admin-only at the route layer via
+   * the `deleteRecords` capability.
+   */
+  delete(businessId: string, id: string): Promise<ProductDeleteResult>;
 }
 
 // ---------------------------------------------------------------------------

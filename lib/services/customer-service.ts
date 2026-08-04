@@ -66,3 +66,49 @@ export async function updateCustomer(session: Session, id: string, data: Custome
   }
   return updated;
 }
+
+/**
+ * Builds the `CONFLICT` message a blocked delete shows the user. Unlike the
+ * English `NOT_FOUND` messages above (which no UI ever renders — a 404 is
+ * handled structurally), this string IS displayed verbatim in the confirm
+ * dialog's inline alert, so it is written in Spanish like the rest of the
+ * user-facing copy.
+ */
+function buildConflictMessage(invoiceCount: number, paymentCount: number): string {
+  const parts: string[] = [];
+  if (invoiceCount > 0) parts.push(`${invoiceCount} factura${invoiceCount === 1 ? "" : "s"}`);
+  if (paymentCount > 0) parts.push(`${paymentCount} pago${paymentCount === 1 ? "" : "s"}`);
+
+  // The adjective agrees with the nouns it follows: "factura" is feminine,
+  // "pago" is masculine, and Spanish resolves a mixed list to the masculine
+  // plural ("2 facturas y 1 pago asociados").
+  const bothKinds = invoiceCount > 0 && paymentCount > 0;
+  const total = invoiceCount + paymentCount;
+  const adjective = bothKinds
+    ? "asociados"
+    : invoiceCount > 0
+      ? `asociada${total === 1 ? "" : "s"}`
+      : `asociado${total === 1 ? "" : "s"}`;
+
+  return `No se puede eliminar este cliente porque tiene ${parts.join(" y ")} ${adjective}. Desactívalo en su lugar.`;
+}
+
+/**
+ * Hard delete, refused while anything financial references the customer —
+ * unlike `deleteProduct`, which always succeeds. See `CustomerDeleteResult`
+ * in `ports.ts` for the reasoning. Admin-only: the `deleteRecords` capability
+ * is enforced at the route.
+ */
+export async function deleteCustomer(session: Session, id: string): Promise<void> {
+  const result = await repositories.customers.delete(session.businessId, id);
+
+  if (result.outcome === "not_found") {
+    throw new ApiError("NOT_FOUND", "Customer not found.");
+  }
+  if (result.outcome === "conflict") {
+    throw new ApiError("CONFLICT", buildConflictMessage(result.invoiceCount, result.paymentCount), {
+      invoiceCount: result.invoiceCount,
+      paymentCount: result.paymentCount,
+    });
+  }
+}

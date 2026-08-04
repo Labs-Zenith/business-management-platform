@@ -35,7 +35,7 @@ vi.mock("next/headers", () => ({
 }));
 
 const { GET: listGet, POST: listPost } = await import("./route");
-const { GET: detailGet, PATCH: detailPatch } = await import("./[id]/route");
+const { GET: detailGet, PATCH: detailPatch, DELETE: detailDelete } = await import("./[id]/route");
 
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_BUSINESS_ID = "10000000-0000-4000-8000-000000000099";
@@ -50,6 +50,21 @@ async function signIn(): Promise<void> {
   const session = await repositories.auth.signIn(DEMO_EMAIL, DEMO_PASSWORD);
   if (!session) {
     throw new Error("Test setup failed: demo sign-in did not succeed.");
+  }
+}
+
+/**
+ * Signs in, then re-issues the session cookie with role `"worker"` in the
+ * SAME business — same technique as `employees-routes.test.ts`, producing a
+ * real worker `Session` that flows through the REAL `requireCapability` ->
+ * `permissions.can()` check, unmocked. Only `DELETE` is gated; every other
+ * customer handler stays open to workers.
+ */
+async function signInAsWorker(): Promise<void> {
+  await signIn();
+  const switched = await repositories.auth.switchBusiness(BUSINESS_ID, "worker");
+  if (!switched) {
+    throw new Error("Test setup failed: switchBusiness to worker did not succeed.");
   }
 }
 
@@ -359,5 +374,149 @@ describe("PATCH /api/customers/{id}", () => {
 
     expect(response.status).toBe(404);
     expect(store.customers.get(otherCustomer.id)?.phone).toBeNull();
+  });
+});
+
+/**
+ * The only role-gated customer handler. Unlike products, this delete can be
+ * legitimately REFUSED: `invoices.customer_id`/`payments.customer_id` are
+ * NOT NULL and an invoice resolves the customer's name by lookup, so a
+ * referenced customer is blocked with a `CONFLICT` naming the counts rather
+ * than orphaning financial history.
+ */
+describe("DELETE /api/customers/{id}", () => {
+  beforeEach(() => {
+    resetStore();
+    mockCookieJar.clear();
+    process.env.APP_ORIGIN = "http://localhost:3000";
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_APP_ORIGIN === undefined) {
+      delete process.env.APP_ORIGIN;
+    } else {
+      process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
+    }
+  });
+
+  function deleteRequest(id: string, origin = "http://localhost:3000") {
+    return new Request(`http://localhost:3000/api/customers/${id}`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json", origin },
+    });
+  }
+
+  /** A customer with no invoices/payments — the fixtures' customers all have history. */
+  async function seedDeletableCustomer(): Promise<string> {
+    const created = await repositories.customers.create(BUSINESS_ID, { name: "Cliente Sin Historial" });
+    return created.id;
+  }
+
+  /** A fixture customer that DOES have invoices, so the guard has something to refuse. */
+  function referencedCustomerId(): string {
+    const invoice = [...store.invoices.values()].find((candidate) => candidate.businessId === BUSINESS_ID);
+    if (!invoice) throw new Error("Test setup failed: no seeded invoice to reference a customer.");
+    return invoice.customerId;
+  }
+
+  it("rejects unauthenticated requests with 401 UNAUTHENTICATED", async () => {
+    const id = await seedDeletableCustomer();
+
+    const response = await detailDelete(deleteRequest(id), buildContext(id));
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.error.code).toBe("UNAUTHENTICATED");
+    expect(store.customers.get(id)).toBeDefined();
+  });
+
+  it("rejects a worker session with 403 FORBIDDEN (lacks deleteRecords) before touching the store", async () => {
+    await signInAsWorker();
+    const id = await seedDeletableCustomer();
+
+    const response = await detailDelete(deleteRequest(id), buildContext(id));
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(store.customers.get(id)).toBeDefined();
+  });
+
+  it("deletes an unreferenced customer for an admin session, returning {data:{ok:true}}", async () => {
+    await signIn();
+    const id = await seedDeletableCustomer();
+
+    const response = await detailDelete(deleteRequest(id), buildContext(id));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: { ok: true } });
+    expect(store.customers.get(id)).toBeUndefined();
+  });
+
+  it("detaches pipeline cards pointing at the deleted customer instead of removing them", async () => {
+    await signIn();
+    const id = await seedDeletableCustomer();
+    const card = await repositories.pipeline.create(BUSINESS_ID, {
+      customerId: id,
+      title: "Oportunidad",
+      stage: "nuevo",
+      amount: 100000,
+      notes: null,
+    });
+
+    await detailDelete(deleteRequest(id), buildContext(id));
+
+    const stored = store.pipelineCards.get(card.id);
+    expect(stored).toBeDefined();
+    expect(stored!.customerId).toBeNull();
+  });
+
+  it("refuses with 409 CONFLICT (naming the count) when the customer has invoices, leaving everything intact", async () => {
+    await signIn();
+    const id = referencedCustomerId();
+    const invoicesBefore = store.invoices.size;
+
+    const response = await detailDelete(deleteRequest(id), buildContext(id));
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toContain("No se puede eliminar este cliente");
+    expect(body.error.message).toContain("Desactívalo en su lugar.");
+    expect(store.customers.get(id)).toBeDefined();
+    expect(store.invoices.size).toBe(invoicesBefore);
+  });
+
+  it("returns 404 NOT_FOUND for an unknown id", async () => {
+    await signIn();
+
+    const unknownId = "40000000-0000-4000-8000-00000000dead";
+    const response = await detailDelete(deleteRequest(unknownId), buildContext(unknownId));
+
+    expect(response.status).toBe(404);
+    const body = await response.json();
+    expect(body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 404 NOT_FOUND for a cross-business id, leaving that customer untouched", async () => {
+    await signIn();
+    const otherCustomer = seedOtherBusinessCustomer();
+
+    const response = await detailDelete(deleteRequest(otherCustomer.id), buildContext(otherCustomer.id));
+
+    expect(response.status).toBe(404);
+    expect(store.customers.get(otherCustomer.id)).toBeDefined();
+  });
+
+  it("rejects a mismatched Origin header with 403 FORBIDDEN", async () => {
+    await signIn();
+    const id = await seedDeletableCustomer();
+
+    const response = await detailDelete(deleteRequest(id, "http://evil.test"), buildContext(id));
+
+    expect(response.status).toBe(403);
+    const body = await response.json();
+    expect(body.error.code).toBe("FORBIDDEN");
+    expect(store.customers.get(id)).toBeDefined();
   });
 });

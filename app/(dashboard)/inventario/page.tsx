@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listProducts } from "@/lib/services/product-service";
+import { canDeleteRecords } from "@/lib/services/permissions";
 import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
@@ -11,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { TablePagination } from "@/components/domain/table-pagination";
 import ProductFormDialog from "@/components/domain/inventario/product-form-dialog";
+import DeleteProductButton from "@/components/domain/inventario/delete-product-button";
 
 /**
  * Inventario (stock tracking) screen — simplified to Products-only (the
@@ -38,6 +40,10 @@ export default async function InventarioPage({ searchParams }: InventarioPagePro
   await loadStoreFromCookie();
   const session = await requireSessionOrRedirect();
   const params = await searchParams;
+  // UX only — `requireCapability("deleteRecords")` on
+  // `DELETE /api/products/{id}` is the enforcing gate. The rest of this page
+  // stays un-gated per the "No Role Gating on Inventory" rule.
+  const canDelete = canDeleteRecords(session.role);
 
   const productsResult = await listProducts(session, {
     page: parsePageParam(params.productsPage),
@@ -104,15 +110,24 @@ export default async function InventarioPage({ searchParams }: InventarioPagePro
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <ProductFormDialog
-                    mode="edit"
-                    product={product}
-                    trigger={
-                      <Button variant="ghost" size="sm">
-                        Editar
-                      </Button>
-                    }
-                  />
+                  <div className="flex items-center justify-end gap-1">
+                    <ProductFormDialog
+                      mode="edit"
+                      product={product}
+                      trigger={
+                        <Button variant="ghost" size="sm">
+                          Editar
+                        </Button>
+                      }
+                    />
+                    {canDelete ? (
+                      <DeleteProductButton
+                        productId={product.id}
+                        productName={product.name}
+                        productActive={product.active}
+                      />
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))

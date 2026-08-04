@@ -1,6 +1,7 @@
 import type {
   Customer,
   CustomerCreate,
+  CustomerDeleteResult,
   CustomerDetail,
   CustomerListQuery,
   CustomerRepository,
@@ -11,7 +12,7 @@ import type {
   PaymentWithRefs,
 } from "@/lib/services/ports";
 import { computeStatus } from "@/lib/services/status";
-import { sql } from "./client";
+import { runTransaction, sql } from "./client";
 
 /**
  * Same strategy throughout `lib/db/*`: fetch business-scoped rows in bulk
@@ -231,5 +232,43 @@ export const customerRepo: CustomerRepository = {
       RETURNING *
     `) as unknown as CustomerRow[];
     return toCustomer(rows[0]);
+  },
+
+  async delete(businessId: string, id: string): Promise<CustomerDeleteResult> {
+    // Guarded hard delete, same rule as `productRepo.delete`: a customer any
+    // invoice or payment still references is REFUSED, so a catalog edit never
+    // destroys billing history (see `CustomerDeleteResult` in `ports.ts`).
+    return runTransaction(async (tx) => {
+      // Statement 1: lock the customer row and HOLD it — `client.ts`'s
+      // canonical two-statement pattern. A concurrent invoice or payment
+      // insert needs `FOR KEY SHARE` on this row for its FK check, so it
+      // cannot land between the count below and the delete.
+      const lockRows = (await tx`
+        SELECT id FROM customers WHERE id = ${id} AND business_id = ${businessId} FOR UPDATE
+      `) as unknown as { id: string }[];
+      if (lockRows.length === 0) return { outcome: "not_found" } as const;
+
+      // Statement 2: fresh-snapshot reference counts, safe to trust now that
+      // the lock forecloses new references appearing mid-transaction.
+      const countRows = (await tx`
+        SELECT
+          (SELECT COUNT(*)::int FROM invoices WHERE customer_id = ${id} AND business_id = ${businessId}) AS invoice_count,
+          (SELECT COUNT(*)::int FROM payments WHERE customer_id = ${id} AND business_id = ${businessId}) AS payment_count
+      `) as unknown as { invoice_count: number; payment_count: number }[];
+      const invoiceCount = Number(countRows[0]!.invoice_count);
+      const paymentCount = Number(countRows[0]!.payment_count);
+      if (invoiceCount > 0 || paymentCount > 0) {
+        return { outcome: "conflict", invoiceCount, paymentCount } as const;
+      }
+
+      // `pipeline_cards.customer_id` is nullable: detach the card instead of
+      // blocking on it or deleting the user's kanban work.
+      await tx`
+        UPDATE pipeline_cards SET customer_id = NULL, updated_at = now()
+        WHERE customer_id = ${id} AND business_id = ${businessId}
+      `;
+      await tx`DELETE FROM customers WHERE id = ${id} AND business_id = ${businessId}`;
+      return { outcome: "deleted" } as const;
+    });
   },
 };
