@@ -15,6 +15,7 @@ import type {
   PaymentWithRefs,
 } from "@/lib/services/ports";
 import { generateId, store as defaultStore, type MockStore } from "./store";
+import { customerSorter } from "@/lib/services/sorting";
 
 /**
  * Artificial async gap simulating a real DB round-trip, matching the
@@ -91,14 +92,13 @@ export function createCustomerRepository(store: MockStore): CustomerRepository {
         );
       }
 
-      customers.sort((a, b) => a.name.localeCompare(b.name));
-
       const withBalance: CustomerWithBalance[] = customers.map((customer) => ({
         ...customer,
         balance: computeCustomerBalance(store, customer.id),
       }));
 
-      return paginate(withBalance, query.page, query.pageSize);
+      // Sorted AFTER the balance map — mirrors `lib/db/customer-repo.ts`.
+      return paginate(customerSorter.sort(withBalance, query), query.page, query.pageSize);
     },
 
     async getById(businessId: string, id: string): Promise<CustomerDetail | null> {

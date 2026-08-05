@@ -8,6 +8,7 @@ import type {
   PayrollPaymentWithEmployee,
 } from "@/lib/services/ports";
 import { runTransaction, sql } from "./client";
+import { payrollPaymentSorter } from "@/lib/services/sorting";
 
 /**
  * `create` is the codebase's FIRST true multi-statement transaction, via the
@@ -73,14 +74,14 @@ export const payrollRepo: PayrollPaymentRepository = {
     if (query.from) payments = payments.filter((p) => p.paymentDate >= query.from!);
     if (query.to) payments = payments.filter((p) => p.paymentDate <= query.to!);
 
-    payments.sort((a, b) => (a.paymentDate < b.paymentDate ? 1 : -1));
-
     const withEmployee: PayrollPaymentWithEmployee[] = payments.map((p) => {
       const employee = employeeRows.find((e) => String(e.id) === String(p.employeeId));
       return { ...p, employee: { id: p.employeeId, name: employee?.name ?? "" } };
     });
 
-    return paginate(withEmployee, query.page, query.pageSize);
+    // Sorted AFTER the employee join, not before it (as the old fixed date
+    // sort was): `employee.name` is a sortable column.
+    return paginate(payrollPaymentSorter.sort(withEmployee, query), query.page, query.pageSize);
   },
 
   async getById(businessId: string, id: string): Promise<PayrollPaymentWithEmployee | null> {

@@ -1,5 +1,6 @@
 import type { Expense, ExpenseInput, ExpenseListQuery, ExpenseRepository, Paged } from "@/lib/services/ports";
 import { sql } from "./client";
+import { expenseSorter } from "@/lib/services/sorting";
 
 type ExpenseRow = {
   id: string;
@@ -59,8 +60,7 @@ export const expenseRepo: ExpenseRepository = {
     if (query.from) expenses = expenses.filter((e) => e.expenseDate >= query.from!);
     if (query.to) expenses = expenses.filter((e) => e.expenseDate <= query.to!);
 
-    expenses.sort((a, b) => (a.expenseDate < b.expenseDate ? 1 : -1));
-    return paginate(expenses, query.page, query.pageSize);
+    return paginate(expenseSorter.sort(expenses, query), query.page, query.pageSize);
   },
 
   /**

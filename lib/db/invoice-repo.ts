@@ -14,6 +14,7 @@ import type {
 import { computeStatus } from "@/lib/services/status";
 import { movementDirectionFor, reverseMovementDirection } from "@/lib/services/inventory-stock";
 import { runTransaction, sql } from "./client";
+import { invoiceSorter } from "@/lib/services/sorting";
 
 type InvoiceRow = {
   id: string;
@@ -228,8 +229,7 @@ export const invoiceRepo: InvoiceRepository = {
     if (query.from) invoices = invoices.filter((i) => i.issueDate >= query.from!);
     if (query.to) invoices = invoices.filter((i) => i.issueDate <= query.to!);
 
-    invoices.sort((a, b) => (a.issueDate < b.issueDate ? 1 : -1));
-    return paginate(invoices, query.page, query.pageSize);
+    return paginate(invoiceSorter.sort(invoices, query), query.page, query.pageSize);
   },
 
   async getById(businessId: string, id: string): Promise<InvoiceDetail | null> {

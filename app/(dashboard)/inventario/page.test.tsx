@@ -91,7 +91,7 @@ describe("InventarioPage", () => {
     render(await InventarioPage({ searchParams: Promise.resolve({}) }));
 
     expect(mockRequireSessionOrRedirect).toHaveBeenCalledTimes(1);
-    expect(mockListProducts).toHaveBeenCalledWith(SESSION, { page: 1, pageSize: 20 });
+    expect(mockListProducts).toHaveBeenCalledWith(SESSION, { sortBy: "name", sortDir: "asc", page: 1, pageSize: 20 });
 
     expect(screen.getByText("Tornillos 1/4")).toBeInTheDocument();
     expect(screen.getByText("Martillos")).toBeInTheDocument();
@@ -149,9 +149,46 @@ describe("InventarioPage", () => {
 
     render(await InventarioPage({ searchParams: Promise.resolve({ productsPage: "3" }) }));
 
-    expect(mockListProducts).toHaveBeenCalledWith(SESSION, { page: 3, pageSize: 20 });
+    expect(mockListProducts).toHaveBeenCalledWith(SESSION, { sortBy: "name", sortDir: "asc", page: 3, pageSize: 20 });
 
     const nextLink = screen.getByRole("link", { name: /siguiente/i });
     expect(nextLink.getAttribute("href")).toBe("/inventario?productsPage=4");
   });
+
+  it("threads the namespaced productsSort through, and falls back for an unknown column", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT], page: 1, pageSize: 20, total: 1 });
+
+    render(
+      await InventarioPage({ searchParams: Promise.resolve({ productsSort: "totalValue", productsDir: "desc" }) }),
+    );
+    expect(mockListProducts).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ sortBy: "totalValue", sortDir: "desc" }),
+    );
+
+    mockListProducts.mockClear();
+    render(await InventarioPage({ searchParams: Promise.resolve({ productsSort: "nope" }) }));
+    expect(mockListProducts).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ sortBy: "name", sortDir: "asc" }),
+    );
+  });
+
+  it("keeps the active sort on the pagination links", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListProducts.mockResolvedValue({ data: [LOW_STOCK_PRODUCT], page: 1, pageSize: 20, total: 40 });
+
+    render(
+      await InventarioPage({ searchParams: Promise.resolve({ productsSort: "unitCost", productsDir: "desc" }) }),
+    );
+
+    // This page builds TablePagination's params explicitly, so the sort keys
+    // have to be listed there or paging would drop them.
+    expect(screen.getByRole("link", { name: /siguiente/i })).toHaveAttribute(
+      "href",
+      "/inventario?productsSort=unitCost&productsDir=desc&productsPage=2",
+    );
+  });
+
 });

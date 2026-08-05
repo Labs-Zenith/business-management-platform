@@ -64,6 +64,8 @@ describe("CustomersPage", () => {
     expect(mockListCustomers).toHaveBeenCalledWith(SESSION, {
       q: undefined,
       status: undefined,
+      sortBy: "name",
+      sortDir: "asc",
       page: 1,
       pageSize: 20,
     });
@@ -85,6 +87,8 @@ describe("CustomersPage", () => {
     expect(mockListCustomers).toHaveBeenCalledWith(SESSION, {
       q: "Ana",
       status: "active",
+      sortBy: "name",
+      sortDir: "asc",
       page: 2,
       pageSize: 20,
     });
@@ -152,4 +156,47 @@ describe("CustomersPage", () => {
     expect(screen.getByRole("heading", { name: "Editar cliente" })).toBeInTheDocument();
     expect(screen.getByDisplayValue(CUSTOMER.name)).toBeInTheDocument();
   });
+
+  it("uses the shared SelectFilterField for Estado instead of a bare native select", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 1, pageSize: 20, total: 1 });
+
+    const { container } = render(await CustomersPage({ searchParams: Promise.resolve({}) }));
+
+    // This was the only page still hand-rolling a <select>, so it missed the
+    // shared control's auto-submit behavior.
+    expect(container.querySelector("select")).toBeNull();
+    expect(screen.getByLabelText(/estado/i)).toHaveAttribute("role", "combobox");
+  });
+
+  it("threads a whitelisted sort through, and falls back for an unknown column", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 1, pageSize: 20, total: 1 });
+
+    render(await CustomersPage({ searchParams: Promise.resolve({ sort: "balance", dir: "desc" }) }));
+    expect(mockListCustomers).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ sortBy: "balance", sortDir: "desc" }),
+    );
+
+    mockListCustomers.mockClear();
+    render(await CustomersPage({ searchParams: Promise.resolve({ sort: "nope", dir: "desc" }) }));
+    expect(mockListCustomers).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ sortBy: "name", sortDir: "asc" }),
+    );
+  });
+
+  it("keeps the search term in the sort links and resets the page", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListCustomers.mockResolvedValue({ data: [CUSTOMER], page: 2, pageSize: 20, total: 40 });
+
+    render(await CustomersPage({ searchParams: Promise.resolve({ q: "Ana", page: "2" }) }));
+
+    expect(screen.getByRole("link", { name: /saldo pendiente/i })).toHaveAttribute(
+      "href",
+      "/customers?q=Ana&sort=balance&dir=desc",
+    );
+  });
+
 });

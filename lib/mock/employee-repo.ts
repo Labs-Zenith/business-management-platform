@@ -1,5 +1,6 @@
 import type { Employee, EmployeeCreate, EmployeeListQuery, EmployeeRepository, EmployeeUpdate, Paged } from "@/lib/services/ports";
 import { generateId, store as defaultStore, type MockStore } from "./store";
+import { employeeSorter } from "@/lib/services/sorting";
 
 /**
  * Mirrors `customer-repo.ts`'s structure closely — employees are editable
@@ -31,9 +32,7 @@ export function createEmployeeRepository(store: MockStore): EmployeeRepository {
         employees = employees.filter((employee) => employee.name.toLowerCase().includes(needle));
       }
 
-      employees.sort((a, b) => a.name.localeCompare(b.name));
-
-      return paginate(employees, query.page, query.pageSize);
+      return paginate(employeeSorter.sort(employees, query), query.page, query.pageSize);
     },
 
     async getById(businessId: string, id: string): Promise<Employee | null> {

@@ -3,14 +3,17 @@ import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listPayments } from "@/lib/services/payment-service";
+import { paymentSorter } from "@/lib/services/sorting";
 import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateFilterField } from "@/components/domain/filters/date-filter-field";
+import { HiddenParams } from "@/components/domain/filters/hidden-params";
 import { ExportMenu } from "@/components/domain/export-menu";
 import { TablePagination } from "@/components/domain/table-pagination";
+import { TableSortHeader } from "@/components/domain/table-sort-header";
 
 /**
  * Pagos screen, per `docs/ui-ux-flow.md`'s "Navegacion principal" ("Pagos"
@@ -34,6 +37,8 @@ type PaymentsPageProps = {
     invoiceId?: string;
     from?: string;
     to?: string;
+    sort?: string;
+    dir?: string;
     page?: string;
   }>;
 };
@@ -43,14 +48,25 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
   const session = await requireSessionOrRedirect();
   const params = await searchParams;
 
+  const sort = paymentSorter.parse(params.sort, params.dir);
+
   const result = await listPayments(session, {
     customerId: params.customerId || undefined,
     invoiceId: params.invoiceId || undefined,
     from: params.from || undefined,
     to: params.to || undefined,
+    sortBy: sort.sortBy,
+    sortDir: sort.sortDir,
     page: parsePageParam(params.page),
     pageSize: PAGE_SIZE,
   });
+
+  const sortHeaderProps = {
+    current: sort,
+    defaultSort: paymentSorter.defaultSort,
+    pathname: "/payments",
+    params,
+  };
 
   const exportParams = {
     customerId: params.customerId,
@@ -71,6 +87,18 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
       <form method="get" className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[10rem_10rem_auto]">
         <DateFilterField name="from" id="from" label="Desde" defaultValue={params.from} />
         <DateFilterField name="to" id="to" label="Hasta" defaultValue={params.to} />
+        {/* `customerId`/`invoiceId` scope this list (deep links from a customer
+            or an invoice) but have no control here, so a native GET submit
+            would drop them and silently widen the results. Never `page`:
+            filtering should reset to the first page. */}
+        <HiddenParams
+          params={{
+            customerId: params.customerId,
+            invoiceId: params.invoiceId,
+            sort: params.sort,
+            dir: params.dir,
+          }}
+        />
         <Button type="submit" variant="outline" className="w-full sm:w-auto">
           Filtrar
         </Button>
@@ -79,11 +107,11 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
       <Table className="min-w-[760px]">
         <TableHeader>
           <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Cliente</TableHead>
-            <TableHead>Factura</TableHead>
-            <TableHead>Monto</TableHead>
-            <TableHead>Método</TableHead>
+            <TableSortHeader label="Fecha" sortBy="paymentDate" firstDir="desc" {...sortHeaderProps} />
+            <TableSortHeader label="Cliente" sortBy="customerName" {...sortHeaderProps} />
+            <TableSortHeader label="Factura" sortBy="invoiceNumber" {...sortHeaderProps} />
+            <TableSortHeader label="Monto" sortBy="amount" firstDir="desc" {...sortHeaderProps} />
+            <TableSortHeader label="Método" sortBy="method" {...sortHeaderProps} />
             <TableHead>Comprobante</TableHead>
           </TableRow>
         </TableHeader>

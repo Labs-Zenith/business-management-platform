@@ -1,5 +1,6 @@
 import type { Employee, EmployeeCreate, EmployeeListQuery, EmployeeRepository, EmployeeUpdate, Paged } from "@/lib/services/ports";
 import { sql } from "./client";
+import { employeeSorter } from "@/lib/services/sorting";
 
 /**
  * Mirrors `db/customer-repo.ts`'s strategy: fetch business-scoped rows via a
@@ -47,9 +48,7 @@ export const employeeRepo: EmployeeRepository = {
       const needle = query.q.trim().toLowerCase();
       employees = employees.filter((e) => e.name.toLowerCase().includes(needle));
     }
-    employees.sort((a, b) => a.name.localeCompare(b.name));
-
-    return paginate(employees, query.page, query.pageSize);
+    return paginate(employeeSorter.sort(employees, query), query.page, query.pageSize);
   },
 
   async getById(businessId: string, id: string): Promise<Employee | null> {

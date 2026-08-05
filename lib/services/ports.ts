@@ -9,7 +9,18 @@
  * All monetary amounts are integer minor units (COP cents).
  */
 
+import type { SortDir } from "@/lib/sort";
 import type { InvoiceStatus } from "./status";
+
+/**
+ * Every `*ListQuery` below carries an optional `sortBy`/`sortDir` pair, with
+ * the sortable columns declared as a `*_SORT_KEYS` const beside it. Both
+ * fields are OPTIONAL by design: a caller that omits them (dashboard widgets,
+ * exports, reports) gets the repository's long-standing fixed order, so
+ * adding sorting changed no existing behavior. The comparator for each column
+ * lives in `lib/services/sorting.ts`, which imports these keys — the
+ * dependency never runs the other way.
+ */
 
 export type Role = "admin" | "worker";
 
@@ -202,9 +213,14 @@ export type CustomerDetail = Customer & {
   recentPayments: PaymentWithRefs[];
 };
 
+export const CUSTOMER_SORT_KEYS = ["name", "phone", "balance", "status"] as const;
+export type CustomerSortBy = (typeof CUSTOMER_SORT_KEYS)[number];
+
 export type CustomerListQuery = {
   q?: string;
   status?: "active" | "inactive";
+  sortBy?: CustomerSortBy;
+  sortDir?: SortDir;
   page: number;
   pageSize: number;
 };
@@ -323,11 +339,22 @@ export type InvoiceDetail = InvoiceWithFinance & {
   payments: PaymentWithRefs[];
 };
 
+/**
+ * No `customerName`: an invoice row carries only `customerId`, so sorting by
+ * the Cliente column would need a join that `InvoiceWithFinance` does not
+ * have. That column is deliberately not sortable — unlike Ingresos, whose
+ * `PaymentWithRefs` already denormalizes the customer name.
+ */
+export const INVOICE_SORT_KEYS = ["number", "issueDate", "dueDate", "total", "balance", "status"] as const;
+export type InvoiceSortBy = (typeof INVOICE_SORT_KEYS)[number];
+
 export type InvoiceListQuery = {
   customerId?: string;
   status?: InvoiceStatus;
   from?: string;
   to?: string;
+  sortBy?: InvoiceSortBy;
+  sortDir?: SortDir;
   page: number;
   pageSize: number;
 };
@@ -417,11 +444,16 @@ export type PaymentWithRefs = Payment & {
   invoice: Pick<Invoice, "id" | "number">;
 };
 
+export const PAYMENT_SORT_KEYS = ["paymentDate", "customerName", "invoiceNumber", "amount", "method"] as const;
+export type PaymentSortBy = (typeof PAYMENT_SORT_KEYS)[number];
+
 export type PaymentListQuery = {
   customerId?: string;
   invoiceId?: string;
   from?: string;
   to?: string;
+  sortBy?: PaymentSortBy;
+  sortDir?: SortDir;
   page: number;
   pageSize: number;
 };
@@ -477,10 +509,15 @@ export type Expense = {
   updatedAt: string;
 };
 
+export const EXPENSE_SORT_KEYS = ["expenseDate", "category", "description", "amount"] as const;
+export type ExpenseSortBy = (typeof EXPENSE_SORT_KEYS)[number];
+
 export type ExpenseListQuery = {
   category?: ExpenseCategory;
   from?: string;
   to?: string;
+  sortBy?: ExpenseSortBy;
+  sortDir?: SortDir;
   page: number;
   pageSize: number;
 };
@@ -516,9 +553,14 @@ export type EmployeeCreate = {
 
 export type EmployeeUpdate = Partial<EmployeeCreate> & { active?: boolean };
 
+export const EMPLOYEE_SORT_KEYS = ["name", "baseSalary", "status"] as const;
+export type EmployeeSortBy = (typeof EMPLOYEE_SORT_KEYS)[number];
+
 export type EmployeeListQuery = {
   q?: string;
   status?: "active" | "inactive";
+  sortBy?: EmployeeSortBy;
+  sortDir?: SortDir;
   page: number;
   pageSize: number;
 };
@@ -578,10 +620,15 @@ export type PayrollPayment = {
 
 export type PayrollPaymentWithEmployee = PayrollPayment & { employee: Pick<Employee, "id" | "name"> };
 
+export const PAYROLL_PAYMENT_SORT_KEYS = ["employeeName", "periodStart", "amount", "paymentDate"] as const;
+export type PayrollPaymentSortBy = (typeof PAYROLL_PAYMENT_SORT_KEYS)[number];
+
 export type PayrollPaymentListQuery = {
   employeeId?: string;
   from?: string;
   to?: string;
+  sortBy?: PayrollPaymentSortBy;
+  sortDir?: SortDir;
   page: number;
   pageSize: number;
 };
@@ -636,9 +683,14 @@ export type ProductCreate = {
 
 export type ProductUpdate = Partial<ProductCreate> & { active?: boolean };
 
+export const PRODUCT_SORT_KEYS = ["name", "sku", "unitCost", "currentQuantity", "totalValue", "status"] as const;
+export type ProductSortBy = (typeof PRODUCT_SORT_KEYS)[number];
+
 export type ProductListQuery = {
   q?: string;
   status?: "active" | "inactive";
+  sortBy?: ProductSortBy;
+  sortDir?: SortDir;
   page: number;
   pageSize: number;
 };

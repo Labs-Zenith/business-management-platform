@@ -4,6 +4,7 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listEmployees } from "@/lib/services/employee-service";
 import { listPayrollPayments } from "@/lib/services/payroll-service";
 import { listPayrollPeriodTypes } from "@/lib/services/catalog-service";
+import { employeeSorter, payrollPaymentSorter } from "@/lib/services/sorting";
 import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
@@ -13,6 +14,7 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { TablePagination } from "@/components/domain/table-pagination";
+import { TableSortHeader } from "@/components/domain/table-sort-header";
 import EmployeeFormDialog from "@/components/domain/nomina/employee-form-dialog";
 import PayrollPaymentFormDialog from "@/components/domain/nomina/payroll-payment-form-dialog";
 
@@ -49,7 +51,15 @@ import PayrollPaymentFormDialog from "@/components/domain/nomina/payroll-payment
 const PAGE_SIZE = 20;
 
 type NominaPageProps = {
-  searchParams: Promise<{ employeesPage?: string; paymentsPage?: string; tab?: string }>;
+  searchParams: Promise<{
+    employeesPage?: string;
+    employeesSort?: string;
+    employeesDir?: string;
+    paymentsPage?: string;
+    paymentsSort?: string;
+    paymentsDir?: string;
+    tab?: string;
+  }>;
 };
 
 function parseTabParam(raw: string | undefined): "empleados" | "pagos" {
@@ -62,11 +72,49 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
   const params = await searchParams;
   const activeTab = parseTabParam(params.tab);
 
+  // Each table owns a namespaced sort pair, mirroring the existing
+  // `employeesPage`/`paymentsPage` split, so sorting one never disturbs the
+  // other.
+  const employeesSort = employeeSorter.parse(params.employeesSort, params.employeesDir);
+  const paymentsSort = payrollPaymentSorter.parse(params.paymentsSort, params.paymentsDir);
+
   const [employeesResult, paymentsResult, periodTypes] = await Promise.all([
-    listEmployees(session, { page: parsePageParam(params.employeesPage), pageSize: PAGE_SIZE }),
-    listPayrollPayments(session, { page: parsePageParam(params.paymentsPage), pageSize: PAGE_SIZE }),
+    listEmployees(session, {
+      sortBy: employeesSort.sortBy,
+      sortDir: employeesSort.sortDir,
+      page: parsePageParam(params.employeesPage),
+      pageSize: PAGE_SIZE,
+    }),
+    listPayrollPayments(session, {
+      sortBy: paymentsSort.sortBy,
+      sortDir: paymentsSort.sortDir,
+      page: parsePageParam(params.paymentsPage),
+      pageSize: PAGE_SIZE,
+    }),
     listPayrollPeriodTypes(),
   ]);
+
+  // `tab` is hardcoded per panel rather than echoed from the URL, matching
+  // each `<TablePagination>` below: a sort click must never bounce the user
+  // to the other tab.
+  const employeesSortProps = {
+    current: employeesSort,
+    defaultSort: employeeSorter.defaultSort,
+    pathname: "/nomina",
+    params: { ...params, tab: undefined },
+    sortParam: "employeesSort",
+    dirParam: "employeesDir",
+    pageParam: "employeesPage",
+  };
+  const paymentsSortProps = {
+    current: paymentsSort,
+    defaultSort: payrollPaymentSorter.defaultSort,
+    pathname: "/nomina",
+    params: { ...params, tab: "pagos" },
+    sortParam: "paymentsSort",
+    dirParam: "paymentsDir",
+    pageParam: "paymentsPage",
+  };
 
   const activeEmployees = employeesResult.data
     .filter((employee) => employee.active)
@@ -115,9 +163,9 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
           <Table className="min-w-[640px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead className="text-right">Salario base</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableSortHeader label="Nombre" sortBy="name" {...employeesSortProps} />
+                <TableSortHeader label="Salario base" sortBy="baseSalary" firstDir="desc" align="right" {...employeesSortProps} />
+                <TableSortHeader label="Estado" sortBy="status" {...employeesSortProps} />
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -163,7 +211,7 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
             total={employeesResult.total}
             pathname="/nomina"
             paramName="employeesPage"
-            params={{ employeesPage: params.employeesPage, paymentsPage: params.paymentsPage, tab: undefined }}
+            params={{ ...params, tab: undefined }}
             itemLabel="empleados"
           />
         </TabsPanel>
@@ -173,10 +221,10 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
           <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
-                <TableHead>Empleado</TableHead>
-                <TableHead>Periodo</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead>Fecha de pago</TableHead>
+                <TableSortHeader label="Empleado" sortBy="employeeName" {...paymentsSortProps} />
+                <TableSortHeader label="Periodo" sortBy="periodStart" firstDir="desc" {...paymentsSortProps} />
+                <TableSortHeader label="Monto" sortBy="amount" firstDir="desc" align="right" {...paymentsSortProps} />
+                <TableSortHeader label="Fecha de pago" sortBy="paymentDate" firstDir="desc" {...paymentsSortProps} />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -209,7 +257,7 @@ export default async function NominaPage({ searchParams }: NominaPageProps) {
             total={paymentsResult.total}
             pathname="/nomina"
             paramName="paymentsPage"
-            params={{ employeesPage: params.employeesPage, paymentsPage: params.paymentsPage, tab: "pagos" }}
+            params={{ ...params, tab: "pagos" }}
             itemLabel="pagos de nómina"
           />
         </TabsPanel>

@@ -2,22 +2,32 @@
 
 /**
  * Client wrapper around `components/ui/select.tsx`'s `Select` for the
- * native-GET filter bar in `app/(dashboard)/invoices/page.tsx` (a Server
- * Component `<form method="get">`, previously a plain `<select>`). Unlike
- * `date-filter-field.tsx`'s `DatePicker` wrapper, there is no no-JS
- * progressive-enhancement fallback here — the base `Select` primitive is a
- * Client Component from mount with no plain-HTML equivalent to hydrate from,
- * so this always renders the enhanced control.
+ * native-GET filter bars on the list pages (`app/(dashboard)/invoices`,
+ * `/customers`, …) — Server Components whose filters are a plain
+ * `<form method="get">`, so the control has to contribute a real form field.
  *
- * `Select`'s `name` prop renders a hidden input that carries the value into
- * the surrounding `<form>` on submit — the same mechanism a native
- * `<select name=...>` used. On top of that, this ALSO calls
- * `form.requestSubmit()` on every `onValueChange`, so picking a filter value
- * applies it immediately without relying on the page's separate "Filtrar"
- * button — a strict improvement over the native `<select>` it replaces.
+ * Like `date-filter-field.tsx`, this component OWNS the named input: it
+ * renders its own `<input type="hidden" name={name}>` and drives `Select` as a
+ * controlled component. `Select` deliberately does NOT receive `name` — if it
+ * did, base-ui would render a second hidden input under the same key and the
+ * value would be submitted twice.
+ *
+ * Picking a value auto-submits the surrounding form, so a filter applies
+ * without a separate click on "Filtrar".
+ *
+ * WHY THE SUBMIT IS DEFERRED TO AN EFFECT — this is load-bearing, do not
+ * inline it back into `onValueChange`. base-ui's `setValue` calls
+ * `onValueChange(next)` and only THEN `setValueUnwrapped(next)`
+ * (`@base-ui/react/select/root/SelectRoot.js`), and a form is serialized from
+ * the DOM at the instant `requestSubmit()` is called. Submitting from inside
+ * `onValueChange` therefore captured the PREVIOUS value on every pick: filters
+ * never applied, and an applied filter could not be cleared. A passive effect
+ * runs after React has committed the render, so by then the hidden input below
+ * already carries the new value. Covered by `select-filter-field.test.tsx`,
+ * which asserts the submitted `FormData` rather than the rendered options.
  */
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -45,18 +55,27 @@ export type SelectFilterFieldProps = {
 
 export function SelectFilterField({ id, name, defaultValue, allLabel = "Todos", options }: SelectFilterFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  /**
+   * `picks` counts user selections rather than tracking "has the value
+   * changed": it makes `picks === 0` an exact mount guard (no submit on load
+   * or on hydration), and it still fires when the user re-picks the value that
+   * is already applied — which a plain value-comparison effect would swallow.
+   */
+  const [state, setState] = useState({ value: defaultValue ?? "", picks: 0 });
 
-  function submitParentForm() {
+  useEffect(() => {
+    if (state.picks === 0) return;
     containerRef.current?.closest("form")?.requestSubmit();
-  }
+  }, [state.picks]);
 
   return (
     <div ref={containerRef}>
+      {/* The only element carrying `name` — this is what actually submits. */}
+      <input type="hidden" name={name} value={state.value} />
       <Select
         items={[{ value: "", label: allLabel }, ...options]}
-        name={name}
-        defaultValue={defaultValue ?? ""}
-        onValueChange={submitParentForm}
+        value={state.value}
+        onValueChange={(next) => setState((prev) => ({ value: (next as string) ?? "", picks: prev.picks + 1 }))}
       >
         <SelectTrigger id={id} className="h-8 w-full">
           <SelectValue placeholder={allLabel} />

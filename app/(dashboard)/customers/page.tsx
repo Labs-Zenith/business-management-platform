@@ -4,15 +4,19 @@ import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { canDeleteRecords } from "@/lib/services/permissions";
+import { customerSorter } from "@/lib/services/sorting";
 import { parsePageParam } from "@/lib/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { HiddenParams } from "@/components/domain/filters/hidden-params";
+import { SelectFilterField } from "@/components/domain/filters/select-filter-field";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { PageHeader } from "@/components/domain/page-header";
 import { TablePagination } from "@/components/domain/table-pagination";
+import { TableSortHeader } from "@/components/domain/table-sort-header";
 import CustomerFormDialog from "@/components/domain/customers/customer-form-dialog";
 import DeleteCustomerButton from "@/components/domain/customers/delete-customer-button";
 
@@ -31,8 +35,13 @@ import DeleteCustomerButton from "@/components/domain/customers/delete-customer-
 
 const PAGE_SIZE = 20;
 
+const STATUS_OPTIONS = [
+  { value: "active", label: "Activos" },
+  { value: "inactive", label: "Inactivos" },
+];
+
 type CustomersPageProps = {
-  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; sort?: string; dir?: string; page?: string }>;
 };
 
 function parseStatusParam(raw: string | undefined): "active" | "inactive" | undefined {
@@ -49,12 +58,23 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
   // `canEdit`.
   const canDelete = canDeleteRecords(session.role);
 
+  const sort = customerSorter.parse(params.sort, params.dir);
+
   const result = await listCustomers(session, {
     q: params.q || undefined,
     status,
+    sortBy: sort.sortBy,
+    sortDir: sort.sortDir,
     page: parsePageParam(params.page),
     pageSize: PAGE_SIZE,
   });
+
+  const sortHeaderProps = {
+    current: sort,
+    defaultSort: customerSorter.defaultSort,
+    pathname: "/customers",
+    params,
+  };
 
   return (
     <PageShell>
@@ -91,17 +111,10 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
           <label htmlFor="status" className="text-sm text-muted-foreground">
             Estado
           </label>
-          <select
-            id="status"
-            name="status"
-            defaultValue={status ?? ""}
-            className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none"
-          >
-            <option value="">Todos</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Inactivos</option>
-          </select>
+          <SelectFilterField id="status" name="status" defaultValue={status ?? ""} options={STATUS_OPTIONS} />
         </div>
+        {/* Not `page`: filtering should reset to the first page. */}
+        <HiddenParams params={{ sort: params.sort, dir: params.dir }} />
         <Button type="submit" variant="outline" className="w-full sm:w-auto">
           Filtrar
         </Button>
@@ -110,10 +123,10 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
       <Table className="min-w-[720px]">
         <TableHeader>
           <TableRow>
-            <TableHead>Nombre</TableHead>
-            <TableHead>Teléfono</TableHead>
-            <TableHead className="text-right">Saldo pendiente</TableHead>
-            <TableHead>Estado</TableHead>
+            <TableSortHeader label="Nombre" sortBy="name" {...sortHeaderProps} />
+            <TableSortHeader label="Teléfono" sortBy="phone" {...sortHeaderProps} />
+            <TableSortHeader label="Saldo pendiente" sortBy="balance" firstDir="desc" align="right" {...sortHeaderProps} />
+            <TableSortHeader label="Estado" sortBy="status" {...sortHeaderProps} />
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>

@@ -1,6 +1,7 @@
 import type { Paged, Product, ProductCreate, ProductDeleteResult, ProductListQuery, ProductRepository, ProductUpdate, ProductWithStock } from "@/lib/services/ports";
 import { computeProductStock } from "@/lib/services/inventory-stock";
 import { generateId, store as defaultStore, type MockStore } from "./store";
+import { productSorter } from "@/lib/services/sorting";
 
 /**
  * Business-scoped mock repo (list/getById/create/update/delete), extended
@@ -46,10 +47,9 @@ export function createProductRepository(store: MockStore): ProductRepository {
         products = products.filter((product) => product.name.toLowerCase().includes(needle));
       }
 
-      products.sort((a, b) => a.name.localeCompare(b.name));
-
+      // Sorted AFTER the stock map — mirrors `lib/db/product-repo.ts`.
       const withStockData = products.map((product) => withStock(store, product));
-      return paginate(withStockData, query.page, query.pageSize);
+      return paginate(productSorter.sort(withStockData, query), query.page, query.pageSize);
     },
 
     async getById(businessId: string, id: string): Promise<ProductWithStock | null> {
