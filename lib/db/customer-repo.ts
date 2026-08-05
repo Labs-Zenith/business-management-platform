@@ -51,6 +51,9 @@ type InvoiceRow = {
   total: number;
   status: string;
   notes: string | null;
+  voided_at: string | null;
+  voided_by: string | null;
+  void_reason: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -65,6 +68,7 @@ type PaymentRow = {
   method: string | null;
   method_id: string | null;
   notes: string | null;
+  voided_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -91,12 +95,20 @@ function toDateStr(value: unknown): string {
 }
 
 function withFinance(invoice: InvoiceRow, payments: PaymentRow[]): InvoiceWithFinance {
-  const paidAmount = payments
-    .filter((p) => String(p.invoice_id) === String(invoice.id))
-    .reduce((sum, p) => sum + Number(p.amount), 0);
+  // Mirrors `lib/db/invoice-repo.ts#withFinance`: a voided invoice's status
+  // comes from the persisted marker, not from `computeStatus`, and its
+  // amounts collapse to zero.
+  const isVoided = Boolean(invoice.voided_at);
+  const paidAmount = isVoided
+    ? 0
+    : payments
+        .filter((p) => String(p.invoice_id) === String(invoice.id) && !p.voided_at)
+        .reduce((sum, p) => sum + Number(p.amount), 0);
   const total = Number(invoice.total);
-  const balance = total - paidAmount;
-  const status = computeStatus(total, paidAmount, invoice.due_date ? toDateStr(invoice.due_date) : null, new Date());
+  const balance = isVoided ? 0 : total - paidAmount;
+  const status: InvoiceWithFinance["status"] = isVoided
+    ? "voided"
+    : computeStatus(total, paidAmount, invoice.due_date ? toDateStr(invoice.due_date) : null, new Date());
   return {
     id: invoice.id,
     businessId: invoice.business_id,
@@ -109,6 +121,9 @@ function withFinance(invoice: InvoiceRow, payments: PaymentRow[]): InvoiceWithFi
     total,
     status,
     notes: invoice.notes,
+    voidedAt: invoice.voided_at ? new Date(invoice.voided_at).toISOString() : null,
+    voidedBy: invoice.voided_by,
+    voidReason: invoice.void_reason,
     createdAt: new Date(invoice.created_at).toISOString(),
     updatedAt: new Date(invoice.updated_at).toISOString(),
     paidAmount,
@@ -131,6 +146,7 @@ function toPaymentWithRefs(
     method: payment.method,
     methodId: payment.method_id,
     notes: payment.notes,
+    voidedAt: payment.voided_at ? new Date(payment.voided_at).toISOString() : null,
     createdAt: new Date(payment.created_at).toISOString(),
     updatedAt: new Date(payment.updated_at).toISOString(),
     customer,
@@ -161,9 +177,16 @@ export const customerRepo: CustomerRepository = {
         [c.name, c.documentNumber, c.email, c.phone].some((field) => field?.toLowerCase().includes(needle))
       );
     }
+    // A VOIDED invoice (and its voided payments) must contribute nothing to
+    // the balance — the whole point of voiding. This aggregate reads the raw
+    // rows rather than going through `invoiceRepo.list`, so it has to exclude
+    // them itself.
+    const liveInvoices = invoiceRows.filter((i) => !i.voided_at);
+    const livePayments = paymentRows.filter((p) => !p.voided_at);
+
     const withBalance: CustomerWithBalance[] = customers.map((c) => {
-      const invoiced = invoiceRows.filter((i) => String(i.customer_id) === String(c.id)).reduce((s, i) => s + Number(i.total), 0);
-      const paid = paymentRows.filter((p) => String(p.customer_id) === String(c.id)).reduce((s, p) => s + Number(p.amount), 0);
+      const invoiced = liveInvoices.filter((i) => String(i.customer_id) === String(c.id)).reduce((s, i) => s + Number(i.total), 0);
+      const paid = livePayments.filter((p) => String(p.customer_id) === String(c.id)).reduce((s, p) => s + Number(p.amount), 0);
       return { ...c, balance: invoiced - paid };
     });
 
@@ -182,8 +205,14 @@ export const customerRepo: CustomerRepository = {
     const paymentRows = (await sql`SELECT * FROM payments WHERE customer_id = ${id}`) as unknown as PaymentRow[];
 
     const invoicesWithFinance = invoiceRows.map((inv) => withFinance(inv, paymentRows));
-    const totalInvoiced = invoicesWithFinance.reduce((s, i) => s + i.total, 0);
-    const totalPaid = paymentRows.reduce((s, p) => s + Number(p.amount), 0);
+    // Same exclusion as `list`: a voided invoice and its voided payments drop
+    // out of the totals. They stay in `recentInvoices`/`recentPayments`
+    // below, shown with their "Anulada" status, so the history is still
+    // visible — it just does not add up to anything.
+    const totalInvoiced = invoicesWithFinance
+      .filter((i) => i.status !== "voided")
+      .reduce((s, i) => s + i.total, 0);
+    const totalPaid = paymentRows.filter((p) => !p.voided_at).reduce((s, p) => s + Number(p.amount), 0);
 
     const recentInvoices = [...invoicesWithFinance].sort((a, b) => (a.issueDate < b.issueDate ? 1 : -1)).slice(0, 5);
     const recentPayments = [...paymentRows]

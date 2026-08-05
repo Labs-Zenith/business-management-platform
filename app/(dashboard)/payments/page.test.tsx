@@ -38,6 +38,7 @@ const PAYMENT: PaymentWithRefs = {
   method: "cash",
   methodId: "c3000000-0000-4000-8000-000000000001",
   notes: null,
+  voidedAt: null,
   createdAt: "2024-01-01T00:00:00.000Z",
   updatedAt: "2024-01-01T00:00:00.000Z",
   customer: { id: "40000000-0000-4000-8000-000000000001", name: "Ana Gomez" },

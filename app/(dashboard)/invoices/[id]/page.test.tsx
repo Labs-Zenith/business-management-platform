@@ -35,6 +35,15 @@ vi.mock("@/components/domain/payments/payment-form-dialog", () => ({
   default: ({ trigger }: { trigger: ReactNode }) => trigger,
 }));
 
+// Client component: it calls `useRouter`, which needs an app-router context
+// this Server Component test does not mount. Stubbed to a marker so the tests
+// below can still assert on WHEN it is rendered.
+vi.mock("@/components/domain/invoices/void-invoice-dialog", () => ({
+  default: ({ invoiceNumber }: { invoiceNumber: string }) => (
+    <button type="button">{`Anular factura ${invoiceNumber}`}</button>
+  ),
+}));
+
 // MovementsPanel has its own dedicated test file
 // (`components/domain/audit-log/movements-panel.test.tsx`) — stub here to a
 // marker exposing the props it received, so this file only needs to assert
@@ -75,6 +84,9 @@ function buildInvoice(overrides: Partial<InvoiceDetail> = {}): InvoiceDetail {
     total: 100_000,
     status: "pending",
     notes: null,
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
     createdAt: "2026-07-01T00:00:00.000Z",
     updatedAt: "2026-07-01T00:00:00.000Z",
     paidAmount: 0,
@@ -170,6 +182,7 @@ describe("InvoiceDetailPage", () => {
             method: null,
             methodId: null,
             notes: null,
+            voidedAt: null,
             createdAt: "2026-07-05T00:00:00.000Z",
             updatedAt: "2026-07-05T00:00:00.000Z",
             customer: { id: "40000000-0000-4000-8000-000000000001", name: "Ana Gomez" },

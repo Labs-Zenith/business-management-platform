@@ -30,13 +30,14 @@ import { TableSortHeader } from "@/components/domain/table-sort-header";
 
 const PAGE_SIZE = 20;
 
-const VALID_STATUSES: InvoiceStatus[] = ["pending", "partially_paid", "paid", "overdue"];
+const VALID_STATUSES: InvoiceStatus[] = ["pending", "partially_paid", "paid", "overdue", "voided"];
 
 const STATUS_LABELS: Record<InvoiceStatus, string> = {
   pending: "Pendiente",
   partially_paid: "Parcialmente pagada",
   paid: "Pagada",
   overdue: "Vencida",
+  voided: "Anulada",
 };
 
 type InvoicesPageProps = {

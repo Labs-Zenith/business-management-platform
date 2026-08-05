@@ -169,6 +169,7 @@ export function createPaymentRepository(store: MockStore): PaymentRepository {
           method,
           methodId,
           notes: data.notes ?? null,
+          voidedAt: null,
           createdAt: now,
           updatedAt: now,
         };

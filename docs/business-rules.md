@@ -34,6 +34,7 @@ Las convenciones técnicas transversales (dinero en centavos enteros, fechas en 
 - **2.10** Capacidad `viewAuditLog` (registro de auditoría): solo `admin` la obtiene; `worker` la tiene denegada. Es una capacidad **a nivel de widget** (ver regla 12.6), no un guardián a nivel de página.
 - **2.11** Inventario **no** tiene restricción de rol para ver, crear ni editar: cualquier usuario autenticado puede hacerlo (ver regla 11.11). La **eliminación** de productos es la única excepción — ver regla 2.12.
 - **2.12** Capacidad `deleteRecords` (eliminar registros de catálogo): solo `admin` la obtiene; `worker` la tiene denegada. Cubre `DELETE /api/products/{id}` y `DELETE /api/customers/{id}`. Se aplica en la ruta con el helper de capacidad; ocultar el botón en la tabla es solo UX (regla 3.4). El motivo de reservarla a `admin` es que destruir un registro es irreversible, a diferencia del flag `active`/`isActive`, que sí puede alternar cualquier miembro.
+- **2.12.1** Capacidad `voidInvoice` (anular facturas): solo `admin`; `worker` la tiene denegada. Cubre `POST /api/invoices/{id}/void`. Es una capacidad **propia** y no una reutilización de `deleteRecords`, porque esa está documentada para productos y clientes, y una factura **nunca se borra**: solo se marca como anulada.
 - **2.13** `deleteRecords` **no** restringe crear ni editar: un `worker` sigue pudiendo dar de alta y modificar productos y clientes con normalidad.
 
 ## 3. Navegación por Rol
@@ -111,6 +112,19 @@ Las facturas son **internas / no fiscales**. No hay facturación electrónica DI
 - **6.16** Cualquier intento de editar una factura con al menos un pago (incluida una totalmente pagada, `balance = 0`) se rechaza con un error específico de bloqueo de edición (**no un 500 genérico**) y **cero mutación**: no cambia ningún ítem, campo de cabecera ni valor derivado.
 - **6.17** En la edición se descartan los mismos campos falsificados que en la creación (`status`, `total`, `subtotal`, `number`, `business_id`); se usan los valores calculados por el servidor.
 - **6.18** El bloqueo de edición se aplica en **dos capas independientes** (defensa en profundidad): la capa de servicio (`updateInvoice`) verifica cero pagos antes de delegar, y la capa de repositorio (`InvoiceRepository.update`) vuelve a verificar cero pagos por su cuenta antes de persistir. Un fallo en una sola capa no basta para saltarse la invariante. Este blindaje existe porque los pagos son *append-only* y la garantía anti-sobrepago asume que el `total` de una factura nunca se reduce después de haber cobrado contra ella.
+
+### Anulación de facturas (borrado lógico)
+
+- **6.20** Una factura creada por error se **anula**, nunca se borra. La fila, su número y sus líneas permanecen; lo que cambia es que deja de contar en cualquier cifra. Anular es la vía para corregir un error de emisión; una **nota crédito** (regla 11.9.1) es otra cosa: esa corrige una factura bien emitida cuyo negocio cambió después.
+- **6.21** El estado `anulada` **no es calculado**: `computeStatus` trabaja sobre total/pagado/vencimiento y no puede expresarlo. Se persiste en `invoices.voided_at`, y esa marca tiene **prioridad** sobre el estado derivado — la impone `withFinance` en cada repositorio.
+- **6.22** Al anular, en **una sola transacción**: se revierte el inventario que movieron sus líneas, se anulan sus pagos y se sella `voided_at`/`voided_by`/`void_reason`. Si algo falla, no se anula nada.
+- **6.23** La reversión de inventario respeta la dirección del tipo (regla 11.9.1): una **venta** devuelve unidades (`in`, sin guarda); una **nota crédito** las retira (`out`, **con** guarda de piso en cero). Por eso **anular una nota crédito puede rechazarse**: si esas unidades ya se revendieron, no están para retirarlas.
+- **6.24** Una factura anulada tiene `paidAmount` y `balance` **cero**, y sus pagos anulados dejan de contar en el saldo del cliente, en Ingresos y en el dashboard. Los pagos **no se borran**: quedan con `voided_at`.
+- **6.25** Las facturas anuladas se **excluyen del listado por defecto** y solo aparecen filtrando por estado "Anulada". Esa exclusión vive en `invoices.list()` y `payments.list()`, que son los que alimentan dashboard, listados y exportaciones — así ninguno tiene que acordarse de excluirlas por su cuenta.
+- **6.26** Una factura anulada está **congelada**: no se puede editar (`CONFLICT`) ni registrar pagos sobre ella (`CONFLICT`).
+- **6.27** El **motivo es obligatorio** y se guarda en la factura y en el registro de auditoría (`invoice_voided`) junto a quién y cuándo. Un motivo en blanco o solo espacios se rechaza con `VALIDATION_ERROR`.
+- **6.28** **No existe des-anular.** El remedio para una anulación equivocada es emitir una factura nueva. Anular dos veces responde `CONFLICT`.
+- **6.29** Anular requiere la capacidad `voidInvoice` (solo `admin`, regla 2.12.1). Un id de otro negocio responde `NOT_FOUND`.
 
 ## 7. Pagos
 

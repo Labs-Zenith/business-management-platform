@@ -5,6 +5,7 @@ export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
   partially_paid: "Parcialmente pagada",
   paid: "Pagada",
   overdue: "Vencida",
+  voided: "Anulada",
 };
 
 export function exportDateStamp(now: Date = new Date()): string {

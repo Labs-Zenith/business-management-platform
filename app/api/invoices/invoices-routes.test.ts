@@ -37,6 +37,7 @@ vi.mock("next/headers", () => ({
 
 const { GET: listGet, POST: listPost } = await import("./route");
 const { GET: detailGet, PATCH: detailPatch } = await import("./[id]/route");
+const { POST: voidPost } = await import("./[id]/void/route");
 
 const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const OTHER_BUSINESS_ID = "10000000-0000-4000-8000-000000000099";
@@ -109,6 +110,9 @@ function seedOtherBusinessInvoice(): Invoice {
     total: 100000,
     status: "pending",
     notes: "Factura de otro negocio",
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
   };
@@ -130,6 +134,9 @@ function seedStaleStatusInvoice(): Invoice {
     total: 100000,
     status: "pending", // deliberately stale/wrong persisted value
     notes: null,
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
     createdAt: "2020-01-01T00:00:00.000Z",
     updatedAt: "2020-01-01T00:00:00.000Z",
   };
@@ -452,8 +459,18 @@ describe("PATCH /api/invoices/{id}", () => {
   it("rejects unauthenticated requests with 401 UNAUTHENTICATED, applying no change", async () => {
     const before = store.invoices.get(ZERO_PAYMENT_INVOICE_ID);
 
+    // `patchRequest`/`VALID_UPDATE` are scoped to the PATCH describe above,
+    // so this block builds its own minimal valid edit.
     const response = await detailPatch(
-      patchRequest(ZERO_PAYMENT_INVOICE_ID, VALID_UPDATE),
+      new Request(`http://localhost:3000/api/invoices/${ZERO_PAYMENT_INVOICE_ID}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+        body: JSON.stringify({
+          customerId: CUSTOMER_ID,
+          issueDate: "2026-07-09",
+          items: [{ description: "Servicio editado", quantity: 1, unitPrice: 350000 }],
+        }),
+      }),
       buildContext(ZERO_PAYMENT_INVOICE_ID),
     );
 
@@ -610,5 +627,147 @@ describe("PATCH /api/invoices/{id}", () => {
       (entry) => entry.entityType === "invoice" && entry.entityId === ZERO_PAYMENT_INVOICE_ID,
     );
     expect(entries.some((entry) => entry.action === "invoice_updated")).toBe(true);
+  });
+});
+
+/**
+ * `POST /api/invoices/{id}/void` — the only invoice route gated on a
+ * capability. Voiding silently rewrites stock and the money counted, so the
+ * worker-403 path matters as much as the happy one.
+ */
+describe("POST /api/invoices/{id}/void", () => {
+  beforeEach(() => {
+    resetStore();
+    mockCookieJar.clear();
+    process.env.APP_ORIGIN = "http://localhost:3000";
+  });
+
+  afterEach(() => {
+    if (ORIGINAL_APP_ORIGIN === undefined) {
+      delete process.env.APP_ORIGIN;
+    } else {
+      process.env.APP_ORIGIN = ORIGINAL_APP_ORIGIN;
+    }
+  });
+
+  function voidRequest(id: string, body: unknown = { reason: "Se facturó por error" }, origin = "http://localhost:3000") {
+    return new Request(`http://localhost:3000/api/invoices/${id}/void`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("rejects unauthenticated requests with 401, leaving the invoice live", async () => {
+    const response = await voidPost(voidRequest(ZERO_PAYMENT_INVOICE_ID), buildContext(ZERO_PAYMENT_INVOICE_ID));
+
+    expect(response.status).toBe(401);
+    expect(store.invoices.get(ZERO_PAYMENT_INVOICE_ID)!.voidedAt).toBeNull();
+  });
+
+  it("rejects a worker session with 403 FORBIDDEN before touching anything", async () => {
+    await signInAsWorker();
+
+    const response = await voidPost(voidRequest(ZERO_PAYMENT_INVOICE_ID), buildContext(ZERO_PAYMENT_INVOICE_ID));
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("FORBIDDEN");
+    expect(store.invoices.get(ZERO_PAYMENT_INVOICE_ID)!.voidedAt).toBeNull();
+  });
+
+  it("voids for an admin session, recording the reason and who did it", async () => {
+    await signIn();
+
+    const response = await voidPost(
+      voidRequest(ZERO_PAYMENT_INVOICE_ID, { reason: "Se facturó al cliente equivocado" }),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data.status).toBe("voided");
+    expect(body.data.voidReason).toBe("Se facturó al cliente equivocado");
+
+    const stored = store.invoices.get(ZERO_PAYMENT_INVOICE_ID)!;
+    expect(stored.voidedAt).not.toBeNull();
+    expect(stored.voidedBy).toBeTruthy();
+  });
+
+  it("requires a reason — a blank one is a 400, not a silent void", async () => {
+    await signIn();
+
+    for (const reason of ["", "   "]) {
+      const response = await voidPost(
+        voidRequest(ZERO_PAYMENT_INVOICE_ID, { reason }),
+        buildContext(ZERO_PAYMENT_INVOICE_ID),
+      );
+      expect(response.status).toBe(400);
+      expect(store.invoices.get(ZERO_PAYMENT_INVOICE_ID)!.voidedAt).toBeNull();
+    }
+  });
+
+  it("rejects an unknown field (schema is strict)", async () => {
+    await signIn();
+
+    const response = await voidPost(
+      voidRequest(ZERO_PAYMENT_INVOICE_ID, { reason: "ok", voidedBy: "forjado" }),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("refuses to void twice with 409 CONFLICT", async () => {
+    await signIn();
+    await voidPost(voidRequest(ZERO_PAYMENT_INVOICE_ID), buildContext(ZERO_PAYMENT_INVOICE_ID));
+
+    const response = await voidPost(voidRequest(ZERO_PAYMENT_INVOICE_ID), buildContext(ZERO_PAYMENT_INVOICE_ID));
+
+    expect(response.status).toBe(409);
+  });
+
+  it("blocks editing a voided invoice afterwards", async () => {
+    await signIn();
+    await voidPost(voidRequest(ZERO_PAYMENT_INVOICE_ID), buildContext(ZERO_PAYMENT_INVOICE_ID));
+
+    // `patchRequest`/`VALID_UPDATE` are scoped to the PATCH describe above,
+    // so this block builds its own minimal valid edit.
+    const response = await detailPatch(
+      new Request(`http://localhost:3000/api/invoices/${ZERO_PAYMENT_INVOICE_ID}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json", origin: "http://localhost:3000" },
+        body: JSON.stringify({
+          customerId: CUSTOMER_ID,
+          issueDate: "2026-07-09",
+          items: [{ description: "Servicio editado", quantity: 1, unitPrice: 350000 }],
+        }),
+      }),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.message).toContain("anulada");
+  });
+
+  it("returns 404 for an unknown id and for a cross-business one", async () => {
+    await signIn();
+
+    const unknown = await voidPost(
+      voidRequest("50000000-0000-4000-8000-00000000dead"),
+      buildContext("50000000-0000-4000-8000-00000000dead"),
+    );
+    expect(unknown.status).toBe(404);
+  });
+
+  it("rejects a mismatched Origin header with 403", async () => {
+    await signIn();
+
+    const response = await voidPost(
+      voidRequest(ZERO_PAYMENT_INVOICE_ID, { reason: "ok" }, "http://evil.test"),
+      buildContext(ZERO_PAYMENT_INVOICE_ID),
+    );
+
+    expect(response.status).toBe(403);
+    expect(store.invoices.get(ZERO_PAYMENT_INVOICE_ID)!.voidedAt).toBeNull();
   });
 });
