@@ -61,6 +61,8 @@ describe("PaymentsPage", () => {
       invoiceId: undefined,
       from: undefined,
       to: undefined,
+      sortBy: "paymentDate",
+      sortDir: "desc",
       page: 1,
       pageSize: 20,
     });
@@ -90,6 +92,8 @@ describe("PaymentsPage", () => {
       invoiceId: "inv-1",
       from: "2026-07-01",
       to: "2026-07-31",
+      sortBy: "paymentDate",
+      sortDir: "desc",
       page: 2,
       pageSize: 20,
     });
@@ -157,4 +161,71 @@ describe("PaymentsPage", () => {
     });
     expect(mockListPayments).not.toHaveBeenCalled();
   });
+
+  it("keeps customerId and invoiceId alive across a filter submit", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListPayments.mockResolvedValue({ data: [PAYMENT], page: 1, pageSize: 20, total: 1 });
+
+    const { container } = render(
+      await PaymentsPage({ searchParams: Promise.resolve({ customerId: "cust-1", invoiceId: "inv-1" }) }),
+    );
+
+    // A native GET submit replaces the whole query string, so these params --
+    // which scope the list but have no visible control -- must be re-emitted
+    // as hidden fields or clicking "Filtrar" silently widens the results.
+    const form = container.querySelector("form")!;
+    expect(form.querySelector('input[type="hidden"][name="customerId"]')).toHaveValue("cust-1");
+    expect(form.querySelector('input[type="hidden"][name="invoiceId"]')).toHaveValue("inv-1");
+  });
+
+  it("carries the active sort through a filter submit, but never the page", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListPayments.mockResolvedValue({ data: [PAYMENT], page: 2, pageSize: 20, total: 40 });
+
+    const { container } = render(
+      await PaymentsPage({ searchParams: Promise.resolve({ sort: "amount", dir: "asc", page: "2" }) }),
+    );
+
+    const form = container.querySelector("form")!;
+    expect(form.querySelector('input[type="hidden"][name="sort"]')).toHaveValue("amount");
+    expect(form.querySelector('input[type="hidden"][name="dir"]')).toHaveValue("asc");
+    // Filtering must reset to page 1.
+    expect(form.querySelector('input[name="page"]')).toBeNull();
+  });
+
+  it("threads a whitelisted sort through, and falls back for an unknown column", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListPayments.mockResolvedValue({ data: [PAYMENT], page: 1, pageSize: 20, total: 1 });
+
+    render(await PaymentsPage({ searchParams: Promise.resolve({ sort: "amount", dir: "asc" }) }));
+    expect(mockListPayments).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ sortBy: "amount", sortDir: "asc" }),
+    );
+
+    mockListPayments.mockClear();
+    render(await PaymentsPage({ searchParams: Promise.resolve({ sort: "nope", dir: "asc" }) }));
+    expect(mockListPayments).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ sortBy: "paymentDate", sortDir: "desc" }),
+    );
+  });
+
+  it("sorts by the denormalized Cliente and Factura columns", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListPayments.mockResolvedValue({ data: [PAYMENT], page: 1, pageSize: 20, total: 1 });
+
+    render(await PaymentsPage({ searchParams: Promise.resolve({}) }));
+
+    // Unlike /invoices, PaymentWithRefs carries both names on the row.
+    expect(screen.getByRole("link", { name: /^cliente/i })).toHaveAttribute(
+      "href",
+      "/payments?sort=customerName&dir=asc",
+    );
+    expect(screen.getByRole("link", { name: /^factura/i })).toHaveAttribute(
+      "href",
+      "/payments?sort=invoiceNumber&dir=asc",
+    );
+  });
+
 });

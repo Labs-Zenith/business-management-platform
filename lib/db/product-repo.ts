@@ -1,6 +1,7 @@
 import type { Paged, Product, ProductCreate, ProductDeleteResult, ProductListQuery, ProductRepository, ProductUpdate, ProductWithStock } from "@/lib/services/ports";
 import { computeProductStock } from "@/lib/services/inventory-stock";
 import { runTransaction, sql } from "./client";
+import { productSorter } from "@/lib/services/sorting";
 
 /**
  * Mirrors `db/employee-repo.ts`'s strategy: fetch business-scoped rows via a
@@ -71,10 +72,11 @@ export const productRepo: ProductRepository = {
       const needle = query.q.trim().toLowerCase();
       products = products.filter((p) => p.name.toLowerCase().includes(needle));
     }
-    products.sort((a, b) => a.name.localeCompare(b.name));
-
+    // Sorted AFTER the stock map, not before it (as the old fixed name sort
+    // was): `currentQuantity` and `totalValue` are sortable columns and do not
+    // exist until here.
     const withStockData = products.map((product) => withStock(product, movementRows));
-    return paginate(withStockData, query.page, query.pageSize);
+    return paginate(productSorter.sort(withStockData, query), query.page, query.pageSize);
   },
 
   async getById(businessId: string, id: string): Promise<ProductWithStock | null> {

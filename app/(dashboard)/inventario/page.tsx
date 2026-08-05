@@ -3,6 +3,7 @@ import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listProducts } from "@/lib/services/product-service";
 import { canDeleteRecords } from "@/lib/services/permissions";
+import { productSorter } from "@/lib/services/sorting";
 import { parsePageParam } from "@/lib/pagination";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { TablePagination } from "@/components/domain/table-pagination";
+import { TableSortHeader } from "@/components/domain/table-sort-header";
 import ProductFormDialog from "@/components/domain/inventario/product-form-dialog";
 import DeleteProductButton from "@/components/domain/inventario/delete-product-button";
 
@@ -33,7 +35,7 @@ import DeleteProductButton from "@/components/domain/inventario/delete-product-b
 const PAGE_SIZE = 20;
 
 type InventarioPageProps = {
-  searchParams: Promise<{ productsPage?: string }>;
+  searchParams: Promise<{ productsSort?: string; productsDir?: string; productsPage?: string }>;
 };
 
 export default async function InventarioPage({ searchParams }: InventarioPageProps) {
@@ -45,10 +47,25 @@ export default async function InventarioPage({ searchParams }: InventarioPagePro
   // stays un-gated per the "No Role Gating on Inventory" rule.
   const canDelete = canDeleteRecords(session.role);
 
+  // Namespaced params, mirroring the existing `productsPage` convention.
+  const sort = productSorter.parse(params.productsSort, params.productsDir);
+
   const productsResult = await listProducts(session, {
+    sortBy: sort.sortBy,
+    sortDir: sort.sortDir,
     page: parsePageParam(params.productsPage),
     pageSize: PAGE_SIZE,
   });
+
+  const sortHeaderProps = {
+    current: sort,
+    defaultSort: productSorter.defaultSort,
+    pathname: "/inventario",
+    params,
+    sortParam: "productsSort",
+    dirParam: "productsDir",
+    pageParam: "productsPage",
+  };
 
   return (
     <PageShell>
@@ -71,12 +88,12 @@ export default async function InventarioPage({ searchParams }: InventarioPagePro
       <Table className="min-w-[760px]">
         <TableHeader>
           <TableRow>
-            <TableHead>Nombre</TableHead>
-            <TableHead>Referencia</TableHead>
-            <TableHead className="text-right">Costo unitario</TableHead>
-            <TableHead className="text-right">Cantidad</TableHead>
-            <TableHead className="text-right">Valor total</TableHead>
-            <TableHead>Estado</TableHead>
+            <TableSortHeader label="Nombre" sortBy="name" {...sortHeaderProps} />
+            <TableSortHeader label="Referencia" sortBy="sku" {...sortHeaderProps} />
+            <TableSortHeader label="Costo unitario" sortBy="unitCost" firstDir="desc" align="right" {...sortHeaderProps} />
+            <TableSortHeader label="Cantidad" sortBy="currentQuantity" firstDir="desc" align="right" {...sortHeaderProps} />
+            <TableSortHeader label="Valor total" sortBy="totalValue" firstDir="desc" align="right" {...sortHeaderProps} />
+            <TableSortHeader label="Estado" sortBy="status" {...sortHeaderProps} />
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -141,7 +158,13 @@ export default async function InventarioPage({ searchParams }: InventarioPagePro
         total={productsResult.total}
         pathname="/inventario"
         paramName="productsPage"
-        params={{ productsPage: params.productsPage }}
+        // Built explicitly, so the sort params must be listed here or paging
+        // would silently drop the column the user is sorting by.
+        params={{
+          productsPage: params.productsPage,
+          productsSort: params.productsSort,
+          productsDir: params.productsDir,
+        }}
         itemLabel="productos"
       />
     </PageShell>

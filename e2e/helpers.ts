@@ -41,14 +41,19 @@ export function formatCOP(cents: number): string {
 /**
  * Logs in with the demo credentials and waits for the dashboard to load.
  *
- * The field is labelled "Usuario", not "Email": `login-form.tsx` switched to
- * username-based sign-in (commit `fbc1056`), mapping the typed value to an
- * `@zenith.app` address via `lib/auth/username.ts` — but only when it has no
- * `@` already, so passing the full demo email still works unchanged.
+ * The field labels are matched against `components/domain/auth/login-form.tsx`
+ * ("Usuario" / "Contraseña"). They used to read "Email" / "Contrasena", and
+ * this helper was not updated when `login-form.tsx` switched to username-based
+ * sign-in (commit `fbc1056`), so every spec importing `login` timed out
+ * waiting for a label that no longer existed. Passing the full demo email
+ * still works: `lib/auth/username.ts` only appends `@zenith.app` to a value
+ * that has no `@` of its own.
  *
- * `exact: true` on the password field is required: the same form renders a
- * "Mostrar contraseña" visibility toggle, whose aria-label a substring match
- * would also hit.
+ * The password label is matched with an ANCHORED regex, which buys two
+ * things: a future accent change cannot silently break the whole suite again,
+ * and the `^` keeps it from also matching the form's "Mostrar contraseña"
+ * visibility toggle, whose aria-label an unanchored match would hit — two
+ * elements, and a strict-mode failure.
  */
 export async function login(
   page: Page,
@@ -57,7 +62,7 @@ export async function login(
 ): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("Usuario").fill(email);
-  await page.getByLabel("Contraseña", { exact: true }).fill(password);
+  await page.getByLabel(/^Contrase/).fill(password);
   await page.getByRole("button", { name: "Ingresar" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
@@ -108,8 +113,15 @@ export async function createInvoice(
   const { description = "Servicio E2E", quantity = 1, unitPricePesos } = options;
 
   await page.goto("/invoices/new");
-  await page.getByLabel("Cliente").selectOption({ label: customerName });
-  await page.getByLabel("Descripcion").fill(description);
+  // Cliente is a base-ui `Select` (a `role="combobox"` button), not a native
+  // `<select>`, since the Wave 2 migration — `selectOption` throws on it.
+  await page.getByLabel("Cliente").click();
+  await page.getByRole("option", { name: customerName, exact: true }).click();
+  // Each line item now picks a catalog product; "Otro…" is what reveals the
+  // free-text Descripción field this helper fills.
+  await page.getByLabel("Producto").click();
+  await page.getByRole("option", { name: "Otro…", exact: true }).click();
+  await page.getByLabel(/^Descripci/).fill(description);
   await page.getByLabel("Cantidad").fill(String(quantity));
   await page.getByLabel("Valor unitario (COP)").fill(String(unitPricePesos));
   await page.getByRole("button", { name: "Crear factura" }).click();

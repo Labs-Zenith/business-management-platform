@@ -3,19 +3,22 @@ import { Plus } from "lucide-react";
 import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
-import { listCustomers } from "@/lib/services/customer-service";
+import { listAllCustomers } from "@/lib/services/customer-service";
 import { listInvoices } from "@/lib/services/invoice-service";
 import type { InvoiceStatus } from "@/lib/services/status";
+import { invoiceSorter } from "@/lib/services/sorting";
 import { parsePageParam } from "@/lib/pagination";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateFilterField } from "@/components/domain/filters/date-filter-field";
+import { HiddenParams } from "@/components/domain/filters/hidden-params";
 import { SelectFilterField } from "@/components/domain/filters/select-filter-field";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 import { ExportMenu } from "@/components/domain/export-menu";
 import { PageHeader } from "@/components/domain/page-header";
 import { TablePagination } from "@/components/domain/table-pagination";
+import { TableSortHeader } from "@/components/domain/table-sort-header";
 
 /**
  * Facturas screen, per `docs/ui-ux-flow.md`'s "Facturas" section and
@@ -26,7 +29,6 @@ import { TablePagination } from "@/components/domain/table-pagination";
  */
 
 const PAGE_SIZE = 20;
-const CUSTOMER_LOOKUP_PAGE_SIZE = 50;
 
 const VALID_STATUSES: InvoiceStatus[] = ["pending", "partially_paid", "paid", "overdue"];
 
@@ -43,6 +45,8 @@ type InvoicesPageProps = {
     status?: string;
     from?: string;
     to?: string;
+    sort?: string;
+    dir?: string;
     page?: string;
   }>;
 };
@@ -56,20 +60,30 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
   const session = await requireSessionOrRedirect();
   const params = await searchParams;
   const status = parseStatusParam(params.status);
+  // Whitelisted server-side: an unknown ?sort= falls back to the entity default.
+  const sort = invoiceSorter.parse(params.sort, params.dir);
 
-  const [result, customersResult] = await Promise.all([
+  const [result, customers] = await Promise.all([
     listInvoices(session, {
       customerId: params.customerId || undefined,
       status,
       from: params.from || undefined,
       to: params.to || undefined,
+      sortBy: sort.sortBy,
+      sortDir: sort.sortDir,
       page: parsePageParam(params.page),
       pageSize: PAGE_SIZE,
     }),
-    listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE }),
+    listAllCustomers(session),
   ]);
 
-  const customerNameById = new Map(customersResult.data.map((customer) => [customer.id, customer.name]));
+  const customerNameById = new Map(customers.map((customer) => [customer.id, customer.name]));
+  const sortHeaderProps = {
+    current: sort,
+    defaultSort: invoiceSorter.defaultSort,
+    pathname: "/invoices",
+    params,
+  };
   const exportParams = {
     customerId: params.customerId,
     status: params.status,
@@ -103,7 +117,7 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
             id="customerId"
             name="customerId"
             defaultValue={params.customerId ?? ""}
-            options={customersResult.data.map((customer) => ({ value: customer.id, label: customer.name }))}
+            options={customers.map((customer) => ({ value: customer.id, label: customer.name }))}
           />
         </div>
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -119,6 +133,8 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
         </div>
         <DateFilterField name="from" id="from" label="Desde" defaultValue={params.from} />
         <DateFilterField name="to" id="to" label="Hasta" defaultValue={params.to} />
+        {/* Not `page`: filtering should reset to the first page. */}
+        <HiddenParams params={{ sort: params.sort, dir: params.dir }} />
         <Button type="submit" variant="outline" className="w-full sm:w-auto">
           Filtrar
         </Button>
@@ -127,13 +143,16 @@ export default async function InvoicesPage({ searchParams }: InvoicesPageProps) 
       <Table className="min-w-[900px]">
         <TableHeader>
           <TableRow>
-            <TableHead>Número</TableHead>
+            <TableSortHeader label="Número" sortBy="number" {...sortHeaderProps} />
+            {/* Not sortable: an invoice row carries only `customerId`, so the
+                name is resolved here for display and the repository has
+                nothing to order by. */}
             <TableHead>Cliente</TableHead>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Vencimiento</TableHead>
-            <TableHead>Total</TableHead>
-            <TableHead>Saldo</TableHead>
-            <TableHead>Estado</TableHead>
+            <TableSortHeader label="Fecha" sortBy="issueDate" firstDir="desc" {...sortHeaderProps} />
+            <TableSortHeader label="Vencimiento" sortBy="dueDate" firstDir="desc" {...sortHeaderProps} />
+            <TableSortHeader label="Total" sortBy="total" firstDir="desc" {...sortHeaderProps} />
+            <TableSortHeader label="Saldo" sortBy="balance" firstDir="desc" {...sortHeaderProps} />
+            <TableSortHeader label="Estado" sortBy="status" {...sortHeaderProps} />
           </TableRow>
         </TableHeader>
         <TableBody>

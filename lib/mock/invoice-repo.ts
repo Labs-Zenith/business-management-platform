@@ -25,6 +25,7 @@ import {
   store as defaultStore,
   type MockStore,
 } from "./store";
+import { invoiceSorter } from "@/lib/services/sorting";
 
 function paymentsForInvoice(store: MockStore, invoiceId: string): Payment[] {
   return [...store.payments.values()].filter((payment) => payment.invoiceId === invoiceId);
@@ -181,9 +182,7 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
         invoices = invoices.filter((invoice) => invoice.issueDate <= query.to!);
       }
 
-      invoices.sort((a, b) => (a.issueDate < b.issueDate ? 1 : -1));
-
-      return paginate(invoices, query.page, query.pageSize);
+      return paginate(invoiceSorter.sort(invoices, query), query.page, query.pageSize);
     },
 
     /** Mirrors `lib/db/invoice-repo.ts#listActiveMonths`. */

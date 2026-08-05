@@ -116,8 +116,8 @@ describe("NominaPage", () => {
     render(await NominaPage({ searchParams: Promise.resolve({}) }));
 
     expect(mockRequireCapabilityOrNotFound).toHaveBeenCalledWith("viewPayroll");
-    expect(mockListEmployees).toHaveBeenCalledWith(ADMIN_SESSION, { page: 1, pageSize: 20 });
-    expect(mockListPayrollPayments).toHaveBeenCalledWith(ADMIN_SESSION, { page: 1, pageSize: 20 });
+    expect(mockListEmployees).toHaveBeenCalledWith(ADMIN_SESSION, { sortBy: "name", sortDir: "asc", page: 1, pageSize: 20 });
+    expect(mockListPayrollPayments).toHaveBeenCalledWith(ADMIN_SESSION, { sortBy: "paymentDate", sortDir: "desc", page: 1, pageSize: 20 });
 
     // Empleados tab (active by default). "Ana Empleada" appears TWICE — once
     // as the employee row (active panel) and once as the payment row's
@@ -206,8 +206,8 @@ describe("NominaPage", () => {
       }),
     );
 
-    expect(mockListEmployees).toHaveBeenCalledWith(ADMIN_SESSION, { page: 3, pageSize: 20 });
-    expect(mockListPayrollPayments).toHaveBeenCalledWith(ADMIN_SESSION, { page: 2, pageSize: 20 });
+    expect(mockListEmployees).toHaveBeenCalledWith(ADMIN_SESSION, { sortBy: "name", sortDir: "asc", page: 3, pageSize: 20 });
+    expect(mockListPayrollPayments).toHaveBeenCalledWith(ADMIN_SESSION, { sortBy: "paymentDate", sortDir: "desc", page: 2, pageSize: 20 });
 
     // Both panels' "Siguiente" links exist (keepMounted, one panel hidden);
     // disambiguate by href — each hardcodes the `tab` value for its own
@@ -222,4 +222,61 @@ describe("NominaPage", () => {
     expect(paymentsHref).toBeDefined();
     expect(paymentsHref!.getAttribute("href")).toBe("/nomina?employeesPage=3&tab=pagos&paymentsPage=3");
   });
+
+  it("parses each table's sort independently and threads it to its own service call", async () => {
+    mockRequireCapabilityOrNotFound.mockResolvedValue(ADMIN_SESSION);
+    mockListEmployees.mockResolvedValue({ data: [EMPLOYEE], page: 1, pageSize: 20, total: 1 });
+    mockListPayrollPayments.mockResolvedValue({ data: [PAYMENT], page: 1, pageSize: 20, total: 1 });
+
+    render(
+      await NominaPage({
+        searchParams: Promise.resolve({
+          employeesSort: "baseSalary",
+          employeesDir: "desc",
+          paymentsSort: "amount",
+          paymentsDir: "asc",
+          tab: "pagos",
+        }),
+      }),
+    );
+
+    expect(mockListEmployees).toHaveBeenCalledWith(
+      ADMIN_SESSION,
+      expect.objectContaining({ sortBy: "baseSalary", sortDir: "desc" }),
+    );
+    expect(mockListPayrollPayments).toHaveBeenCalledWith(
+      ADMIN_SESSION,
+      expect.objectContaining({ sortBy: "amount", sortDir: "asc" }),
+    );
+  });
+
+  it("keeps each panel's sort link on its own tab and leaves the sibling table's state alone", async () => {
+    mockRequireCapabilityOrNotFound.mockResolvedValue(ADMIN_SESSION);
+    mockListEmployees.mockResolvedValue({ data: [EMPLOYEE], page: 1, pageSize: 20, total: 1 });
+    mockListPayrollPayments.mockResolvedValue({ data: [PAYMENT], page: 1, pageSize: 20, total: 1 });
+
+    render(
+      await NominaPage({
+        searchParams: Promise.resolve({ employeesPage: "3", paymentsPage: "2", tab: "pagos" }),
+      }),
+    );
+
+    // Both panels are keepMounted with one hidden, so `hidden: true` is needed
+    // to reach the inactive one — same treatment as the pagination test above.
+    // Sorting Empleados drops only employeesPage; the Pagos table keeps its
+    // page, and each link hardcodes its own tab so a click cannot bounce the
+    // user to the other panel.
+    const empleadosLink = screen.getByRole("link", { name: /salario base/i, hidden: true });
+    expect(empleadosLink).toHaveAttribute(
+      "href",
+      "/nomina?paymentsPage=2&employeesSort=baseSalary&employeesDir=desc",
+    );
+
+    const pagosLink = screen.getByRole("link", { name: /^monto/i, hidden: true });
+    expect(pagosLink).toHaveAttribute(
+      "href",
+      "/nomina?employeesPage=3&tab=pagos&paymentsSort=amount&paymentsDir=desc",
+    );
+  });
+
 });
