@@ -48,6 +48,10 @@ playwright-report/
 
 # personal data — Google Contacts exports + generated review sheets (never commit, PII)
 /docs/contactos-printing/
+# Both the original top-level location and the current nested one: the folder
+# moved under /docs/printing/ and the old rule silently stopped matching,
+# leaving real contact exports committable by a plain `git add -A`.
+/docs/printing/contactos-printing/
 
 # client inventory data (xlsx) — not committed
 /docs/inventario/
