@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { Paged, ProductListQuery, ProductWithStock, Session } from "@/lib/services/ports";
 
 /**
@@ -173,6 +173,87 @@ describe("InventarioPage", () => {
       SESSION,
       expect.objectContaining({ sortBy: "name", sortDir: "asc" }),
     );
+  });
+
+  it("threads q/status/stock filters through to listProducts alongside sort/dir/page", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListProducts.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });
+
+    render(
+      await InventarioPage({
+        searchParams: Promise.resolve({
+          productsQ: "Tornillos",
+          productsStatus: "inactive",
+          productsStock: "low_stock",
+          productsSort: "unitCost",
+          productsDir: "desc",
+          productsPage: "2",
+        }),
+      }),
+    );
+
+    expect(mockListProducts).toHaveBeenCalledWith(SESSION, {
+      q: "Tornillos",
+      status: "inactive",
+      stock: "low_stock",
+      sortBy: "unitCost",
+      sortDir: "desc",
+      page: 2,
+      pageSize: 20,
+    });
+  });
+
+  it("ignores an unrecognized productsStock (and productsStatus) value rather than throwing or forwarding it verbatim", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListProducts.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });
+
+    render(
+      await InventarioPage({
+        searchParams: Promise.resolve({ productsStock: "bogus", productsStatus: "bogus" }),
+      }),
+    );
+
+    expect(mockListProducts).toHaveBeenCalledWith(
+      SESSION,
+      expect.objectContaining({ stock: undefined, status: undefined }),
+    );
+  });
+
+  it("renders the Buscar/Estado/Stock filter form, pre-filled from the URL, with sort/dir re-declared as hidden fields (not the page)", async () => {
+    mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
+    mockListProducts.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });
+
+    const { container } = render(
+      await InventarioPage({
+        searchParams: Promise.resolve({
+          productsQ: "Tornillos",
+          productsSort: "unitCost",
+          productsDir: "desc",
+          productsPage: "3",
+        }),
+      }),
+    );
+
+    const form = container.querySelector("form")!;
+    const withinForm = within(form);
+
+    expect(withinForm.getByLabelText("Buscar")).toHaveValue("Tornillos");
+    expect(withinForm.getByText("Estado")).toBeInTheDocument();
+    expect(withinForm.getByText("Stock")).toBeInTheDocument();
+    // The Stock <SelectFilterField>'s options render in a portal only once
+    // opened (see `select-filter-field.tsx`'s own test for that coverage) —
+    // here it's enough to confirm the field itself is wired up with the
+    // right id/name and no default value.
+    expect(form.querySelector('#productsStock[role="combobox"]')).not.toBeNull();
+    expect(form.querySelector('input[type="hidden"][name="productsStock"]')).toHaveValue("");
+    expect(withinForm.getByRole("button", { name: "Filtrar" })).toBeInTheDocument();
+
+    const sortHidden = form.querySelector('input[type="hidden"][name="productsSort"]');
+    const dirHidden = form.querySelector('input[type="hidden"][name="productsDir"]');
+    expect(sortHidden).toHaveValue("unitCost");
+    expect(dirHidden).toHaveValue("desc");
+    // Filtering must reset to page 1 — the page number is never re-declared.
+    expect(container.querySelector('input[type="hidden"][name="productsPage"]')).toBeNull();
   });
 
   it("keeps the active sort on the pagination links", async () => {

@@ -752,9 +752,22 @@ export type ProductUpdate = Partial<ProductCreate> & { active?: boolean };
 export const PRODUCT_SORT_KEYS = ["name", "sku", "unitCost", "currentQuantity", "totalValue", "status"] as const;
 export type ProductSortBy = (typeof PRODUCT_SORT_KEYS)[number];
 
+/**
+ * `stock` filters on the SAME derived `ProductWithStock` fields the "Cantidad"
+ * column and its "Stock bajo" badge already show — never a re-derived
+ * threshold. `"low_stock"` is exactly `ProductWithStock.isLowStock` (the fixed
+ * `1 <= currentQuantity <= 3` rule, see `lib/services/inventory-stock.ts`);
+ * `"in_stock"` is `currentQuantity > 0` (a superset of `"low_stock"`) and
+ * `"out_of_stock"` is `currentQuantity === 0`. Because these depend on
+ * `currentQuantity`/`isLowStock`, both repos MUST apply this filter after
+ * their `withStock` mapping — see each repo's `list` comment.
+ */
+export type ProductStockFilter = "in_stock" | "low_stock" | "out_of_stock";
+
 export type ProductListQuery = {
   q?: string;
   status?: "active" | "inactive";
+  stock?: ProductStockFilter;
   sortBy?: ProductSortBy;
   sortDir?: SortDir;
   page: number;

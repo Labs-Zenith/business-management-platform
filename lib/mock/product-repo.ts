@@ -47,8 +47,24 @@ export function createProductRepository(store: MockStore): ProductRepository {
         products = products.filter((product) => product.name.toLowerCase().includes(needle));
       }
 
-      // Sorted AFTER the stock map — mirrors `lib/db/product-repo.ts`.
-      const withStockData = products.map((product) => withStock(store, product));
+      // Sorted AFTER the stock map — mirrors `lib/db/product-repo.ts`. `stock`
+      // filters on those same derived fields, so it is applied here too —
+      // after `withStock`, before sort/paginate.
+      let withStockData = products.map((product) => withStock(store, product));
+      if (query.stock) {
+        withStockData = withStockData.filter((product) => {
+          switch (query.stock) {
+            case "in_stock":
+              return product.currentQuantity > 0;
+            case "low_stock":
+              return product.isLowStock;
+            case "out_of_stock":
+              return product.currentQuantity === 0;
+            default:
+              return true;
+          }
+        });
+      }
       return paginate(productSorter.sort(withStockData, query), query.page, query.pageSize);
     },
 
