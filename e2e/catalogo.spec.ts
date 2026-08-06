@@ -59,9 +59,10 @@ test.describe("Catálogo", () => {
     await page.goto("/catalogo/new");
 
     await page.getByLabel("Nombre").fill(name);
-    // `fixed` is the form's default mode, so no Select interaction is needed
-    // here — the mode-switching path gets its own coverage below.
-    await page.getByLabel("Precio unitario").fill(String(unitPricePesos));
+    // The whole point of the simple path: a name and a price, nothing else.
+    // `fixed` is the default mode and its price field is the only one on
+    // screen — every other mode lives behind the "Precio avanzado" disclosure.
+    await page.getByLabel("Precio", { exact: true }).fill(String(unitPricePesos));
 
     await page.getByRole("button", { name: "Crear producto" }).click();
 
@@ -74,6 +75,10 @@ test.describe("Catálogo", () => {
     await page.goto("/catalogo/new");
 
     await page.getByLabel("Nombre").fill(`Sin escalones ${Date.now()}`);
+
+    // Every non-simple pricing mode lives behind the "Precio avanzado"
+    // disclosure, closed by default so an ordinary service never meets it.
+    await page.getByRole("button", { name: /precio avanzado/i }).click();
 
     // The pricing-mode control is a Base UI `Select` (a labelable
     // `role="combobox"` button), not a native `<select>` — its popup only
