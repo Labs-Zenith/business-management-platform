@@ -144,6 +144,7 @@ describe("createProductRepository.delete", () => {
       unitPrice: 25000,
       lineTotal: 50000,
       productId,
+      catalogProductId: null,
     });
   }
 

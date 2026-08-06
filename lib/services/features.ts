@@ -27,6 +27,11 @@ export function listEnabledFeatures(businessId: string): Promise<Feature[]> {
 }
 
 /** Convenience wrapper for the Ventas pipeline board. Now async (DB-backed). */
+export function isCatalogEnabled(businessId: string): Promise<boolean> {
+  return isFeatureEnabled(businessId, "catalog");
+}
+
+/** Convenience wrapper for the Ventas pipeline board. Now async (DB-backed). */
 export function isPipelineEnabled(businessId: string): Promise<boolean> {
   return isFeatureEnabled(businessId, "pipeline");
 }

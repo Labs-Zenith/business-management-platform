@@ -4,6 +4,7 @@ import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { listInvoiceTypes } from "@/lib/services/catalog-service";
 import { listProducts } from "@/lib/services/product-service";
+import { listInvoiceCatalogOptions } from "@/lib/services/invoice-catalog-options";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -40,10 +41,11 @@ export default async function NewInvoicePage({ searchParams }: NewInvoicePagePro
   const session = await requireSessionOrRedirect();
   const params = await searchParams;
 
-  const [result, invoiceTypes, productsResult] = await Promise.all([
+  const [result, invoiceTypes, productsResult, catalogProducts] = await Promise.all([
     listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE }),
     listInvoiceTypes(),
     listProducts(session, { page: 1, pageSize: PRODUCT_LOOKUP_PAGE_SIZE }),
+    listInvoiceCatalogOptions(session),
   ]);
   // Only active products are offered in the item-row `<Select>` — an
   // inactive product should never be picked for a NEW line (mirrors
@@ -77,6 +79,7 @@ export default async function NewInvoicePage({ searchParams }: NewInvoicePagePro
           name: product.name,
           currentQuantity: product.currentQuantity,
         }))}
+        catalogProducts={catalogProducts}
         defaultCustomerId={params.customerId}
       />
     </PageShell>

@@ -11,6 +11,48 @@ import { z } from "zod";
 export const OTRO_PRODUCT_VALUE = "otro";
 
 /**
+ * Marks a product `<Select>` option as coming from the commercial catalog
+ * rather than from inventory.
+ *
+ * The row's `productId` field holds ONE string for what are now three
+ * different kinds of line, and inventory and catalog ids are both UUIDs — so
+ * the id alone cannot say which table it belongs to. Inventory ids stay BARE
+ * (nothing about the existing behaviour changes) and only catalog ones carry
+ * this prefix, which a UUID can never begin with. `parseItemSource` below is
+ * the single place that turns the field back into the two nullable columns
+ * the server expects.
+ */
+export const CATALOG_PRODUCT_PREFIX = "cat:";
+
+/** Builds the `<Select>` option value for a catalog product. */
+export function toCatalogOptionValue(catalogProductId: string): string {
+  return `${CATALOG_PRODUCT_PREFIX}${catalogProductId}`;
+}
+
+/** True when this row's selection is a catalog product (a service), not an inventory SKU. */
+export function isCatalogOptionValue(value: string): boolean {
+  return value.startsWith(CATALOG_PRODUCT_PREFIX);
+}
+
+/**
+ * Splits a row's selection into the two mutually-exclusive foreign keys an
+ * invoice line carries. Only an inventory `productId` moves stock; a
+ * `catalogProductId` is a reference to a sellable service and moves none.
+ */
+export function parseItemSource(value: string): {
+  productId: string | null;
+  catalogProductId: string | null;
+} {
+  if (value === OTRO_PRODUCT_VALUE || value === "") {
+    return { productId: null, catalogProductId: null };
+  }
+  if (isCatalogOptionValue(value)) {
+    return { productId: null, catalogProductId: value.slice(CATALOG_PRODUCT_PREFIX.length) };
+  }
+  return { productId: value, catalogProductId: null };
+}
+
+/**
  * Client-side form validation only (UX affordance) — NOT the source of
  * truth. `lib/schemas/invoice.ts`'s `.strict()` schema (server-side) is the
  * authoritative validator; this schema uses whole-COP-peso `unitPrice`
@@ -59,12 +101,15 @@ export const invoiceItemFormSchema = z
         path: ["description"],
       });
     }
-    // A real inventory product (anything other than the "Otro" sentinel)
-    // decrements stock via an INTEGER `inventory_movements.quantity` column
-    // (see `lib/schemas/invoice.ts`'s matching server-side `.superRefine`) —
-    // reject a fractional quantity inline, before submit. "Otro" free-text
-    // lines never touch inventory and may stay fractional.
-    if (item.productId !== OTRO_PRODUCT_VALUE && !Number.isInteger(item.quantity)) {
+    // Only an INVENTORY line decrements stock, through an INTEGER
+    // `inventory_movements.quantity` column (see `lib/schemas/invoice.ts`'s
+    // matching server-side `.superRefine`) — reject a fractional quantity
+    // inline, before submit. "Otro" free-text lines and CATALOG lines never
+    // touch inventory and may stay fractional: a service is legitimately
+    // billed as 1.5 hours.
+    const isInventoryLine =
+      item.productId !== OTRO_PRODUCT_VALUE && item.productId !== "" && !isCatalogOptionValue(item.productId);
+    if (isInventoryLine && !Number.isInteger(item.quantity)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Debe ser un número entero",

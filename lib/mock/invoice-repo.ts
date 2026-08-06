@@ -322,6 +322,7 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           productId: item.productId,
+          catalogProductId: item.catalogProductId,
           lineTotal: item.lineTotal,
         }));
 
@@ -453,6 +454,7 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           productId: item.productId,
+          catalogProductId: item.catalogProductId,
           lineTotal: item.lineTotal,
         }));
         for (const item of newItems) {

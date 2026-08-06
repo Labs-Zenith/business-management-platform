@@ -14,8 +14,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/ui/money-input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { OTRO_PRODUCT_VALUE, type InvoiceFormValues } from "./invoice-form-schema";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { formatCOP } from "@/lib/money";
+import {
+  isCatalogOptionValue,
+  OTRO_PRODUCT_VALUE,
+  toCatalogOptionValue,
+  type InvoiceFormValues,
+} from "./invoice-form-schema";
 
 /**
  * Dynamic add/remove line items for the invoice create form, per
@@ -63,6 +77,15 @@ import { OTRO_PRODUCT_VALUE, type InvoiceFormValues } from "./invoice-form-schem
  */
 export type InvoiceItemFieldsProduct = { id: string; name: string; currentQuantity: number };
 
+/**
+ * A sellable listing from the commercial catalog — mostly SERVICES, which is
+ * why it has no stock at all. `unitPrice` is integer COP cents, or `null`
+ * when the product prices by variant/package/tier/measurement and therefore
+ * has no single figure to offer (see `pricing_mode` in
+ * `migrations/1700000016000_add_catalog_products.sql`).
+ */
+export type InvoiceItemFieldsCatalogProduct = { id: string; name: string; unitPrice: number | null };
+
 export type InvoiceItemFieldsProps = {
   control: Control<InvoiceFormValues>;
   register: UseFormRegister<InvoiceFormValues>;
@@ -70,6 +93,8 @@ export type InvoiceItemFieldsProps = {
   setValue: UseFormSetValue<InvoiceFormValues>;
   /** Active inventory products only — populates the product select. */
   products: InvoiceItemFieldsProduct[];
+  /** Active catalog products (services). Empty when the business has no `catalog` entitlement, which hides the group entirely. */
+  catalogProducts?: InvoiceItemFieldsCatalogProduct[];
   /** Set only when creating a SALE — see the stock-affordance note in this file's doc comment. */
   enforceStock?: boolean;
 };
@@ -81,6 +106,7 @@ type InvoiceItemRowProps = {
   errors: FieldErrors<InvoiceFormValues>;
   setValue: UseFormSetValue<InvoiceFormValues>;
   products: InvoiceItemFieldsProduct[];
+  catalogProducts: InvoiceItemFieldsCatalogProduct[];
   enforceStock: boolean;
   /** Total quantity this row's product is claiming across ALL rows, or null when stock isn't enforced. */
   claimedForProduct: number | null;
@@ -95,6 +121,7 @@ function InvoiceItemRow({
   errors,
   setValue,
   products,
+  catalogProducts,
   enforceStock,
   claimedForProduct,
   onRemove,
@@ -113,20 +140,31 @@ function InvoiceItemRow({
     claimedForProduct !== null &&
     claimedForProduct > selectedProduct.currentQuantity;
 
-  const selectItems = [
-    ...products.map((product) => ({
-      value: product.id,
-      label:
-        enforceStock && product.currentQuantity <= 0
-          ? `${product.name} · sin stock`
-          : `${product.name} · stock ${product.currentQuantity}`,
-      // Never disable the CURRENTLY selected option: base-ui would otherwise
-      // render an unselectable value, and in practice this only happens when
-      // stock ran out in another tab after the pick.
-      disabled: enforceStock && product.currentQuantity <= 0 && product.id !== productId,
-    })),
-    { value: OTRO_PRODUCT_VALUE, label: "Otro…", disabled: false },
-  ];
+  const inventoryItems = products.map((product) => ({
+    value: product.id,
+    label:
+      enforceStock && product.currentQuantity <= 0
+        ? `${product.name} · sin stock`
+        : `${product.name} · stock ${product.currentQuantity}`,
+    // Never disable the CURRENTLY selected option: base-ui would otherwise
+    // render an unselectable value, and in practice this only happens when
+    // stock ran out in another tab after the pick.
+    disabled: enforceStock && product.currentQuantity <= 0 && product.id !== productId,
+  }));
+
+  // Catalog products carry a price instead of a stock figure — that IS the
+  // difference between the two groups, so the label shows it. No stock
+  // affordance applies: a service cannot run out.
+  const catalogItems = catalogProducts.map((product) => ({
+    value: toCatalogOptionValue(product.id),
+    label: product.unitPrice !== null ? `${product.name} · ${formatCOP(product.unitPrice)}` : product.name,
+    disabled: false,
+  }));
+
+  const otroItem = { value: OTRO_PRODUCT_VALUE, label: "Otro…", disabled: false };
+  // Flat list for base-ui's `items` prop (it needs every selectable value up
+  // front, groups or not); the grouped rendering happens in `SelectContent`.
+  const selectItems = [...inventoryItems, ...catalogItems, otroItem];
 
   return (
     <div className="grid grid-cols-1 items-end gap-2 rounded-lg border p-3 sm:grid-cols-2">
@@ -144,10 +182,30 @@ function InvoiceItemRow({
                 field.onChange(nextValue);
                 if (nextValue === OTRO_PRODUCT_VALUE) {
                   setValue(`items.${index}.description` as const, "", { shouldValidate: true });
-                } else {
-                  const product = products.find((candidate) => candidate.id === nextValue);
-                  setValue(`items.${index}.description` as const, product?.name ?? "", { shouldValidate: true });
+                  return;
                 }
+                if (isCatalogOptionValue(nextValue)) {
+                  const catalogProduct = catalogProducts.find(
+                    (candidate) => toCatalogOptionValue(candidate.id) === nextValue,
+                  );
+                  setValue(`items.${index}.description` as const, catalogProduct?.name ?? "", {
+                    shouldValidate: true,
+                  });
+                  // Auto-fill the price, which inventory deliberately does NOT
+                  // do: a catalog product stores a SALE price, whereas a
+                  // product's `unitCost` is what it cost to acquire. Only a
+                  // single-price product has a figure to offer; the rest leave
+                  // it to be typed. Cents -> whole pesos, matching this form's
+                  // "entered in pesos" convention.
+                  if (catalogProduct?.unitPrice != null) {
+                    setValue(`items.${index}.unitPrice` as const, String(catalogProduct.unitPrice / 100), {
+                      shouldValidate: true,
+                    });
+                  }
+                  return;
+                }
+                const product = products.find((candidate) => candidate.id === nextValue);
+                setValue(`items.${index}.description` as const, product?.name ?? "", { shouldValidate: true });
               }}
               onOpenChange={(nextOpen) => {
                 if (!nextOpen) field.onBlur();
@@ -157,11 +215,36 @@ function InvoiceItemRow({
                 <SelectValue placeholder="Selecciona un producto" />
               </SelectTrigger>
               <SelectContent>
-                {selectItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value} disabled={item.disabled}>
-                    {item.label}
-                  </SelectItem>
-                ))}
+                {/* Grouped only when there IS a catalog to group against —
+                    a business without the entitlement sees exactly the flat
+                    list it saw before. */}
+                {catalogItems.length > 0 ? (
+                  <>
+                    <SelectGroup>
+                      <SelectLabel>Inventario</SelectLabel>
+                      {inventoryItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value} disabled={item.disabled}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Catálogo</SelectLabel>
+                      {catalogItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectItem value={otroItem.value}>{otroItem.label}</SelectItem>
+                  </>
+                ) : (
+                  selectItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value} disabled={item.disabled}>
+                      {item.label}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           )}
@@ -234,6 +317,7 @@ export function InvoiceItemFields({
   errors,
   setValue,
   products,
+  catalogProducts = [],
   enforceStock = false,
 }: InvoiceItemFieldsProps) {
   const { fields, append, remove } = useFieldArray({ control, name: "items" });
@@ -247,7 +331,9 @@ export function InvoiceItemFields({
   if (enforceStock && Array.isArray(watchedItems)) {
     for (const item of watchedItems) {
       const id = item?.productId;
-      if (!id || id === OTRO_PRODUCT_VALUE) continue;
+      // Catalog lines are excluded here as well as "Otro": they claim no
+      // stock, so counting them against a balance would be meaningless.
+      if (!id || id === OTRO_PRODUCT_VALUE || isCatalogOptionValue(id)) continue;
       const quantity = Number(item?.quantity);
       if (!Number.isFinite(quantity) || quantity <= 0) continue;
       claimedByProduct.set(id, (claimedByProduct.get(id) ?? 0) + quantity);
@@ -266,6 +352,7 @@ export function InvoiceItemFields({
           errors={errors}
           setValue={setValue}
           products={products}
+          catalogProducts={catalogProducts}
           enforceStock={enforceStock}
           claimedForProduct={
             enforceStock

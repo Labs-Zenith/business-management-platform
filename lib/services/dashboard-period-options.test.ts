@@ -31,7 +31,7 @@ function invoicePersist(customerId: string, issueDate: string): InvoicePersist {
     customerId,
     issueDate,
     dueDate: null,
-    items: [{ ...item, productId: null, lineTotal: itemLineTotal }],
+    items: [{ ...item, productId: null, catalogProductId: null, lineTotal: itemLineTotal }],
     subtotal: itemLineTotal,
     total: itemLineTotal,
     status: "pending",

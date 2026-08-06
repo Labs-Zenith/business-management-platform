@@ -119,6 +119,7 @@ async function main(): Promise<void> {
       // Demo-seed invoice lines are synthetic/free-text — never linked to a
       // real inventory product.
       productId: null,
+      catalogProductId: null,
       lineTotal: item.quantity * item.unitPrice,
     }));
     const total = items.reduce((sum, item) => sum + item.lineTotal, 0);

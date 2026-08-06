@@ -299,6 +299,65 @@ Respuesta:
 }
 ```
 
+## Catalogo
+
+Modulo con entitlement por negocio: ademas de sesion valida, el negocio necesita el
+feature `catalog` habilitado en `business_features`. Sin el, todos los endpoints de
+esta seccion responden `403`, sin importar el rol del usuario.
+
+Este es el catalogo comercial: la lista de productos y servicios (mayormente
+servicios) que el negocio vende, con su regla de precio. No es inventario.
+
+### GET /api/catalog-products
+
+Lista el catalogo comercial del negocio autenticado.
+
+Query opcional:
+
+- `q`: busqueda por nombre.
+- `category`
+- `pricingMode`: uno de `fixed`, `variant`, `package`, `tiered`, `area`.
+- `status`: `active` o `inactive`.
+- `page`: numero de pagina, minimo 1.
+- `pageSize`: cantidad por pagina, maximo 50.
+
+Respuesta: `{ data, page, pageSize, total }`. Cada fila trae el modo de precio y el
+numero de variantes, no las variantes completas.
+
+### POST /api/catalog-products
+
+Crea un producto de catalogo junto con sus variantes y escalones, de forma atomica.
+
+El `pricingMode` decide que campos son validos; el schema Zod rechaza cualquier
+combinacion que no corresponda al modo:
+
+- `fixed`: `fixedUnitPrice`, sin variantes.
+- `variant`: al menos una variante, cada una con `unitPrice`.
+- `package`: al menos una variante, cada una con `packageQuantity` y `packageTotalPrice`.
+- `tiered`: al menos una variante, cada una con al menos un escalon; cada escalon lleva
+  exactamente uno de `unitPrice` o `flatTotalPrice`.
+- `area`: `areaBasePrice` y `areaRatePerM2` obligatorios, `areaMinPrice` opcional, sin
+  variantes.
+
+`minOrderQuantity` aplica solo a los modos de cantidad libre (`fixed`, `variant`,
+`area`). En `package` y `tiered` el minimo lo impone la estructura misma.
+
+Todo el dinero viaja en centavos COP enteros.
+
+### GET /api/catalog-products/{id}
+
+Devuelve un producto con sus variantes y escalones. `404` si no existe o pertenece a
+otro negocio, sin distinguir entre ambos casos.
+
+### PATCH /api/catalog-products/{id}
+
+Actualiza el producto. Variantes y escalones se reemplazan por completo, igual que los
+items de una factura.
+
+Editar un precio aqui no reescribe ningun precio ya capturado en otro lugar: cualquier
+linea de documento que referencie un producto de catalogo guarda su propio precio como
+una instantanea al momento de crearse.
+
 ## Seguridad de API
 
 Cada endpoint debe validar:

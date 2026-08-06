@@ -15,7 +15,7 @@ const BUSINESS_ID = "10000000-0000-4000-8000-000000000001";
 const CUSTOMER_ID = customerFixtures[0].id;
 
 function buildInvoicePersist(overrides: Partial<InvoicePersist> = {}): InvoicePersist {
-  const items = [{ description: "Servicio", quantity: 1, unitPrice: 100000, productId: null as string | null }];
+  const items = [{ description: "Servicio", quantity: 1, unitPrice: 100000, productId: null as string | null, catalogProductId: null as string | null }];
   const withTotals = items.map((item) => ({ ...item, lineTotal: lineTotal(item.quantity, item.unitPrice) }));
   const subtotal = withTotals.reduce((sum, item) => sum + item.lineTotal, 0);
   const total = subtotal;
@@ -74,7 +74,7 @@ describe("invoiceRepo.create — concurrent numbering (safety-critical)", () => 
 });
 
 function buildInvoiceUpdatePersist(overrides: Partial<InvoicePersist> = {}): InvoicePersist {
-  const items = [{ description: "Servicio editado", quantity: 2, unitPrice: 30000, productId: null as string | null }];
+  const items = [{ description: "Servicio editado", quantity: 2, unitPrice: 30000, productId: null as string | null, catalogProductId: null as string | null }];
   const withTotals = items.map((item) => ({ ...item, lineTotal: lineTotal(item.quantity, item.unitPrice) }));
   const subtotal = withTotals.reduce((sum, item) => sum + item.lineTotal, 0);
   const total = subtotal;
@@ -191,7 +191,7 @@ describe("invoiceRepo.update — edit-lock (safety-critical)", () => {
     // buildInvoicePersist's total is 100000; edit with the SAME total (a
     // no-op total change), just replacing the item description.
     const noOpTotalUpdate = buildInvoiceUpdatePersist({
-      items: [{ description: "Servicio editado", quantity: 1, unitPrice: 100000, productId: null, lineTotal: 100000 }],
+      items: [{ description: "Servicio editado", quantity: 1, unitPrice: 100000, productId: null, catalogProductId: null, lineTotal: 100000 }],
       subtotal: 100000,
       total: 100000,
       status: computeStatus(100000, PAID_AMOUNT, "2026-08-09", new Date("2026-07-09")),
@@ -318,7 +318,11 @@ describe("invoiceRepo — product-line inventory decrement (safety-critical)", (
     customerId: string,
     items: Array<{ description: string; quantity: number; unitPrice: number; productId: string | null }>,
   ): InvoicePersist {
-    const withTotals = items.map((item) => ({ ...item, lineTotal: lineTotal(item.quantity, item.unitPrice) }));
+    const withTotals = items.map((item) => ({
+      ...item,
+      catalogProductId: null,
+      lineTotal: lineTotal(item.quantity, item.unitPrice),
+    }));
     const subtotal = withTotals.reduce((sum, item) => sum + item.lineTotal, 0);
     return {
       customerId,
@@ -689,7 +693,7 @@ describe("createInvoiceRepository — credit note returns stock", () => {
       issueDate: "2026-08-04",
       dueDate: null,
       invoiceTypeId,
-      items: [{ description: "Crema", quantity, unitPrice: 40000, productId, lineTotal: total }],
+      items: [{ description: "Crema", quantity, unitPrice: 40000, productId, catalogProductId: null, lineTotal: total }],
       subtotal: total,
       total,
       status: computeStatus(total, 0, null, new Date("2026-08-04")),
@@ -816,7 +820,7 @@ describe("createInvoiceRepository.void", () => {
       issueDate: "2026-08-05",
       dueDate: null,
       invoiceTypeId,
-      items: [{ description: "Crema", quantity, unitPrice: 40000, productId, lineTotal: total }],
+      items: [{ description: "Crema", quantity, unitPrice: 40000, productId, catalogProductId: null, lineTotal: total }],
       subtotal: total,
       total,
       status: computeStatus(total, 0, null, new Date("2026-08-05")),
