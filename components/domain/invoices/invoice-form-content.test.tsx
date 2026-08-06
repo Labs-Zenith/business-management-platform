@@ -78,7 +78,7 @@ describe("InvoiceFormContent", () => {
     const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
     const body = JSON.parse(options.body);
     expect(body.customerId).toBe(CUSTOMER.id);
-    expect(body.items).toEqual([{ description: "Consultoria", quantity: 1, unitPrice: 50000, productId: null }]);
+    expect(body.items).toEqual([{ description: "Consultoria", quantity: 1, unitPrice: 50000, productId: null, catalogProductId: null }]);
     // Pre-selected to the `venta` catalog type by `defaultInvoiceTypeId`
     // (never touched by the user in this test) — see the dedicated
     // "Tipo de factura" tests below for the explicit-pick case.
@@ -148,7 +148,7 @@ describe("InvoiceFormContent", () => {
             issueDate: "2026-06-01",
             dueDate: "2026-06-30",
             notes: "",
-            items: [{ description: "Consultoria previa", quantity: 1, unitPrice: 100000, productId: null }],
+            items: [{ description: "Consultoria previa", quantity: 1, unitPrice: 100000, productId: null, catalogProductId: null }],
             paidAmount: 0,
           }}
         />,
@@ -484,7 +484,7 @@ describe("InvoiceFormContent", () => {
       dueDate: "2026-06-30",
       notes: "Nota existente",
       items: [
-        { description: "Consultoria previa", quantity: 2, unitPrice: 150000, productId: null }, // 1500.00 pesos in cents
+        { description: "Consultoria previa", quantity: 2, unitPrice: 150000, productId: null, catalogProductId: null }, // 1500.00 pesos in cents
       ],
       paidAmount: 0, // zero payments — below-paid-total warning never applies to these tests
     };
@@ -534,7 +534,7 @@ describe("InvoiceFormContent", () => {
       const body = JSON.parse(options.body);
       expect(body.customerId).toBe(CUSTOMER.id);
       expect(body.items).toEqual([
-        { description: INVOICE.items[0].description, quantity: 2, unitPrice: 200000, productId: null },
+        { description: INVOICE.items[0].description, quantity: 2, unitPrice: 200000, productId: null, catalogProductId: null },
       ]);
       expect(body.issueDate).toBe(INVOICE.issueDate);
       expect(body.dueDate).toBe(INVOICE.dueDate);
@@ -599,7 +599,7 @@ describe("InvoiceFormContent", () => {
       issueDate: "2026-06-01",
       dueDate: "2026-06-30",
       notes: "Nota existente",
-      items: [{ description: "Consultoria previa", quantity: 2, unitPrice: 150_000, productId: null }], // total = 300000 cents
+      items: [{ description: "Consultoria previa", quantity: 2, unitPrice: 150_000, productId: null, catalogProductId: null }], // total = 300000 cents
       paidAmount: 250_000,
     };
 
@@ -772,7 +772,7 @@ describe("InvoiceFormContent", () => {
       const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
       const body = JSON.parse(options.body);
       expect(body.items).toEqual([
-        { description: PRODUCT_A.name, quantity: 1, unitPrice: 50000, productId: PRODUCT_A.id },
+        { description: PRODUCT_A.name, quantity: 1, unitPrice: 50000, productId: PRODUCT_A.id, catalogProductId: null },
       ]);
     });
 
@@ -797,7 +797,7 @@ describe("InvoiceFormContent", () => {
       const [, options] = fetchMock.mock.calls[0] as [string, { body: string }];
       const body = JSON.parse(options.body);
       expect(body.items).toEqual([
-        { description: "Consultoria por hora", quantity: 1, unitPrice: 50000, productId: null },
+        { description: "Consultoria por hora", quantity: 1, unitPrice: 50000, productId: null, catalogProductId: null },
       ]);
     });
 
@@ -823,7 +823,7 @@ describe("InvoiceFormContent", () => {
             issueDate: "2026-06-01",
             dueDate: "2026-06-30",
             notes: "",
-            items: [{ description: PRODUCT_A.name, quantity: 1, unitPrice: 100000, productId: PRODUCT_A.id }],
+            items: [{ description: PRODUCT_A.name, quantity: 1, unitPrice: 100000, productId: PRODUCT_A.id, catalogProductId: null }],
             paidAmount: 0,
           }}
         />,
@@ -853,6 +853,7 @@ describe("InvoiceFormContent", () => {
                 quantity: 1,
                 unitPrice: 100000,
                 productId: "80000000-0000-4000-8000-000000000099",
+                catalogProductId: null,
               },
             ],
             paidAmount: 0,

@@ -57,7 +57,7 @@
  * now single-sourced here alongside `NAV_ITEMS`/`resolveVisibleNavIds`.
  */
 
-import { Banknote, CreditCard, FileText, Kanban, LayoutDashboard, Package, Receipt, Settings, Users, type LucideIcon } from "lucide-react";
+import { Banknote, BookOpen, CreditCard, FileText, Kanban, LayoutDashboard, Package, Receipt, Settings, Users, type LucideIcon } from "lucide-react";
 import { can, type Capability } from "@/lib/services/permissions";
 import type { Feature, Role } from "@/lib/services/ports";
 
@@ -71,6 +71,7 @@ export type NavItemId =
   | "egresos"
   | "nomina"
   | "inventario"
+  | "catalogo"
   | "settings";
 
 export type NavItem = {
@@ -91,6 +92,10 @@ export const NAV_ITEMS: NavItem[] = [
   { id: "egresos", href: "/egresos", label: "Egresos", icon: Receipt },
   { id: "nomina", href: "/nomina", label: "Nómina", icon: Banknote, capability: "viewPayroll" },
   { id: "inventario", href: "/inventario", label: "Inventario", icon: Package },
+  // Next to Inventario because both answer "what do we sell?" — but they are
+  // different answers: Inventario tracks stock of physical goods, Catálogo is
+  // the price book (mostly services), which has no stock at all.
+  { id: "catalogo", href: "/catalogo", label: "Catálogo", icon: BookOpen, feature: "catalog" },
   { id: "settings", href: "/settings", label: "Configuración", icon: Settings },
 ];
 

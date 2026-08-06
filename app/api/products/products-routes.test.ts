@@ -438,6 +438,7 @@ describe("DELETE /api/products/{id}", () => {
       unitPrice: 25000,
       lineTotal: 50000,
       productId: EXISTING_PRODUCT_ID,
+      catalogProductId: null,
     });
 
     const response = await detailDelete(
@@ -467,6 +468,7 @@ describe("DELETE /api/products/{id}", () => {
       unitPrice: 25000,
       lineTotal: 50000,
       productId: EXISTING_PRODUCT_ID,
+      catalogProductId: null,
     });
 
     const response = await detailPatch(

@@ -52,6 +52,22 @@ describe("lib/openapi/document#generateOpenApiDocument", () => {
     expect(paths["/api/dashboard/summary"]?.get).toBeDefined();
   });
 
+  /**
+   * Registering a path is a separate step from shipping the route handler, and
+   * nothing fails automatically when the two drift — the assertions above
+   * happily pass while a brand-new endpoint goes undocumented. So every new
+   * module adds its own explicit block here.
+   */
+  it("describes the Catálogo endpoints", () => {
+    const document = generateOpenApiDocument();
+    const paths = document.paths as Record<string, Record<string, unknown>>;
+
+    expect(paths["/api/catalog-products"]?.get).toBeDefined();
+    expect(paths["/api/catalog-products"]?.post).toBeDefined();
+    expect(paths["/api/catalog-products/{id}"]?.get).toBeDefined();
+    expect(paths["/api/catalog-products/{id}"]?.patch).toBeDefined();
+  });
+
   it("excludes the descoped /api/business endpoint", () => {
     const document = generateOpenApiDocument();
     const paths = document.paths as Record<string, unknown>;

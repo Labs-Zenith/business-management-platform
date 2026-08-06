@@ -83,6 +83,13 @@ export type InvoiceItemCreateInput = {
    * current schema-validated route keeps working unchanged.
    */
   productId?: string | null;
+  /**
+   * FK to `catalog_products.id` — the commercial price book, mostly services.
+   * Mutually exclusive with `productId`. Reference only: unlike `productId`
+   * it moves no stock, and the line keeps its own price snapshot, so a later
+   * catalog edit cannot alter an invoice already issued.
+   */
+  catalogProductId?: string | null;
 };
 
 export type InvoiceCreateInput = {
@@ -168,6 +175,38 @@ function validateItemInvariants(items: InvoiceItemCreateInput[]): void {
         "La cantidad debe ser un número entero para productos de inventario.",
       );
     }
+    // Defense in depth again, mirroring both the zod `.superRefine` and the
+    // DB's `invoice_items_single_source_chk`: a line has at most one source.
+    if (item.productId != null && item.catalogProductId != null) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Una línea no puede ser de inventario y de catálogo a la vez.",
+      );
+    }
+  }
+}
+
+/**
+ * Rejects a line pointing at a catalog product from another business.
+ *
+ * The DB's foreign key only proves the id EXISTS in `catalog_products`, not
+ * that it belongs to this session's business — nothing else in the invoice
+ * path checks it, so without this a caller could bind another tenant's
+ * product id onto their own invoice line. `getById` already returns `null`
+ * for a cross-business row (never leaking whether it exists), so a single
+ * lookup per distinct id settles it.
+ */
+async function assertCatalogProductsAreOwned(
+  session: Session,
+  items: ReadonlyArray<{ catalogProductId?: string | null }>,
+): Promise<void> {
+  const ids = [...new Set(items.map((item) => item.catalogProductId).filter((id): id is string => id != null))];
+  if (ids.length === 0) {
+    return;
+  }
+  const found = await Promise.all(ids.map((id) => repositories.productCatalog.getById(session.businessId, id)));
+  if (found.some((product) => product === null)) {
+    throw new ApiError("VALIDATION_ERROR", "Alguna línea referencia un producto de catálogo inexistente.");
   }
 }
 
@@ -178,12 +217,14 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
   }
 
   validateItemInvariants(data.items);
+  await assertCatalogProductsAreOwned(session, data.items);
 
   const items = data.items.map((item) => ({
     description: item.description,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     productId: item.productId ?? null,
+    catalogProductId: item.catalogProductId ?? null,
     lineTotal: lineTotal(item.quantity, item.unitPrice),
   }));
 
@@ -266,12 +307,14 @@ export async function updateInvoice(session: Session, id: string, data: InvoiceU
   }
 
   validateItemInvariants(data.items);
+  await assertCatalogProductsAreOwned(session, data.items);
 
   const items = data.items.map((item) => ({
     description: item.description,
     quantity: item.quantity,
     unitPrice: item.unitPrice,
     productId: item.productId ?? null,
+    catalogProductId: item.catalogProductId ?? null,
     lineTotal: lineTotal(item.quantity, item.unitPrice),
   }));
 

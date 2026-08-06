@@ -86,6 +86,7 @@ const INVOICE_DETAIL: InvoiceDetail = {
       quantity: 1,
       unitPrice: 100000,
       productId: null,
+      catalogProductId: null,
       lineTotal: 100000,
     },
   ],

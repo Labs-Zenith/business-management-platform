@@ -152,6 +152,7 @@ describe("deleteProduct (product-service)", () => {
       unitPrice: 1000,
       lineTotal: 1000,
       productId: created.id,
+      catalogProductId: null,
     });
 
     await expect(deleteProduct(SESSION, created.id)).rejects.toMatchObject({
@@ -177,6 +178,7 @@ describe("deleteProduct (product-service)", () => {
         unitPrice: 1000,
         lineTotal: 1000,
         productId: created.id,
+        catalogProductId: null,
       });
     }
 

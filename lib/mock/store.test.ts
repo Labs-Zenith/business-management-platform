@@ -29,6 +29,9 @@ function buildLegacyPayload(): Omit<
   | "auditLogs"
   | "pipelineCards"
   | "businessFeatures"
+  | "catalogProducts"
+  | "catalogProductVariants"
+  | "catalogPriceTiers"
 > {
   const business: Business = {
     id: BUSINESS_ID,
@@ -182,6 +185,43 @@ describe("hydrateStore — backward compatibility with pre-expenses cookies (R4)
 
     expect(rehydrated.auditLogs.size).toBe(1);
     expect(rehydrated.auditLogs.get("b0000000-0000-4000-8000-000000000001")?.action).toBe("invoice_created");
+  });
+
+  it("does not throw when the payload is missing the catalog fields entirely (catalogo regression)", () => {
+    const legacyPayload = buildLegacyPayload() as SerializedStore; // simulates JSON.parse of a cookie predating the catalogo change
+    const target = createEmptyStore();
+
+    expect(() => hydrateStore(legacyPayload, target)).not.toThrow();
+    expect(target.catalogProducts.size).toBe(0);
+    expect(target.catalogProductVariants.size).toBe(0);
+    expect(target.catalogPriceTiers.size).toBe(0);
+  });
+
+  it("still hydrates the catalog maps normally when all fields ARE present (current-format cookie)", () => {
+    const target = createEmptyStore();
+    target.catalogProducts.set("b0000000-0000-4000-8000-000000000001", {
+      id: "b0000000-0000-4000-8000-000000000001",
+      businessId: BUSINESS_ID,
+      name: "Aviso en acrílico",
+      category: "Avisos",
+      description: null,
+      pricingMode: "fixed",
+      minOrderQuantity: 1,
+      fixedUnitPrice: 5000000,
+      areaBasePrice: null,
+      areaRatePerM2: null,
+      areaMinPrice: null,
+      active: true,
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-01T00:00:00.000Z",
+    });
+    const snapshot = serializeStore(target);
+
+    const rehydrated = createEmptyStore();
+    hydrateStore(snapshot, rehydrated);
+
+    expect(rehydrated.catalogProducts.size).toBe(1);
+    expect(rehydrated.catalogProducts.get("b0000000-0000-4000-8000-000000000001")?.name).toBe("Aviso en acrílico");
   });
 
   it("still hydrates products/inventoryMovements normally when both fields ARE present (current-format cookie)", () => {

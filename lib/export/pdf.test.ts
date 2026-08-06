@@ -262,7 +262,7 @@ function buildInvoiceDetail(): InvoiceDetail {
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
     items: [
-      { id: "item-1", invoiceId: "inv-1", description: "Producto de prueba", quantity: 1, unitPrice: 100_000, productId: null, lineTotal: 100_000 },
+      { id: "item-1", invoiceId: "inv-1", description: "Producto de prueba", quantity: 1, unitPrice: 100_000, productId: null, catalogProductId: null, lineTotal: 100_000 },
     ],
     payments: [],
   };

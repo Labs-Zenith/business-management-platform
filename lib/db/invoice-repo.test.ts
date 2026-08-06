@@ -100,7 +100,7 @@ function buildPersist(overrides: Partial<Record<string, unknown>> = {}) {
     customerId: CUSTOMER_ID,
     issueDate: "2026-07-09",
     dueDate: "2026-08-09",
-    items: [{ description: "Servicio editado", quantity: 2, unitPrice: 30000, productId: null, lineTotal: 60000 }],
+    items: [{ description: "Servicio editado", quantity: 2, unitPrice: 30000, productId: null, catalogProductId: null, lineTotal: 60000 }],
     subtotal: 60000,
     total: 60000,
     status: "pending" as const,
@@ -311,6 +311,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
       item.unitPrice,
       item.lineTotal,
       item.productId,
+      item.catalogProductId, // the line's OTHER possible source — a catalog service, which moves no stock
       INVOICE_ID, // EXISTS(... i.id
       BUSINESS_ID, // EXISTS(... i.business_id
       persist.total, // guard: new total >= paid
@@ -364,8 +365,8 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
 
     const persist = buildPersist({
       items: [
-        { description: "A", quantity: 1, unitPrice: 10000, productId: null, lineTotal: 10000 },
-        { description: "B", quantity: 2, unitPrice: 25000, productId: null, lineTotal: 50000 },
+        { description: "A", quantity: 1, unitPrice: 10000, productId: null, catalogProductId: null, lineTotal: 10000 },
+        { description: "B", quantity: 2, unitPrice: 25000, productId: null, catalogProductId: null, lineTotal: 50000 },
       ],
       subtotal: 60000,
       total: 60000,
@@ -411,9 +412,9 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
 
     const persist = buildPersist({
       items: [
-        { description: "A", quantity: 1, unitPrice: 10000, productId: null, lineTotal: 10000 },
-        { description: "B", quantity: 2, unitPrice: 10000, productId: null, lineTotal: 20000 },
-        { description: "C", quantity: 3, unitPrice: 10000, productId: null, lineTotal: 30000 },
+        { description: "A", quantity: 1, unitPrice: 10000, productId: null, catalogProductId: null, lineTotal: 10000 },
+        { description: "B", quantity: 2, unitPrice: 10000, productId: null, catalogProductId: null, lineTotal: 20000 },
+        { description: "C", quantity: 3, unitPrice: 10000, productId: null, catalogProductId: null, lineTotal: 30000 },
       ],
       subtotal: 60000,
       total: 60000,
@@ -447,7 +448,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
     mockSql.mockResolvedValueOnce([]);
 
     const persist = buildPersist({
-      items: [{ description: "Tijera", quantity: 2, unitPrice: 30000, productId: NEW_PRODUCT_ID, lineTotal: 60000 }],
+      items: [{ description: "Tijera", quantity: 2, unitPrice: 30000, productId: NEW_PRODUCT_ID, catalogProductId: null, lineTotal: 60000 }],
     });
     await invoiceRepo.update(BUSINESS_ID, INVOICE_ID, persist);
 
@@ -498,7 +499,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
       .mockResolvedValueOnce([]); // product lock -> ZERO rows (missing/cross-business)
 
     const persist = buildPersist({
-      items: [{ description: "Tijera", quantity: 2, unitPrice: 30000, productId: MISSING_PRODUCT_ID, lineTotal: 60000 }],
+      items: [{ description: "Tijera", quantity: 2, unitPrice: 30000, productId: MISSING_PRODUCT_ID, catalogProductId: null, lineTotal: 60000 }],
     });
 
     const error: unknown = await invoiceRepo.update(BUSINESS_ID, INVOICE_ID, persist).catch((err: unknown) => err);
@@ -521,7 +522,7 @@ describe("db invoiceRepo.update — edit-lock guard (safety-critical)", () => {
       .mockResolvedValueOnce([]); // guarded `out` movement insert -> 0 rows (overdraw)
 
     const persist = buildPersist({
-      items: [{ description: "Tijera", quantity: 999, unitPrice: 30000, productId: NEW_PRODUCT_ID, lineTotal: 29970000 }],
+      items: [{ description: "Tijera", quantity: 999, unitPrice: 30000, productId: NEW_PRODUCT_ID, catalogProductId: null, lineTotal: 29970000 }],
     });
 
     await expect(invoiceRepo.update(BUSINESS_ID, INVOICE_ID, persist)).rejects.toMatchObject({
@@ -603,7 +604,7 @@ describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety
     mockSql.mockResolvedValueOnce([]); // buildDetail: payments
 
     const persist = buildPersist({
-      items: [{ description: "Servicio", quantity: 1, unitPrice: 100000, productId: null, lineTotal: 100000 }],
+      items: [{ description: "Servicio", quantity: 1, unitPrice: 100000, productId: null, catalogProductId: null, lineTotal: 100000 }],
       subtotal: 100000,
       total: 100000,
     });
@@ -635,7 +636,7 @@ describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety
     mockSql.mockResolvedValueOnce([]);
     mockSql.mockResolvedValueOnce([]);
 
-    await invoiceRepo.create(BUSINESS_ID, buildPersist({ items: [{ description: "X", quantity: 1, unitPrice: 1, productId: null, lineTotal: 1 }] }));
+    await invoiceRepo.create(BUSINESS_ID, buildPersist({ items: [{ description: "X", quantity: 1, unitPrice: 1, productId: null, catalogProductId: null, lineTotal: 1 }] }));
 
     const [, ...seqValues] = mockTx.mock.calls[0]!;
     // First interpolated value is the COALESCE's explicit-id slot — null,
@@ -663,7 +664,7 @@ describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety
 
     await invoiceRepo.create(
       BUSINESS_ID,
-      buildPersist({ items: [{ description: "Crema", quantity: 2, unitPrice: 40000, productId: PRODUCT_ID, lineTotal: 80000 }] }),
+      buildPersist({ items: [{ description: "Crema", quantity: 2, unitPrice: 40000, productId: PRODUCT_ID, catalogProductId: null, lineTotal: 80000 }] }),
     );
 
     // The product is still locked — that is also the business-scoping check.
@@ -693,7 +694,7 @@ describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety
 
     await invoiceRepo.create(
       BUSINESS_ID,
-      buildPersist({ items: [{ description: "Crema", quantity: 1, unitPrice: 40000, productId: PRODUCT_ID, lineTotal: 40000 }] }),
+      buildPersist({ items: [{ description: "Crema", quantity: 1, unitPrice: 40000, productId: PRODUCT_ID, catalogProductId: null, lineTotal: 40000 }] }),
     );
 
     const movementText = Array.from(mockTx.mock.calls[4]![0] as unknown as string[]).join("");
@@ -714,7 +715,7 @@ describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety
     mockSql.mockResolvedValueOnce([]);
 
     const persist = buildPersist({
-      items: [{ description: "Shampoo", quantity: 3, unitPrice: 25000, productId: PRODUCT_ID, lineTotal: 75000 }],
+      items: [{ description: "Shampoo", quantity: 3, unitPrice: 25000, productId: PRODUCT_ID, catalogProductId: null, lineTotal: 75000 }],
       subtotal: 75000,
       total: 75000,
     });
@@ -750,7 +751,7 @@ describe("db invoiceRepo.create — atomic per-(business,type) numbering (safety
       .mockResolvedValueOnce([]); // guarded movement insert -> 0 rows (overdraw)
 
     const persist = buildPersist({
-      items: [{ description: "Shampoo", quantity: 100, unitPrice: 25000, productId: PRODUCT_ID, lineTotal: 2500000 }],
+      items: [{ description: "Shampoo", quantity: 100, unitPrice: 25000, productId: PRODUCT_ID, catalogProductId: null, lineTotal: 2500000 }],
       subtotal: 2500000,
       total: 2500000,
     });

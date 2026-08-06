@@ -39,15 +39,31 @@ const invoiceItemSchema = z
     // create/update — see `lib/db/invoice-repo.ts`). `null`/omitted for a
     // free-text "Otro" line, which touches no inventory.
     productId: z.string().uuid().nullable().optional(),
+    // Links the line to a commercial-catalog product — the price book, mostly
+    // services. Reference only: it moves no stock and never re-prices the
+    // line. `null`/omitted for an inventory line and for a free-text one.
+    catalogProductId: z.string().uuid().nullable().optional(),
   })
   .strict()
   .superRefine((item, ctx) => {
+    // A line has at most ONE source. Both set would mean "decrement stock AND
+    // bill a service", which nothing implements — mirrors the DB's
+    // `invoice_items_single_source_chk`.
+    if (item.productId != null && item.catalogProductId != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Una línea no puede ser de inventario y de catálogo a la vez.",
+        path: ["catalogProductId"],
+      });
+    }
     // `inventory_movements.quantity` is `INTEGER NOT NULL CHECK(quantity>0)`,
     // but a plain `Otro`/free-text line never touches inventory, so ONLY a
     // product-linked line (`productId` a non-null string) must have an
     // integer `quantity` — a fractional value here would bind straight into
     // that INTEGER column and surface as a raw Postgres 500 instead of a
-    // clean validation error. Free-text lines may stay fractional.
+    // clean validation error. Free-text lines may stay fractional, and so may
+    // catalog lines: a service is legitimately billed as 1.5 hours, and it
+    // generates no inventory movement to constrain it.
     if (item.productId != null && !Number.isInteger(item.quantity)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
