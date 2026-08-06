@@ -86,11 +86,11 @@ describe("CatalogVariantFields", () => {
     const user = userEvent.setup();
     render(<Harness pricingMode="variant" />);
 
-    expect(screen.getByRole("button", { name: /quitar variante/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /quitar opción/i })).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: /agregar variante/i }));
+    await user.click(screen.getByRole("button", { name: /agregar opción/i }));
 
-    const removeButtons = screen.getAllByRole("button", { name: /quitar variante/i });
+    const removeButtons = screen.getAllByRole("button", { name: /quitar opción/i });
     expect(removeButtons).toHaveLength(2);
     expect(removeButtons[0]).toBeEnabled();
     expect(removeButtons[1]).toBeEnabled();

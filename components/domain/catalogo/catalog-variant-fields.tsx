@@ -401,7 +401,7 @@ function CatalogVariantRow({ index, control, register, errors, pricingMode, onRe
         onClick={onRemove}
         disabled={!canRemove}
       >
-        Quitar {pricingMode === "package" ? "paquete" : "variante"}
+        Quitar {pricingMode === "package" ? "paquete" : "opción"}
       </Button>
     </div>
   );
@@ -410,8 +410,8 @@ function CatalogVariantRow({ index, control, register, errors, pricingMode, onRe
 export function CatalogVariantFields({ control, register, errors, pricingMode }: CatalogVariantFieldsProps) {
   const { fields, append, remove } = useFieldArray({ control, name: "variants" });
   const variantsMessage = typeof errors.variants?.message === "string" ? errors.variants.message : undefined;
-  const heading = pricingMode === "package" ? "Paquetes" : "Variantes";
-  const addLabel = pricingMode === "package" ? "Agregar paquete" : "Agregar variante";
+  const heading = pricingMode === "package" ? "Paquetes" : "Opciones";
+  const addLabel = pricingMode === "package" ? "Agregar paquete" : "Agregar opción";
 
   return (
     <div className="flex flex-col gap-3">

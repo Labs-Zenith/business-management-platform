@@ -16,6 +16,6 @@ describe("PricingModeBadge", () => {
     // `badge.tsx`'s `outline` variant applies `border-border text-foreground`
     // — matches `DESIGN.md`'s "Estados por tabla" convention for non-warning
     // identity booleans/enums (e.g. Activo/Inactivo's neutral `outline`).
-    expect(screen.getByText("Precio fijo")).toHaveClass("border-border");
+    expect(screen.getByText("Precio único")).toHaveClass("border-border");
   });
 });

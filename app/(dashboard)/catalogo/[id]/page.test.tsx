@@ -74,7 +74,7 @@ describe("CatalogProductDetailPage", () => {
     expect(screen.getByRole("heading", { name: "Volante A5" })).toBeInTheDocument();
     expect(screen.getByText("$ 500")).toBeInTheDocument();
     expect(screen.getByText("50 unidades")).toBeInTheDocument();
-    expect(screen.getByText("Sin variantes")).toBeInTheDocument();
+    expect(screen.getByText("Sin opciones")).toBeInTheDocument();
   });
 
   it("does not render the pricing-mode badge for a 'fixed' mode product", async () => {
@@ -84,7 +84,7 @@ describe("CatalogProductDetailPage", () => {
 
     render(await CatalogProductDetailPage({ params: Promise.resolve({ id: BASE.id }) }));
 
-    expect(screen.queryByText("Precio fijo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Precio único")).not.toBeInTheDocument();
   });
 
   it("renders the pricing-mode badge for a non-'fixed' mode product", async () => {
@@ -101,7 +101,7 @@ describe("CatalogProductDetailPage", () => {
 
     render(await CatalogProductDetailPage({ params: Promise.resolve({ id: BASE.id }) }));
 
-    expect(screen.getByText("Por área")).toBeInTheDocument();
+    expect(screen.getByText("Por medida")).toBeInTheDocument();
   });
 
   it("renders an 'area' mode product's base + per-m² rate", async () => {

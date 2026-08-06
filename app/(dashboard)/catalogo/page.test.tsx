@@ -106,7 +106,7 @@ describe("CatalogoPage", () => {
     expect(screen.getByText("Volante A5")).toBeInTheDocument();
     // "fixed" is the common case (most businesses only ever use a single
     // price) — badging every row with it is noise, so the list hides it.
-    expect(screen.queryByText("Precio fijo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Precio único")).not.toBeInTheDocument();
   });
 
   it("shows a variant-count summary (not a single price) for a 'package' mode product", async () => {
@@ -120,7 +120,7 @@ describe("CatalogoPage", () => {
     expect(screen.getByText("2 variantes")).toBeInTheDocument();
     expect(screen.getByText("Según variante")).toBeInTheDocument();
     // Non-"fixed" modes still carry their badge — only "fixed" is hidden.
-    expect(screen.getByText("Paquetes")).toBeInTheDocument();
+    expect(screen.getByText("Por paquete")).toBeInTheDocument();
   });
 
   it("results in a 404 when the catalog feature is disabled for the session's business, and never fetches products", async () => {

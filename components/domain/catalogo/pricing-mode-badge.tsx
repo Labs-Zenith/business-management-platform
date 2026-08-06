@@ -7,12 +7,19 @@ import type { PricingMode } from "@/lib/services/ports";
  * shared between this badge, the Catálogo list/detail pages and the
  * pricing-mode `<Select>` in `catalog-product-form-content.tsx`.
  */
+/**
+ * Deliberately business-neutral wording. The five modes were designed against a
+ * print shop's catalog, and their first names carried that with them
+ * ("Variantes", "Por área") — which says nothing to, say, an aesthetics clinic
+ * selling treatments. These name what the price DEPENDS ON, so any business can
+ * recognise its own case without knowing where the modes came from.
+ */
 export const PRICING_MODE_LABELS: Record<PricingMode, string> = {
-  fixed: "Precio fijo",
-  variant: "Variantes",
-  package: "Paquetes",
-  tiered: "Escalonado",
-  area: "Por área",
+  fixed: "Precio único",
+  variant: "Por opciones",
+  package: "Por paquete",
+  tiered: "Por cantidad",
+  area: "Por medida",
 };
 
 export type PricingModeBadgeProps = {

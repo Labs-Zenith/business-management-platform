@@ -243,8 +243,8 @@ export default async function CatalogProductDetailPage({ params }: CatalogProduc
         <StatCard label="Rango de precio" value={priceRangeLabel(product)} />
         <StatCard label="Pedido mínimo" value={minOrderLabel(product)} />
         <StatCard
-          label="Variantes"
-          value={product.variants.length > 0 ? String(product.variants.length) : "Sin variantes"}
+          label="Opciones"
+          value={product.variants.length > 0 ? String(product.variants.length) : "Sin opciones"}
         />
       </div>
 
@@ -261,7 +261,7 @@ export default async function CatalogProductDetailPage({ params }: CatalogProduc
       {product.pricingMode === "variant" ? (
         <Card>
           <CardHeader>
-            <CardTitle>Variantes</CardTitle>
+            <CardTitle>Opciones</CardTitle>
           </CardHeader>
           <CardContent>
             <VariantTable variants={product.variants} />

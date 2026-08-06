@@ -62,7 +62,7 @@ describe("CatalogProductFormContent", () => {
     // "Modo de precio" lives behind the "Precio avanzado" disclosure, closed
     // by default on create.
     await user.click(screen.getByRole("button", { name: /precio avanzado/i }));
-    await selectOption(user, /modo de precio/i, "Variantes");
+    await selectOption(user, /modo de precio/i, "Por opciones");
 
     await user.type(screen.getByLabelText(/nombre de la variante/i), "150x55 cm");
     await user.clear(screen.getByLabelText(/^precio unitario$/i));
@@ -88,7 +88,7 @@ describe("CatalogProductFormContent", () => {
 
     await user.type(screen.getByLabelText(/^nombre$/i), "Stickers 3x3 cm");
     await user.click(screen.getByRole("button", { name: /precio avanzado/i }));
-    await selectOption(user, /modo de precio/i, "Paquetes");
+    await selectOption(user, /modo de precio/i, "Por paquete");
 
     await user.type(screen.getByLabelText(/nombre del paquete/i), "Paquete de 750");
     await user.clear(screen.getByLabelText(/unidades por paquete/i));
@@ -116,7 +116,7 @@ describe("CatalogProductFormContent", () => {
 
     await user.type(screen.getByLabelText(/^nombre$/i), "Agendas 2027");
     await user.click(screen.getByRole("button", { name: /precio avanzado/i }));
-    await selectOption(user, /modo de precio/i, "Escalonado");
+    await selectOption(user, /modo de precio/i, "Por cantidad");
 
     await user.type(screen.getByLabelText(/nombre de la variante/i), "Agenda ejecutiva");
 
@@ -164,7 +164,7 @@ describe("CatalogProductFormContent", () => {
 
     await user.type(screen.getByLabelText(/^nombre$/i), "Lona impresa");
     await user.click(screen.getByRole("button", { name: /precio avanzado/i }));
-    await selectOption(user, /modo de precio/i, "Por área");
+    await selectOption(user, /modo de precio/i, "Por medida");
 
     await user.clear(screen.getByLabelText(/precio base/i));
     await user.type(screen.getByLabelText(/precio base/i), "10000");

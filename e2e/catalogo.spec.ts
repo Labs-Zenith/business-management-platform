@@ -84,7 +84,7 @@ test.describe("Catálogo", () => {
     // `role="combobox"` button), not a native `<select>` — its popup only
     // mounts once opened, so the option must be clicked after the trigger.
     await page.getByLabel("Modo de precio").click();
-    await page.getByRole("option", { name: "Escalonado" }).click();
+    await page.getByRole("option", { name: "Por cantidad" }).click();
 
     // A tiered variant with an empty ladder has no price at all. Postgres
     // cannot express that invariant (a CHECK may not reference a child
