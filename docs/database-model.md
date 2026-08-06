@@ -149,6 +149,118 @@ Restricciones:
 - `business_id, invoice_id, customer_id` debe ser consistente con una factura del mismo negocio.
 - No se permite insertar pagos que superen el saldo pendiente.
 
+### catalog_products
+
+Catálogo comercial: la lista de precios de lo que el negocio **vende**. No confundir
+con dos vecinos cercanos:
+
+- `products` es **inventario** — un SKU con stock y movimientos. Un producto de
+  catálogo no tiene stock; es un listado vendible con una regla de precio.
+- `invoice_types`, `expense_categories`, etc. son catálogos de **referencia**
+  globales, compartidos entre negocios y sin relación con precios.
+
+Campos:
+
+- `id uuid primary key default gen_random_uuid()`
+- `business_id uuid not null references businesses(id)`
+- `name text not null`
+- `category text` — agrupación libre para mostrar ("Avisos", "Stickers"). Sin FK.
+- `description text`
+- `pricing_mode text not null` — uno de `fixed`, `variant`, `package`, `tiered`, `area`
+- `min_order_quantity integer not null default 1`
+- `fixed_unit_price integer` — solo modo `fixed`
+- `area_base_price integer` — solo modo `area`
+- `area_rate_per_m2 integer` — solo modo `area`, centavos por **metro cuadrado**
+- `area_min_price integer` — solo modo `area`, opcional
+- `active boolean not null default true`
+- `created_at`, `updated_at timestamptz not null`
+
+Los cinco modos de precio, y qué recoge cada uno:
+
+| Modo | Precio | Cantidad |
+| --- | --- | --- |
+| `fixed` | un precio unitario en la propia fila | libre, ≥ `min_order_quantity` |
+| `variant` | cada variante trae su `unit_price` | libre, ≥ `min_order_quantity` |
+| `package` | cada variante es un paquete cerrado | se eligen paquetes, nunca unidades sueltas |
+| `tiered` | escalones en `catalog_price_tiers` | la fijas el escalón elegido |
+| `area` | `base + tarifa_m² × (ancho×alto/10.000)` | libre, ≥ `min_order_quantity` |
+
+Restricciones:
+
+- `min_order_quantity > 0`.
+- `unique (business_id, name)` — llave natural para el upsert idempotente del seed.
+- `catalog_products_mode_fields_chk` fija exactamente qué columnas pueden ser no nulas
+  por modo: `fixed_unit_price` solo en `fixed`; `area_base_price`/`area_rate_per_m2`
+  solo en `area`; ninguna de ellas en `variant`/`package`/`tiered`, que llevan su
+  precio íntegro en las tablas hijas.
+
+**El mínimo de pedido es una regla de cantidad, no de precio.** No se puede comprar un
+sticker suelto de un paquete de 750. Los modos `package` y `tiered` lo garantizan por
+construcción (no existe fracción de paquete ni escalón por debajo del más bajo), así
+que su mínimo es derivado y no se almacena. Solo los modos de cantidad libre usan
+`min_order_quantity`.
+
+**Por qué la tarifa se guarda por m² y no por cm²:** el dinero son enteros de centavos
+COP de punta a punta. Una tarifa realista por cm² es subcentavo (~$80.000 COP/m² son
+0,8 centavos/cm²), lo que obligaría a un `numeric` fraccionario o perdería precisión en
+silencio. Por m² sigue siendo un entero exacto y la división ocurre en un único sitio
+documentado, dentro del motor de precios del catálogo.
+
+### catalog_product_variants
+
+Sub-listados con nombre bajo un producto: la medida o material que el cliente elige.
+
+Campos:
+
+- `id uuid primary key default gen_random_uuid()`
+- `product_id uuid not null references catalog_products(id) on delete cascade`
+- `name text not null` — la medida/material ("150 x 55 cm", "3x3 cm")
+- `description text`
+- `sort_order integer not null default 0`
+- `unit_price integer` — modo `variant`
+- `package_quantity integer` — modo `package`: unidades dentro de UN paquete
+- `package_total_price integer` — modo `package`: precio de UN paquete
+- `active boolean not null default true`
+- `created_at`, `updated_at timestamptz not null`
+
+Restricciones:
+
+- `catalog_product_variants_fields_chk`: exactamente una de las tres formas está
+  poblada — `unit_price` sola, el par `package_*`, o ninguna (variante de escalera).
+- `package_quantity > 0` cuando no es nulo.
+
+Así conviven el paquete y la escalera en un mismo esquema sin nulos ambiguos: una
+variante es **o** paquete **o** portadora de escalones, nunca ambas.
+
+### catalog_price_tiers
+
+La escalera de cantidades de una variante en modo `tiered`.
+
+Campos:
+
+- `id uuid primary key default gen_random_uuid()`
+- `variant_id uuid not null references catalog_product_variants(id) on delete cascade`
+- `quantity integer not null` — la cantidad **exacta** que se vende, no un mínimo de rango
+- `unit_price integer` — escalón por unidad: total = `unit_price × quantity`
+- `flat_total_price integer` — escalón de suma alzada, sin precio unitario implícito
+- `sort_order integer not null default 0`
+
+Restricciones:
+
+- `quantity > 0`.
+- `catalog_price_tiers_price_mode_chk`: exactamente uno de `unit_price` /
+  `flat_total_price`.
+- Índice único `(variant_id, quantity)` — dos escalones a la misma cantidad harían
+  ambigua la selección.
+
+El pedido mínimo de la variante es `min(quantity)` de sus escalones, **derivado en
+lectura**, nunca duplicado en una columna que pudiera desviarse de la escalera que
+describe.
+
+Editar un precio de catálogo (producto, variante o escalón) no reescribe ningún precio
+ya capturado en otro lugar: cualquier línea de documento que referencie un producto de
+catálogo guarda su propio precio como una instantánea al momento de crearse.
+
 ## Relaciones
 
 - Un negocio tiene muchos perfiles.
@@ -157,6 +269,8 @@ Restricciones:
 - Una factura tiene muchos items.
 - Una factura tiene muchos pagos.
 - Un pago pertenece a una factura y a un cliente.
+- Un negocio tiene muchos productos de catálogo.
+- Un producto de catálogo tiene muchas variantes; una variante tiene muchos escalones de precio.
 
 ## Calculos derivados
 

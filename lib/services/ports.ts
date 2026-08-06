@@ -283,6 +283,19 @@ export type InvoiceItemInput = {
    * free-text "Otro" line, which touches no inventory.
    */
   productId: string | null;
+  /**
+   * Links this line to a `catalog_products.id` — the commercial price book,
+   * which is mostly SERVICES and carries no stock. Mutually exclusive with
+   * `productId` (enforced by `invoice_items_single_source_chk`): a line has at
+   * most one source. `null` for an inventory line and for a free-text "Otro"
+   * line.
+   *
+   * Unlike `productId`, this is a REFERENCE ONLY — it moves no stock and is
+   * never re-read to price the line. The line's own `description`/`quantity`/
+   * `unitPrice` remain its snapshot, so editing the catalog later cannot
+   * change an invoice already issued.
+   */
+  catalogProductId: string | null;
 };
 
 export type InvoiceItem = InvoiceItemInput & {
@@ -739,9 +752,22 @@ export type ProductUpdate = Partial<ProductCreate> & { active?: boolean };
 export const PRODUCT_SORT_KEYS = ["name", "sku", "unitCost", "currentQuantity", "totalValue", "status"] as const;
 export type ProductSortBy = (typeof PRODUCT_SORT_KEYS)[number];
 
+/**
+ * `stock` filters on the SAME derived `ProductWithStock` fields the "Cantidad"
+ * column and its "Stock bajo" badge already show — never a re-derived
+ * threshold. `"low_stock"` is exactly `ProductWithStock.isLowStock` (the fixed
+ * `1 <= currentQuantity <= 3` rule, see `lib/services/inventory-stock.ts`);
+ * `"in_stock"` is `currentQuantity > 0` (a superset of `"low_stock"`) and
+ * `"out_of_stock"` is `currentQuantity === 0`. Because these depend on
+ * `currentQuantity`/`isLowStock`, both repos MUST apply this filter after
+ * their `withStock` mapping — see each repo's `list` comment.
+ */
+export type ProductStockFilter = "in_stock" | "low_stock" | "out_of_stock";
+
 export type ProductListQuery = {
   q?: string;
   status?: "active" | "inactive";
+  stock?: ProductStockFilter;
   sortBy?: ProductSortBy;
   sortDir?: SortDir;
   page: number;
@@ -776,6 +802,207 @@ export interface ProductRepository {
    * the `deleteRecords` capability.
    */
   delete(businessId: string, id: string): Promise<ProductDeleteResult>;
+}
+
+// ---------------------------------------------------------------------------
+// Catálogo (commercial price book) — NOT inventory `Product`, NOT the global
+// `CatalogRepository` reference lookups further down. See
+// `migrations/1700000016000_add_catalog_products.sql` for the full rationale.
+// ---------------------------------------------------------------------------
+
+/**
+ * Which of five mutually exclusive pricing shapes a catalog product uses.
+ * `fixed`/`variant`/`area` take a free quantity (bounded below by the
+ * product's `minOrderQuantity`); `package`/`tiered` constrain the quantity by
+ * construction — you buy whole packages, or you pick an existing rung.
+ */
+export type PricingMode = "fixed" | "variant" | "package" | "tiered" | "area";
+
+/**
+ * `catalog_products` row. Exactly one of `fixedUnitPrice` / the `area*` group
+ * is populated, per `pricingMode` (enforced by the migration's
+ * `catalog_products_mode_fields_chk`). `variant`/`package`/`tiered` products
+ * carry NO price on this row at all — theirs lives in the child tables.
+ * Every money field is an integer minor unit (COP cents), per `lib/money.ts`.
+ */
+export type CatalogProduct = {
+  id: string;
+  businessId: string;
+  name: string;
+  /** Free-text display grouping ("Avisos", "Stickers"). Not shared reference data. */
+  category: string | null;
+  description: string | null;
+  pricingMode: PricingMode;
+  /**
+   * Smallest orderable quantity, honoured only by the free-quantity modes
+   * (`fixed`/`variant`/`area`). Always 1 and unused for `package`/`tiered`,
+   * whose minimum is implied by the package size / lowest rung — see
+   * `CatalogProductVariantWithTiers.minOrderQuantity`.
+   */
+  minOrderQuantity: number;
+  /** `fixed` mode only; `null` otherwise. */
+  fixedUnitPrice: number | null;
+  /** `area` mode only; `null` otherwise. */
+  areaBasePrice: number | null;
+  /** `area` mode only; cents PER SQUARE METER, not per cm² — see `lib/pricing/quote-line.ts`. `null` otherwise. */
+  areaRatePerM2: number | null;
+  /** `area` mode only, OPTIONAL: a per-unit price floor applied before quantity multiplies. `null` when unset. */
+  areaMinPrice: number | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** One rung of a `tiered` variant's ladder. Exactly one of the two prices is set. */
+export type CatalogPriceTier = {
+  id: string;
+  variantId: string;
+  /** The EXACT quantity this rung sells, not a lower bound for a range. */
+  quantity: number;
+  /** Per-unit rung: total = `unitPrice * quantity`. `null` when `flatTotalPrice` is set. */
+  unitPrice: number | null;
+  /** Lump-sum rung with no implied per-unit figure. `null` when `unitPrice` is set. */
+  flatTotalPrice: number | null;
+  sortOrder: number;
+};
+
+/**
+ * `catalog_product_variants` row — the measurement/material the customer
+ * picks. Exactly one shape is populated: `unitPrice` (a `variant` product),
+ * the `package*` pair (a `package` product), or none of them (a `tiered`
+ * product, whose prices live in `CatalogPriceTier`).
+ */
+export type CatalogProductVariant = {
+  id: string;
+  productId: string;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  /** `variant` mode: a plain unit price with free quantity. */
+  unitPrice: number | null;
+  /** `package` mode: units inside ONE package — never chosen by the buyer. */
+  packageQuantity: number | null;
+  /** `package` mode: total price of ONE package. */
+  packageTotalPrice: number | null;
+  active: boolean;
+};
+
+/**
+ * A variant with its ladder (always `[]` outside `tiered` mode) and the
+ * DERIVED minimum order — `MIN(tiers[].quantity)`, computed at read time and
+ * never persisted, the same way `ProductWithStock.currentQuantity` is derived
+ * rather than stored. `null` unless the parent product is `tiered`.
+ */
+export type CatalogProductVariantWithTiers = CatalogProductVariant & {
+  tiers: CatalogPriceTier[];
+  minOrderQuantity: number | null;
+};
+
+export type CatalogProductDetail = CatalogProduct & {
+  variants: CatalogProductVariantWithTiers[];
+};
+
+/** List-view row: no nested variants, mirroring the `Product` vs `ProductWithStock` light-list/heavy-detail split. */
+export type CatalogProductSummary = CatalogProduct & { variantCount: number };
+
+export type CatalogPriceTierCreate = {
+  quantity: number;
+  unitPrice?: number;
+  flatTotalPrice?: number;
+};
+
+export type CatalogVariantCreate = {
+  name: string;
+  description?: string | null;
+  sortOrder?: number;
+  unitPrice?: number;
+  packageQuantity?: number;
+  packageTotalPrice?: number;
+  /** Required (>= 1) when the parent product is `tiered`; omitted otherwise. */
+  tiers?: CatalogPriceTierCreate[];
+};
+
+export type CatalogProductCreate = {
+  name: string;
+  category?: string | null;
+  description?: string | null;
+  pricingMode: PricingMode;
+  minOrderQuantity?: number;
+  fixedUnitPrice?: number;
+  areaBasePrice?: number;
+  areaRatePerM2?: number;
+  areaMinPrice?: number;
+  /** Required (>= 1) for `variant`/`package`/`tiered`; omitted for `fixed`/`area`. */
+  variants?: CatalogVariantCreate[];
+};
+
+export type CatalogProductUpdate = Partial<CatalogProductCreate> & { active?: boolean };
+
+/**
+ * Outcome of `CatalogProductRepository.delete`, mirroring `ProductDeleteResult`.
+ * A catalog listing that has ever been invoiced (`invoice_items.catalog_product_id`)
+ * is REFUSED, not unlinked: keeping that link intact is what lets an invoice
+ * still be traced back to what was actually sold. `conflict` carries the
+ * DISTINCT invoice count (not the line count), because that is what the
+ * refusal message tells the user.
+ */
+export type CatalogProductDeleteResult =
+  | { outcome: "deleted" }
+  | { outcome: "not_found" }
+  | { outcome: "conflict"; invoiceCount: number };
+
+/**
+ * `"price"` is not a stored column — a catalog product's price depends on
+ * its `pricingMode` (see `CatalogProduct`'s doc comment: `fixed`/`area` carry
+ * a price directly, `variant`/`package`/`tiered` carry theirs in the child
+ * tables). Both `CatalogProductRepository.list` implementations resolve it to
+ * the product's LOWEST/representative price — the same MIN-per-mode branches
+ * `app/(dashboard)/catalogo/[id]/page.tsx#priceRangeLabel` already uses to
+ * render the "Rango de precio" stat, just taking the low end instead of the
+ * full range. A product with no priced variant yet sorts last, like any
+ * other missing value.
+ */
+export const CATALOG_PRODUCT_SORT_KEYS = ["name", "category", "price", "status"] as const;
+export type CatalogProductSortBy = (typeof CATALOG_PRODUCT_SORT_KEYS)[number];
+
+export type CatalogProductListQuery = {
+  q?: string;
+  category?: string;
+  pricingMode?: PricingMode;
+  status?: "active" | "inactive";
+  sortBy?: CatalogProductSortBy;
+  sortDir?: SortDir;
+  page: number;
+  pageSize: number;
+};
+
+export interface CatalogProductRepository {
+  list(businessId: string, query: CatalogProductListQuery): Promise<Paged<CatalogProductSummary>>;
+  getById(businessId: string, id: string): Promise<CatalogProductDetail | null>;
+  /** Atomic: header + every variant + every tier in ONE transaction. */
+  create(businessId: string, data: CatalogProductCreate): Promise<CatalogProductDetail>;
+  /**
+   * Variants and tiers are replaced wholesale (delete + re-insert) on every
+   * edit, the same way `InvoiceRepository.update` replaces items — but with NO
+   * edit-lock, since a catalog listing has no "already paid" state to protect.
+   * Editing prices here never touches `quote_items`: those are snapshots (see
+   * `QuoteItem`). Returns `null` if missing or cross-business.
+   */
+  update(businessId: string, id: string, data: CatalogProductUpdate): Promise<CatalogProductDetail | null>;
+  /** Distinct non-null `category` values for this business, sorted — backs the list page's filter. */
+  listCategories(businessId: string): Promise<string[]>;
+  /**
+   * Hard delete, allowed ONLY when zero `invoice_items` rows reference this
+   * product via `catalog_product_id` — otherwise `{outcome:"conflict",
+   * invoiceCount}`, and the caller is expected to offer deactivation
+   * (`update({active:false})`) instead. UNLIKE `ProductRepository.delete`,
+   * there is no ledger to drop by hand: `catalog_product_variants.product_id`
+   * and `catalog_price_tiers.variant_id` are both `ON DELETE CASCADE` (see
+   * `migrations/1700000016000_add_catalog_products.sql`), so a plain `DELETE
+   * FROM catalog_products` takes variants and tiers with it. Admin-only at
+   * the route layer via the `deleteRecords` capability.
+   */
+  delete(businessId: string, id: string): Promise<CatalogProductDeleteResult>;
 }
 
 // ---------------------------------------------------------------------------
@@ -965,10 +1192,11 @@ export interface InventoryMovementRepository {
 
 /**
  * The set of module/feature flags that can be entitled to a business via the
- * `business_features` table. Currently just the Ventas sales-pipeline board;
- * extend this union (never duplicate it) when a second feature is added.
+ * `business_features` table: the Ventas sales-pipeline board and the
+ * commercial catalog (`/catalogo`). Extend this union (never duplicate it)
+ * when another feature is added.
  */
-export type Feature = "pipeline";
+export type Feature = "pipeline" | "catalog";
 
 export interface BusinessFeatureRepository {
   /** Deny-by-default: no row (or `enabled = false`) resolves to `false`. */

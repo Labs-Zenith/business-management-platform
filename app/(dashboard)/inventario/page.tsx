@@ -5,11 +5,15 @@ import { listProducts } from "@/lib/services/product-service";
 import { canDeleteRecords } from "@/lib/services/permissions";
 import { productSorter } from "@/lib/services/sorting";
 import { parsePageParam } from "@/lib/pagination";
+import type { ProductStockFilter } from "@/lib/services/ports";
 import { PageShell } from "@/components/ui/page-shell";
 import { PageHeader } from "@/components/domain/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { HiddenParams } from "@/components/domain/filters/hidden-params";
+import { SelectFilterField } from "@/components/domain/filters/select-filter-field";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { TablePagination } from "@/components/domain/table-pagination";
 import { TableSortHeader } from "@/components/domain/table-sort-header";
@@ -31,11 +35,53 @@ import DeleteProductButton from "@/components/domain/inventario/delete-product-b
  *
  * Productos paginates via its own `?productsPage=` search param (real
  * pagination — see `components/domain/table-pagination.tsx`).
+ *
+ * Filters are a plain `<form method="get">` (never client state), mirroring
+ * `catalogo/page.tsx`: a text `<Input>` for `q` (name-only — deliberately NOT
+ * extended to `sku`) and `SelectFilterField`s for `status` and `stock`. Every
+ * one of this page's own params — including these new filter params — stays
+ * namespaced with the pre-existing `products` prefix
+ * (`productsQ`/`productsStatus`/`productsStock`, alongside
+ * `productsSort`/`productsDir`/`productsPage`), even though the Movimientos
+ * tab that originally justified the namespacing is gone: it is still this
+ * page's established convention, and keeps every param it owns visually
+ * grouped. The form re-declares `productsSort`/`productsDir` via
+ * `HiddenParams` (never `productsPage` — filtering resets to page 1), and
+ * `TablePagination`'s explicit `params` object lists the filter params too, so
+ * paging preserves them.
+ *
+ * `stock` (`ProductStockFilter`, `lib/services/ports.ts`) needs zero new
+ * repository logic beyond the filter itself: it reuses the SAME derived
+ * `currentQuantity`/`isLowStock` fields this page already renders, never a
+ * re-derived threshold.
  */
 const PAGE_SIZE = 20;
 
+const STOCK_FILTER_LABELS: Record<ProductStockFilter, string> = {
+  in_stock: "Con stock",
+  low_stock: "Stock bajo (1 a 3)",
+  out_of_stock: "Sin stock",
+};
+
+const STOCK_FILTERS: ProductStockFilter[] = ["in_stock", "low_stock", "out_of_stock"];
+
+function parseStatusParam(raw: string | undefined): "active" | "inactive" | undefined {
+  return raw === "active" || raw === "inactive" ? raw : undefined;
+}
+
+function parseStockParam(raw: string | undefined): ProductStockFilter | undefined {
+  return raw && (STOCK_FILTERS as string[]).includes(raw) ? (raw as ProductStockFilter) : undefined;
+}
+
 type InventarioPageProps = {
-  searchParams: Promise<{ productsSort?: string; productsDir?: string; productsPage?: string }>;
+  searchParams: Promise<{
+    productsQ?: string;
+    productsStatus?: string;
+    productsStock?: string;
+    productsSort?: string;
+    productsDir?: string;
+    productsPage?: string;
+  }>;
 };
 
 export default async function InventarioPage({ searchParams }: InventarioPageProps) {
@@ -49,8 +95,13 @@ export default async function InventarioPage({ searchParams }: InventarioPagePro
 
   // Namespaced params, mirroring the existing `productsPage` convention.
   const sort = productSorter.parse(params.productsSort, params.productsDir);
+  const status = parseStatusParam(params.productsStatus);
+  const stock = parseStockParam(params.productsStock);
 
   const productsResult = await listProducts(session, {
+    q: params.productsQ || undefined,
+    status,
+    stock,
     sortBy: sort.sortBy,
     sortDir: sort.sortDir,
     page: parsePageParam(params.productsPage),
@@ -84,6 +135,48 @@ export default async function InventarioPage({ searchParams }: InventarioPagePro
           />
         }
       />
+
+      <form
+        method="get"
+        className="grid grid-cols-1 items-end gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(12rem,1fr)_10rem_10rem_auto]"
+      >
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <label htmlFor="productsQ" className="text-sm text-muted-foreground">
+            Buscar
+          </label>
+          <Input id="productsQ" name="productsQ" defaultValue={params.productsQ ?? ""} placeholder="Nombre" className="w-full" />
+        </div>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <label htmlFor="productsStatus" className="text-sm text-muted-foreground">
+            Estado
+          </label>
+          <SelectFilterField
+            id="productsStatus"
+            name="productsStatus"
+            defaultValue={status ?? ""}
+            options={[
+              { value: "active", label: "Activos" },
+              { value: "inactive", label: "Inactivos" },
+            ]}
+          />
+        </div>
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <label htmlFor="productsStock" className="text-sm text-muted-foreground">
+            Stock
+          </label>
+          <SelectFilterField
+            id="productsStock"
+            name="productsStock"
+            defaultValue={stock ?? ""}
+            options={STOCK_FILTERS.map((value) => ({ value, label: STOCK_FILTER_LABELS[value] }))}
+          />
+        </div>
+        {/* Not `productsPage`: filtering should reset to the first page. */}
+        <HiddenParams params={{ productsSort: params.productsSort, productsDir: params.productsDir }} />
+        <Button type="submit" variant="outline" className="w-full sm:w-auto">
+          Filtrar
+        </Button>
+      </form>
 
       <Table className="min-w-[760px]">
         <TableHeader>
@@ -158,12 +251,15 @@ export default async function InventarioPage({ searchParams }: InventarioPagePro
         total={productsResult.total}
         pathname="/inventario"
         paramName="productsPage"
-        // Built explicitly, so the sort params must be listed here or paging
-        // would silently drop the column the user is sorting by.
+        // Built explicitly, so the sort AND filter params must be listed here
+        // or paging would silently drop them.
         params={{
           productsPage: params.productsPage,
           productsSort: params.productsSort,
           productsDir: params.productsDir,
+          productsQ: params.productsQ,
+          productsStatus: params.productsStatus,
+          productsStock: params.productsStock,
         }}
         itemLabel="productos"
       />

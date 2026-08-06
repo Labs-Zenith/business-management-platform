@@ -33,6 +33,7 @@
 
 import { OpenAPIRegistry } from "@asteasolutions/zod-to-openapi";
 import { z } from "zod";
+import { catalogProductCreateSchema, catalogProductUpdateSchema } from "@/lib/schemas/catalog-product";
 import { customerCreateSchema, customerUpdateSchema } from "@/lib/schemas/customer";
 import { invoiceCreateSchema } from "@/lib/schemas/invoice";
 import { paymentCreateSchema } from "@/lib/schemas/payment";
@@ -100,6 +101,8 @@ const CustomerCreate = customerCreateSchema.meta({ id: "CustomerCreate" });
 const CustomerUpdate = customerUpdateSchema.meta({ id: "CustomerUpdate" });
 const InvoiceCreate = invoiceCreateSchema.meta({ id: "InvoiceCreate" });
 const PaymentCreate = paymentCreateSchema.meta({ id: "PaymentCreate" });
+const CatalogProductCreate = catalogProductCreateSchema.meta({ id: "CatalogProductCreate" });
+const CatalogProductUpdate = catalogProductUpdateSchema.meta({ id: "CatalogProductUpdate" });
 
 /**
  * `/api/auth/login`'s request body has no exported Zod schema (it is
@@ -117,6 +120,8 @@ export const schemas = {
   InvoiceCreate,
   PaymentCreate,
   LoginRequest,
+  CatalogProductCreate,
+  CatalogProductUpdate,
 };
 
 // ---- Response schemas — doc-only shapes; no existing exported Zod schema exists for them ----
@@ -207,6 +212,45 @@ const DashboardSummary = z
     }),
   })
   .meta({ id: "DashboardSummary" });
+
+const pricingModeSchema = z.enum(["fixed", "variant", "package", "tiered", "area"]);
+
+const CatalogProductSummary = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    category: z.string().nullable(),
+    pricingMode: pricingModeSchema,
+    minOrderQuantity: z.number(),
+    variantCount: z.number(),
+    active: z.boolean(),
+  })
+  .meta({ id: "CatalogProductSummary" });
+
+const CatalogProductList = z
+  .object({
+    data: z.array(CatalogProductSummary),
+    page: z.number(),
+    pageSize: z.number(),
+    total: z.number(),
+  })
+  .meta({ id: "CatalogProductList" });
+
+const CatalogProductDetail = z
+  .object({
+    data: z.object({
+      id: z.string(),
+      name: z.string(),
+      pricingMode: pricingModeSchema,
+      minOrderQuantity: z.number(),
+      fixedUnitPrice: z.number().nullable(),
+      areaBasePrice: z.number().nullable(),
+      areaRatePerM2: z.number().nullable(),
+      areaMinPrice: z.number().nullable(),
+      variants: z.array(z.unknown()),
+    }),
+  })
+  .meta({ id: "CatalogProductDetail" });
 
 const SessionResponse = z
   .object({
@@ -417,5 +461,86 @@ registry.registerPath({
   responses: {
     200: { description: "Dashboard summary.", content: { "application/json": { schema: DashboardSummary } } },
     401: commonErrorResponses[401],
+  },
+});
+
+// ---- Catálogo ----
+// Entitlement-gated per business (the `business_features` table, see
+// `lib/services/features.ts`): every path below can answer 403 even to a
+// perfectly valid session whose business lacks the `catalog` feature —
+// which is why 403 appears on paths that have no role restriction at all.
+
+registry.registerPath({
+  method: "get",
+  path: "/api/catalog-products",
+  tags: ["Catálogo"],
+  summary: "List the business's commercial catalog (the sellable price book).",
+  security: sessionSecurity,
+  request: {
+    query: z.object({
+      q: z.string().optional(),
+      category: z.string().optional(),
+      pricingMode: pricingModeSchema.optional(),
+      status: z.enum(["active", "inactive"]).optional(),
+      page: z.string().optional(),
+      pageSize: z.string().optional(),
+    }),
+  },
+  responses: {
+    200: { description: "Catalog product list.", content: { "application/json": { schema: CatalogProductList } } },
+    401: commonErrorResponses[401],
+    403: commonErrorResponses[403],
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/catalog-products",
+  tags: ["Catálogo"],
+  summary: "Create a catalog product with its variants and price tiers.",
+  security: sessionSecurity,
+  request: { body: { content: { "application/json": { schema: CatalogProductCreate } } } },
+  responses: {
+    201: { description: "Catalog product created.", content: { "application/json": { schema: CatalogProductDetail } } },
+    400: commonErrorResponses[400],
+    401: commonErrorResponses[401],
+    403: commonErrorResponses[403],
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/catalog-products/{id}",
+  tags: ["Catálogo"],
+  summary: "Get one catalog product with its variants and price tiers.",
+  security: sessionSecurity,
+  request: { params: z.object({ id: z.string() }) },
+  responses: {
+    200: { description: "Catalog product.", content: { "application/json": { schema: CatalogProductDetail } } },
+    401: commonErrorResponses[401],
+    403: commonErrorResponses[403],
+    404: commonErrorResponses[404],
+  },
+});
+
+registry.registerPath({
+  method: "patch",
+  path: "/api/catalog-products/{id}",
+  tags: ["Catálogo"],
+  summary: "Update a catalog product. Variants and tiers are replaced wholesale.",
+  description:
+    "Editing a price here never rewrites a price already captured elsewhere — any document line " +
+    "that references a catalog product snapshots its own price at the time it was added.",
+  security: sessionSecurity,
+  request: {
+    params: z.object({ id: z.string() }),
+    body: { content: { "application/json": { schema: CatalogProductUpdate } } },
+  },
+  responses: {
+    200: { description: "Catalog product updated.", content: { "application/json": { schema: CatalogProductDetail } } },
+    400: commonErrorResponses[400],
+    401: commonErrorResponses[401],
+    403: commonErrorResponses[403],
+    404: commonErrorResponses[404],
   },
 });

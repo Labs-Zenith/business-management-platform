@@ -23,6 +23,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { supabaseAuthAdapter } from "@/lib/supabase/auth-adapter";
 import { auditLogRepo as mockAuditLogRepo } from "@/lib/mock/audit-log-repo";
 import { catalogRepo as mockCatalogRepo } from "@/lib/mock/catalog-repo";
+import { productCatalogRepo as mockProductCatalogRepo } from "@/lib/mock/product-catalog-repo";
 import { businessRepo as mockBusinessRepo } from "@/lib/mock/business-repo";
 import { businessFeatureRepo as mockBusinessFeatureRepo } from "@/lib/mock/business-features-repo";
 import { customerRepo as mockCustomerRepo } from "@/lib/mock/customer-repo";
@@ -38,6 +39,7 @@ import { productRepo as mockProductRepo } from "@/lib/mock/product-repo";
 import { isDbConfigured } from "@/lib/db/client";
 import { auditLogRepo as dbAuditLogRepo } from "@/lib/db/audit-log-repo";
 import { catalogRepo as dbCatalogRepo } from "@/lib/db/catalog-repo";
+import { productCatalogRepo as dbProductCatalogRepo } from "@/lib/db/product-catalog-repo";
 import { businessRepo as dbBusinessRepo } from "@/lib/db/business-repo";
 import { businessFeatureRepo as dbBusinessFeatureRepo } from "@/lib/db/business-features-repo";
 import { customerRepo as dbCustomerRepo } from "@/lib/db/customer-repo";
@@ -64,5 +66,8 @@ export const repositories = {
   inventory: isDbConfigured ? dbInventoryRepo : mockInventoryRepo,
   auditLog: isDbConfigured ? dbAuditLogRepo : mockAuditLogRepo,
   catalog: isDbConfigured ? dbCatalogRepo : mockCatalogRepo,
+  // The commercial price book — distinct from `catalog` above, which is the
+  // global reference lookups (invoice types, expense categories…).
+  productCatalog: isDbConfigured ? dbProductCatalogRepo : mockProductCatalogRepo,
   pipeline: isDbConfigured ? dbPipelineRepo : mockPipelineRepo,
 };

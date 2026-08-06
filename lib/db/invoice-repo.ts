@@ -44,6 +44,7 @@ type InvoiceItemRow = {
   unit_price: number;
   line_total: number;
   product_id: string | null;
+  catalog_product_id: string | null;
 };
 
 type PaymentRow = {
@@ -105,6 +106,7 @@ function toItem(row: InvoiceItemRow): InvoiceItem {
     unitPrice: Number(row.unit_price),
     lineTotal: Number(row.line_total),
     productId: row.product_id,
+    catalogProductId: row.catalog_product_id,
   };
 }
 
@@ -341,8 +343,8 @@ export const invoiceRepo: InvoiceRepository = {
       // `in`. That also decides whether a guard is needed at all — see below.
       for (const item of data.items) {
         await tx`
-          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total, product_id)
-          VALUES (gen_random_uuid(), ${invoiceId}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}, ${item.productId})
+          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total, product_id, catalog_product_id)
+          VALUES (gen_random_uuid(), ${invoiceId}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}, ${item.productId}, ${item.catalogProductId})
         `;
 
         if (item.productId) {
@@ -519,8 +521,8 @@ export const invoiceRepo: InvoiceRepository = {
       // plain loop preserve the exact per-item order.
       for (const item of data.items) {
         await tx`
-          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total, product_id)
-          SELECT gen_random_uuid(), ${id}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}, ${item.productId}
+          INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, line_total, product_id, catalog_product_id)
+          SELECT gen_random_uuid(), ${id}, ${item.description}, ${item.quantity}, ${item.unitPrice}, ${item.lineTotal}, ${item.productId}, ${item.catalogProductId}
           WHERE EXISTS (
             SELECT 1 FROM invoices i
             WHERE i.id = ${id} AND i.business_id = ${businessId}

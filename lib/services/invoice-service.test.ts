@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
 import { formatCOP, lineTotal } from "@/lib/money";
 import type {
@@ -100,6 +100,16 @@ const VALID_INPUT = {
   notes: null,
 };
 
+/**
+ * `createInvoice` calls `computeStatus(total, 0, dueDate)` with NO explicit
+ * `now` (see `lib/services/invoice-service.ts`), so it reads the real wall
+ * clock. Freezing it here — well before `VALID_INPUT.dueDate` — is what keeps
+ * this suite's "pending" assertions durable instead of silently flipping to
+ * "overdue" once the calendar catches up to that literal (exactly the bug
+ * `lib/services/status.test.ts`'s boundary cases guard against).
+ */
+const FROZEN_NOW = new Date("2026-07-08T00:00:00.000Z");
+
 function buildInvoiceDetail(overrides: Partial<Invoice> = {}): InvoiceDetail {
   const invoice: Invoice = {
     id: "50000000-0000-4000-8000-000000000999",
@@ -137,6 +147,11 @@ describe("createInvoice", () => {
     mockAuditLogCreate.mockReset();
     mockAuditLogCreate.mockResolvedValue({} as AuditLogEntry);
     mockListInvoiceTypes.mockClear();
+    vi.setSystemTime(FROZEN_NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("computes lineTotal/subtotal/total/status server-side and persists under session.businessId", async () => {
@@ -410,6 +425,15 @@ describe("updateInvoice", () => {
     mockInvoicesUpdate.mockReset();
     mockAuditLogCreate.mockReset();
     mockAuditLogCreate.mockResolvedValue({} as AuditLogEntry);
+    // `updateInvoice` recomputes the status against the real wall clock, so
+    // `VALID_UPDATE`'s hardcoded `dueDate` would start reading as overdue the
+    // day it arrives. Freezing the clock is what keeps this suite from
+    // expiring — same reason the `createInvoice` block above does it.
+    vi.setSystemTime(FROZEN_NOW);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("proceeds to the repository when the invoice is PARTIALLY paid (balance > 0), computing status from the REAL paidAmount (not 0)", async () => {

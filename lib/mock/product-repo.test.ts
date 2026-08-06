@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ProductCreate } from "@/lib/services/ports";
+import type { ProductCreate, ProductListQuery } from "@/lib/services/ports";
 import { createProductRepository } from "./product-repo";
 import { createInventoryMovementRepository } from "./inventory-repo";
 import { createEmptyStore, type MockStore } from "./store";
@@ -144,6 +144,7 @@ describe("createProductRepository.delete", () => {
       unitPrice: 25000,
       lineTotal: 50000,
       productId,
+      catalogProductId: null,
     });
   }
 
@@ -288,5 +289,65 @@ describe("createProductRepository.list", () => {
     expect(result.total).toBe(2);
     expect(result.data.map((p) => p.name)).toEqual(["Alfa", "Zeta"]);
     expect(result.data.find((p) => p.name === "Zeta")!.currentQuantity).toBe(5);
+  });
+
+  /**
+   * `stock` filters the DERIVED `currentQuantity`/`isLowStock` fields —
+   * mirrors `lib/db/product-repo.test.ts`'s equivalent coverage so both repos
+   * stay provably identical. Four products span `out_of_stock` (0), both
+   * `low_stock` boundaries (1 and 3 inclusive), and a healthy
+   * `in_stock`-but-not-low quantity (4); `in_stock` is a superset that
+   * includes the low-stock ones.
+   */
+  async function seedFourStockLevels(productRepo: ReturnType<typeof createProductRepository>) {
+    const movementRepo = createInventoryMovementRepository(store);
+    const outOfStock = await productRepo.create(BUSINESS_ID, buildInput({ name: "Sin stock", sku: "OUT-1" }));
+    const lowMin = await productRepo.create(BUSINESS_ID, buildInput({ name: "Bajo minimo", sku: "LOW-1" }));
+    const lowMax = await productRepo.create(BUSINESS_ID, buildInput({ name: "Bajo maximo", sku: "LOW-2" }));
+    const healthy = await productRepo.create(BUSINESS_ID, buildInput({ name: "Saludable", sku: "OK-1" }));
+    await movementRepo.create(BUSINESS_ID, { productId: lowMin.id, type: "in", quantity: 1 });
+    await movementRepo.create(BUSINESS_ID, { productId: lowMax.id, type: "in", quantity: 3 });
+    await movementRepo.create(BUSINESS_ID, { productId: healthy.id, type: "in", quantity: 4 });
+    return { outOfStock, lowMin, lowMax, healthy };
+  }
+
+  it("stock=out_of_stock returns only the product with currentQuantity === 0", async () => {
+    const productRepo = createProductRepository(store);
+    await seedFourStockLevels(productRepo);
+
+    const result = await productRepo.list(BUSINESS_ID, { stock: "out_of_stock", page: 1, pageSize: 20 });
+
+    expect(result.data.map((p) => p.name)).toEqual(["Sin stock"]);
+  });
+
+  it("stock=low_stock returns exactly the 1-and-3 boundary products, excluding out-of-stock and healthy ones", async () => {
+    const productRepo = createProductRepository(store);
+    await seedFourStockLevels(productRepo);
+
+    const result = await productRepo.list(BUSINESS_ID, { stock: "low_stock", page: 1, pageSize: 20 });
+
+    expect(result.data.map((p) => p.name).sort()).toEqual(["Bajo maximo", "Bajo minimo"]);
+  });
+
+  it("stock=in_stock returns every product with currentQuantity > 0, including the low-stock ones", async () => {
+    const productRepo = createProductRepository(store);
+    await seedFourStockLevels(productRepo);
+
+    const result = await productRepo.list(BUSINESS_ID, { stock: "in_stock", page: 1, pageSize: 20 });
+
+    expect(result.data.map((p) => p.name).sort()).toEqual(["Bajo maximo", "Bajo minimo", "Saludable"]);
+  });
+
+  it("ignores an unrecognized stock value instead of throwing, returning every product unfiltered", async () => {
+    const productRepo = createProductRepository(store);
+    await seedFourStockLevels(productRepo);
+
+    const result = await productRepo.list(BUSINESS_ID, {
+      stock: "bogus" as unknown as ProductListQuery["stock"],
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(result.data).toHaveLength(4);
   });
 });

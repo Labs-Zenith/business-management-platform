@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProductListQuery } from "@/lib/services/ports";
 
 /**
  * Mirrors `lib/db/employee-repo.test.ts`'s mocking pattern: `sql` is a Neon
@@ -135,6 +136,68 @@ describe("db productRepo.list", () => {
     const productB = result.data.find((p) => p.name === "B")!;
     expect(productA.isLowStock).toBe(true);
     expect(productB.isLowStock).toBe(false);
+  });
+
+  /**
+   * `stock` filters the DERIVED `currentQuantity`/`isLowStock` fields, so
+   * these seed four products spanning `out_of_stock` (0), both `low_stock`
+   * boundaries (1 and 3 inclusive), and a healthy `in_stock`-but-not-low
+   * quantity (4) — `in_stock` is a superset that includes the low-stock ones.
+   */
+  const PRODUCT_ID_OUT = "90000000-0000-4000-8000-000000000010";
+  const PRODUCT_ID_LOW_MIN = "90000000-0000-4000-8000-000000000011";
+  const PRODUCT_ID_LOW_MAX = "90000000-0000-4000-8000-000000000012";
+  const PRODUCT_ID_HEALTHY = "90000000-0000-4000-8000-000000000013";
+
+  function seedFourStockLevels() {
+    mockSql
+      .mockResolvedValueOnce([
+        productRow({ id: PRODUCT_ID_OUT, name: "Sin stock" }),
+        productRow({ id: PRODUCT_ID_LOW_MIN, name: "Bajo minimo" }),
+        productRow({ id: PRODUCT_ID_LOW_MAX, name: "Bajo maximo" }),
+        productRow({ id: PRODUCT_ID_HEALTHY, name: "Saludable" }),
+      ])
+      .mockResolvedValueOnce([
+        movementRow({ id: "a1", product_id: PRODUCT_ID_LOW_MIN, type: "in", quantity: 1 }),
+        movementRow({ id: "a2", product_id: PRODUCT_ID_LOW_MAX, type: "in", quantity: 3 }),
+        movementRow({ id: "a3", product_id: PRODUCT_ID_HEALTHY, type: "in", quantity: 4 }),
+      ]);
+  }
+
+  it("stock=out_of_stock returns only the product with currentQuantity === 0", async () => {
+    seedFourStockLevels();
+
+    const result = await productRepo.list(BUSINESS_ID, { stock: "out_of_stock", page: 1, pageSize: 20 });
+
+    expect(result.data.map((p) => p.name)).toEqual(["Sin stock"]);
+  });
+
+  it("stock=low_stock returns exactly the 1-and-3 boundary products, excluding out-of-stock and healthy ones", async () => {
+    seedFourStockLevels();
+
+    const result = await productRepo.list(BUSINESS_ID, { stock: "low_stock", page: 1, pageSize: 20 });
+
+    expect(result.data.map((p) => p.name).sort()).toEqual(["Bajo maximo", "Bajo minimo"]);
+  });
+
+  it("stock=in_stock returns every product with currentQuantity > 0, including the low-stock ones", async () => {
+    seedFourStockLevels();
+
+    const result = await productRepo.list(BUSINESS_ID, { stock: "in_stock", page: 1, pageSize: 20 });
+
+    expect(result.data.map((p) => p.name).sort()).toEqual(["Bajo maximo", "Bajo minimo", "Saludable"]);
+  });
+
+  it("ignores an unrecognized stock value instead of throwing, returning every product unfiltered", async () => {
+    seedFourStockLevels();
+
+    const result = await productRepo.list(BUSINESS_ID, {
+      stock: "bogus" as unknown as ProductListQuery["stock"],
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(result.data).toHaveLength(4);
   });
 });
 

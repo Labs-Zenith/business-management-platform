@@ -30,5 +30,6 @@ export type {
   InvoiceFormContentInvoice,
   InvoiceFormInvoiceType,
   InvoiceFormProduct,
+  InvoiceFormCatalogProduct,
 } from "./invoice-form-content";
 export default InvoiceForm;

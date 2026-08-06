@@ -199,9 +199,17 @@ describe("POST /api/invoices", () => {
     resetStore();
     mockCookieJar.clear();
     process.env.APP_ORIGIN = "http://localhost:3000";
+    // `createInvoice` computes status via `computeStatus(total, 0, dueDate)`
+    // with NO explicit `now` (see `lib/services/invoice-service.ts`), so it
+    // reads the real wall clock. Freezing it here — well before the
+    // `dueDate: "2026-08-06"` literal below — keeps the "pending" assertion
+    // durable instead of silently flipping to "overdue" once the calendar
+    // catches up to that literal.
+    vi.setSystemTime(new Date("2026-07-08T00:00:00.000Z"));
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     if (ORIGINAL_APP_ORIGIN === undefined) {
       delete process.env.APP_ORIGIN;
     } else {

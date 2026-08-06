@@ -21,9 +21,61 @@ function isoDate(date: Date): string {
  * Today's date as a local `YYYY-MM-DD` string (not UTC). `now` is injectable
  * so callers that must be deterministic under test (the dashboard's rolling
  * window) don't have to freeze the clock.
+ *
+ * "Local" here means the PROCESS's own ambient timezone (`getFullYear()` /
+ * `getMonth()` / `getDate()`), which is only correct when the process IS the
+ * timezone you want — true for every current caller of this function, all
+ * `"use client"` components where "local" is the user's own browser. It is
+ * NOT correct for server-side code: this app's Vercel deployment runs UTC, so
+ * calling `todayIsoDate` there would compute "today" up to 5 hours early for
+ * a Bogota user. Server-side code that needs the BUSINESS's calendar day
+ * (regardless of what timezone the server process happens to be running in)
+ * must use `todayIsoDateInAppZone` below instead. Do not merge these two into
+ * one function — they deliberately answer different questions ("what day is
+ * it where THIS PROCESS is" vs. "what day is it in the business's own
+ * timezone"), and the difference is exactly the bug class this file exists to
+ * prevent.
  */
 export function todayIsoDate(now: Date = new Date()): string {
   return isoDate(now);
+}
+
+/**
+ * The app's fixed business timezone (Colombia, UTC-5, no DST). Exported so
+ * every place that needs "Colombia's clock" specifically — as opposed to
+ * whatever timezone the running process happens to be in — shares one
+ * literal instead of re-typing the IANA zone name (previously duplicated
+ * across the two `Intl.DateTimeFormat`s below).
+ */
+export const APP_TIME_ZONE = "America/Bogota";
+
+/**
+ * `Intl.DateTimeFormat("en-CA", ...)` is used purely as a formatting trick:
+ * `en-CA` is the one built-in locale whose default date format is already
+ * `YYYY-MM-DD`, so no manual part assembly (`getFullYear`/`getMonth`/...) is
+ * needed — and, critically, `Intl.DateTimeFormat` with an explicit `timeZone`
+ * option converts the given instant into that zone regardless of the
+ * process's own ambient timezone, which local `Date` getters cannot do.
+ */
+const APP_ZONE_ISO_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIME_ZONE });
+
+/**
+ * An instant as a `YYYY-MM-DD` string in `APP_TIME_ZONE`, independent of the
+ * process's own ambient timezone. Defaults to `now` (mirroring
+ * `todayIsoDate`'s shape) so its main use is "what day is it for the business
+ * right now", but it is equally correct applied to any other instant — which
+ * is exactly why `lib/services/status.ts#computeStatus` reuses it to
+ * normalize a due-date `Date` onto the same zone before comparing it against
+ * "today".
+ *
+ * Use this instead of `todayIsoDate` for anything that runs SERVER-SIDE
+ * (API routes, services) and needs "today" to mean the Colombian business's
+ * calendar day rather than the deploy platform's UTC day. See `todayIsoDate`
+ * above for the full rationale; the two are intentionally NOT the same
+ * function.
+ */
+export function todayIsoDateInAppZone(now: Date = new Date()): string {
+  return APP_ZONE_ISO_DATE_FORMATTER.format(now);
 }
 
 /**
@@ -47,7 +99,7 @@ export function daysAgoIsoDate(days: number, now: Date = new Date()): string {
 const DAY_MONTH_FORMATTER = new Intl.DateTimeFormat("es-CO", {
   day: "numeric",
   month: "short",
-  timeZone: "America/Bogota",
+  timeZone: APP_TIME_ZONE,
 });
 
 /**
@@ -78,7 +130,7 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("es-CO", {
   year: "numeric",
   hour: "numeric",
   minute: "2-digit",
-  timeZone: "America/Bogota",
+  timeZone: APP_TIME_ZONE,
 });
 
 /**

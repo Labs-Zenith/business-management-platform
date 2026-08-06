@@ -4,6 +4,7 @@ import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { listCustomers } from "@/lib/services/customer-service";
 import { listProducts } from "@/lib/services/product-service";
+import { listInvoiceCatalogOptions } from "@/lib/services/invoice-catalog-options";
 import { getInvoice } from "@/lib/services/invoice-service";
 import {
   Breadcrumb,
@@ -65,9 +66,10 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
     redirect(`/invoices/${id}`);
   }
 
-  const [result, productsResult] = await Promise.all([
+  const [result, productsResult, catalogProducts] = await Promise.all([
     listCustomers(session, { page: 1, pageSize: CUSTOMER_LOOKUP_PAGE_SIZE }),
     listProducts(session, { page: 1, pageSize: PRODUCT_LOOKUP_PAGE_SIZE }),
+    listInvoiceCatalogOptions(session),
   ]);
   // Only active products are offered for a NEW pick — an existing line whose
   // `productId` references an inactive product still prefills correctly via
@@ -109,6 +111,7 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
           name: product.name,
           currentQuantity: product.currentQuantity,
         }))}
+        catalogProducts={catalogProducts}
         invoice={{
           id: invoice.id,
           customerId: invoice.customerId,
@@ -121,6 +124,7 @@ export default async function EditInvoicePage({ params }: EditInvoicePageProps) 
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             productId: item.productId,
+            catalogProductId: item.catalogProductId,
           })),
         }}
       />

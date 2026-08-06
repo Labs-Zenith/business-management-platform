@@ -3,6 +3,9 @@ import type {
   AuditLogEntry,
   Business,
   CatalogItem,
+  CatalogPriceTier,
+  CatalogProduct,
+  CatalogProductVariant,
   Customer,
   Employee,
   Expense,
@@ -58,6 +61,17 @@ export type MockStore = {
   auditLogs: Map<string, AuditLogEntry>;
   pipelineCards: Map<string, PipelineCard>;
   /**
+   * Commercial catalog ("Catálogo") — the price book of what a business
+   * SELLS, distinct from `products` (inventory). Child tables
+   * (`catalogProductVariants`/`catalogPriceTiers`) carry no `businessId` of
+   * their own and scope through `catalogProducts` via `productId`/
+   * `variantId`, mirroring `invoices`/`invoiceItems`. See
+   * `migrations/1700000016000_add_catalog_products.sql`.
+   */
+  catalogProducts: Map<string, CatalogProduct>;
+  catalogProductVariants: Map<string, CatalogProductVariant>;
+  catalogPriceTiers: Map<string, CatalogPriceTier>;
+  /**
    * Per-business feature entitlements (`businessId -> feature -> enabled`),
    * mirroring the Postgres `business_features` table (see
    * `lib/mock/business-features-repo.ts`). Deny-by-default: a missing
@@ -97,6 +111,9 @@ export type SerializedStore = {
   inventoryMovements: InventoryMovement[];
   auditLogs: AuditLogEntry[];
   pipelineCards: PipelineCard[];
+  catalogProducts: CatalogProduct[];
+  catalogProductVariants: CatalogProductVariant[];
+  catalogPriceTiers: CatalogPriceTier[];
   businessFeatures: Array<{ businessId: string; feature: Feature; enabled: boolean }>;
   invoiceSequences: Record<string, number>;
 };
@@ -116,6 +133,9 @@ export function serializeStore(target: MockStore = store): SerializedStore {
     inventoryMovements: [...target.inventoryMovements.values()],
     auditLogs: [...target.auditLogs.values()],
     pipelineCards: [...target.pipelineCards.values()],
+    catalogProducts: [...target.catalogProducts.values()],
+    catalogProductVariants: [...target.catalogProductVariants.values()],
+    catalogPriceTiers: [...target.catalogPriceTiers.values()],
     businessFeatures: [...target.businessFeatures.entries()].flatMap(([businessId, featureMap]) =>
       [...featureMap.entries()].map(([feature, enabled]) => ({ businessId, feature, enabled })),
     ),
@@ -137,6 +157,9 @@ export function clearStore(target: MockStore): void {
   target.inventoryMovements.clear();
   target.auditLogs.clear();
   target.pipelineCards.clear();
+  target.catalogProducts.clear();
+  target.catalogProductVariants.clear();
+  target.catalogPriceTiers.clear();
   target.businessFeatures.clear();
   target.invoiceSequences.clear();
 }
@@ -167,6 +190,11 @@ export function hydrateStore(data: SerializedStore, target: MockStore = store): 
   // Same `?? []` requirement for `pipelineCards` — a cookie serialized before
   // the ventas-pipeline change has no `pipelineCards` field at all.
   for (const p of data.pipelineCards ?? []) target.pipelineCards.set(p.id, p);
+  // Same `?? []` requirement for the catalog maps — a cookie serialized
+  // before the catalogo change has none of these fields at all.
+  for (const p of data.catalogProducts ?? []) target.catalogProducts.set(p.id, p);
+  for (const v of data.catalogProductVariants ?? []) target.catalogProductVariants.set(v.id, v);
+  for (const t of data.catalogPriceTiers ?? []) target.catalogPriceTiers.set(t.id, t);
   // Same `?? []` requirement for `businessFeatures` — a cookie serialized
   // before the business-features change has no such field at all.
   for (const row of data.businessFeatures ?? []) {
@@ -209,6 +237,9 @@ export function createEmptyStore(): MockStore {
     inventoryMovements: new Map(),
     auditLogs: new Map(),
     pipelineCards: new Map(),
+    catalogProducts: new Map(),
+    catalogProductVariants: new Map(),
+    catalogPriceTiers: new Map(),
     businessFeatures: new Map(),
     invoiceSequences: new Map(),
     invoiceTypes: new Map(),

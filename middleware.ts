@@ -47,6 +47,12 @@ const PROTECTED_PATH_PREFIXES = [
   "/inventario",
   "/api/products",
   "/api/inventory-movements",
+  // Catalogo (commercial price book) — entitlement-gated per business rather
+  // than role-gated. Presence-only here like every prefix above; the
+  // authoritative gates are the page's own `notFound()` when the `catalog`
+  // feature is off and the API route's 403.
+  "/catalogo",
+  "/api/catalog-products",
 ];
 
 function isProtectedPath(pathname: string): boolean {
@@ -99,5 +105,7 @@ export const config = {
     "/inventario/:path*",
     "/api/products/:path*",
     "/api/inventory-movements/:path*",
+    "/catalogo/:path*",
+    "/api/catalog-products/:path*",
   ],
 };

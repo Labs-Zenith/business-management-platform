@@ -42,8 +42,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { MoneyAmount } from "@/components/domain/money-amount";
 import { todayIsoDate } from "@/lib/dates";
 import { formatCOP, lineTotal, pesosToCents } from "@/lib/money";
-import { InvoiceItemFields, type InvoiceItemFieldsProduct } from "./invoice-item-fields";
-import { invoiceFormSchema, OTRO_PRODUCT_VALUE, type InvoiceFormValues } from "./invoice-form-schema";
+import {
+  InvoiceItemFields,
+  type InvoiceItemFieldsCatalogProduct,
+  type InvoiceItemFieldsProduct,
+} from "./invoice-item-fields";
+import {
+  invoiceFormSchema,
+  OTRO_PRODUCT_VALUE,
+  parseItemSource,
+  toCatalogOptionValue,
+  type InvoiceFormValues,
+} from "./invoice-form-schema";
 import { CREDIT_NOTE_CODE } from "@/lib/services/inventory-stock";
 
 const CREATE_ERROR_MESSAGE = "No se pudo crear la factura. Verifica los datos e intenta de nuevo.";
@@ -56,6 +66,7 @@ export type InvoiceFormInvoiceType = { id: string; code: string; label: string }
 
 /** Re-exported alias — see `invoice-item-fields.tsx`'s `InvoiceItemFieldsProduct` doc comment for the full contract. */
 export type InvoiceFormProduct = InvoiceItemFieldsProduct;
+export type InvoiceFormCatalogProduct = InvoiceItemFieldsCatalogProduct;
 
 /**
  * Resolves the catalog's `venta` type as the create-mode default — matching
@@ -83,6 +94,8 @@ export type InvoiceFormContentInvoice = {
     unitPrice: number;
     /** Links this line to an inventory product, or `null` for a free-text "Otro" line — see `InvoiceItemInput.productId` (`lib/services/ports.ts`). */
     productId: string | null;
+    /** Links this line to a catalog product (a service). Mutually exclusive with `productId`. */
+    catalogProductId: string | null;
   }[];
   /**
    * Integer minor units (COP cents) already collected against this invoice,
@@ -102,6 +115,12 @@ export type InvoiceFormContentProps = {
   invoiceTypes: InvoiceFormInvoiceType[];
   /** Active inventory products only — populates each item row's product `<Select>` (see `invoice-item-fields.tsx`). */
   products: InvoiceFormProduct[];
+  /**
+   * Active catalog products (services) for the same `<Select>`, under their
+   * own group. Empty/omitted when the business has no `catalog` entitlement,
+   * which makes the group disappear entirely.
+   */
+  catalogProducts?: InvoiceFormCatalogProduct[];
   /** Preselects the customer, e.g. when arriving from "Crear factura para este cliente". Ignored in edit mode. */
   defaultCustomerId?: string;
   /** When present, the form operates in edit mode: pre-fills from this invoice and PATCHes instead of POSTing. */
@@ -121,8 +140,23 @@ export type InvoiceFormContentProps = {
 function toItemDefaultValues(
   item: InvoiceFormContentInvoice["items"][number],
   products: InvoiceFormProduct[],
+  catalogProducts: InvoiceFormCatalogProduct[],
 ): InvoiceFormValues["items"][number] {
   const matchedProduct = item.productId ? products.find((product) => product.id === item.productId) : undefined;
+  // Same fallback rule as inventory: a catalog product that has since been
+  // deactivated or deleted (the FK is `ON DELETE SET NULL`) degrades to a
+  // free-text line rather than selecting an option that is not in the list.
+  const matchedCatalogProduct = item.catalogProductId
+    ? catalogProducts.find((product) => product.id === item.catalogProductId)
+    : undefined;
+  if (matchedCatalogProduct) {
+    return {
+      productId: toCatalogOptionValue(matchedCatalogProduct.id),
+      description: matchedCatalogProduct.name,
+      quantity: item.quantity,
+      unitPrice: String(item.unitPrice / 100),
+    };
+  }
   return {
     productId: matchedProduct ? matchedProduct.id : OTRO_PRODUCT_VALUE,
     description: matchedProduct ? matchedProduct.name : item.description,
@@ -139,6 +173,7 @@ function toDefaultValues(
   invoice: InvoiceFormContentInvoice | undefined,
   invoiceTypes: InvoiceFormInvoiceType[],
   products: InvoiceFormProduct[],
+  catalogProducts: InvoiceFormCatalogProduct[],
 ): InvoiceFormValues {
   if (invoice) {
     return {
@@ -151,7 +186,7 @@ function toDefaultValues(
       // this value is never read/submitted, but the field must still exist
       // for `InvoiceFormValues`'s shape.
       invoiceTypeId: "",
-      items: invoice.items.map((item) => toItemDefaultValues(item, products)),
+      items: invoice.items.map((item) => toItemDefaultValues(item, products, catalogProducts)),
     };
   }
   return {
@@ -168,6 +203,7 @@ export default function InvoiceFormContent({
   customers,
   invoiceTypes,
   products,
+  catalogProducts = [],
   defaultCustomerId,
   invoice,
 }: InvoiceFormContentProps) {
@@ -183,7 +219,7 @@ export default function InvoiceFormContent({
     formState: { errors, isSubmitting, isValid },
   } = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceFormSchema),
-    defaultValues: toDefaultValues(defaultCustomerId, invoice, invoiceTypes, products),
+    defaultValues: toDefaultValues(defaultCustomerId, invoice, invoiceTypes, products, catalogProducts),
     // Live (as-you-type) validation: errors surface per field after its
     // first blur, then keep re-validating on every subsequent change.
     mode: "onTouched",
@@ -240,7 +276,9 @@ export default function InvoiceFormContent({
           description: item.description,
           quantity: item.quantity,
           unitPrice: pesosToCents(Number(item.unitPrice) || 0),
-          productId: item.productId === OTRO_PRODUCT_VALUE ? null : item.productId,
+          // One `<Select>` value, two mutually-exclusive columns — see
+          // `parseItemSource` for why catalog ids carry a prefix.
+          ...parseItemSource(item.productId),
         })),
       };
 
@@ -360,6 +398,7 @@ export default function InvoiceFormContent({
         errors={errors}
         setValue={setValue}
         products={products}
+        catalogProducts={catalogProducts}
         enforceStock={!isEditing && !isCreditNote}
       />
 

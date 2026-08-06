@@ -74,8 +74,23 @@ export const productRepo: ProductRepository = {
     }
     // Sorted AFTER the stock map, not before it (as the old fixed name sort
     // was): `currentQuantity` and `totalValue` are sortable columns and do not
-    // exist until here.
-    const withStockData = products.map((product) => withStock(product, movementRows));
+    // exist until here. `stock` filters on those same derived fields, so it
+    // is applied here too — after `withStock`, before sort/paginate.
+    let withStockData = products.map((product) => withStock(product, movementRows));
+    if (query.stock) {
+      withStockData = withStockData.filter((product) => {
+        switch (query.stock) {
+          case "in_stock":
+            return product.currentQuantity > 0;
+          case "low_stock":
+            return product.isLowStock;
+          case "out_of_stock":
+            return product.currentQuantity === 0;
+          default:
+            return true;
+        }
+      });
+    }
     return paginate(productSorter.sort(withStockData, query), query.page, query.pageSize);
   },
 

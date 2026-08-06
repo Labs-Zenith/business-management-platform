@@ -2,6 +2,9 @@ import { lineTotal } from "@/lib/money";
 import { computeStatus } from "@/lib/services/status";
 import type {
   Business,
+  CatalogPriceTier,
+  CatalogProduct,
+  CatalogProductVariant,
   Customer,
   Employee,
   Expense,
@@ -15,6 +18,7 @@ import type {
 } from "@/lib/services/ports";
 import type { MockStore, Profile } from "../store";
 import { findCatalogIdByCode, generateId, nextInvoiceNumber } from "../store";
+import { catalogProductFixtures } from "./catalog-products";
 import {
   BUSINESS_ID,
   BUSINESS_ID_2,
@@ -53,12 +57,13 @@ export function seedMinimal(store: MockStore): void {
 }
 
 /**
- * Enables the Ventas sales-pipeline board for the primary "Negocio Demo"
- * business (`BUSINESS_ID`), so it shows up in mock/dev WITHOUT setting any
- * env var — replaces the earlier `PIPELINE_ENABLED_BUSINESS_IDS` allowlist
- * (see `lib/services/features.ts`). Shared by both seed paths (`seedMinimal`,
- * the fresh-cookie-session seed, and `seedFixtures`, the full demo dataset)
- * so the two never drift out of sync.
+ * Enables the Ventas sales-pipeline board and the commercial catalog
+ * (`/catalogo`) for the primary "Negocio Demo" business (`BUSINESS_ID`), so
+ * both show up in mock/dev WITHOUT setting any env var — replaces the
+ * earlier `PIPELINE_ENABLED_BUSINESS_IDS` allowlist (see
+ * `lib/services/features.ts`). Shared by both seed paths (`seedMinimal`, the
+ * fresh-cookie-session seed, and `seedFixtures`, the full demo dataset) so
+ * the two never drift out of sync.
  *
  * Set-if-absent (NOT an unconditional overwrite): `lib/mock/cookie-persistence.ts#loadStoreFromCookie`
  * calls `seedMinimal` on EVERY request that arrives without an `app_data`
@@ -71,7 +76,13 @@ export function seedMinimal(store: MockStore): void {
  */
 function seedDemoBusinessFeatures(store: MockStore): void {
   if (!store.businessFeatures.has(BUSINESS_ID)) {
-    store.businessFeatures.set(BUSINESS_ID, new Map<Feature, boolean>([["pipeline", true]]));
+    store.businessFeatures.set(
+      BUSINESS_ID,
+      new Map<Feature, boolean>([
+        ["pipeline", true],
+        ["catalog", true],
+      ]),
+    );
   }
 }
 
@@ -137,6 +148,7 @@ export function seedFixtures(store: MockStore): void {
       // Fixture lines are synthetic/free-text — never linked to a real
       // inventory product.
       productId: null,
+      catalogProductId: null,
       lineTotal: lineTotal(item.quantity, item.unitPrice),
     }));
     const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
@@ -263,5 +275,57 @@ export function seedFixtures(store: MockStore): void {
       createdAt: daysFromNow(movementFixture.dayOffset) + "T00:00:00.000Z",
     };
     store.inventoryMovements.set(movement.id, movement);
+  }
+
+  // Commercial catalog ("Catálogo") — see `./catalog-products.ts`'s doc
+  // comment for why this stays deliberately tiny (3 products). Variants and
+  // tiers are children of the product, scoped via `productId`/`variantId`
+  // (no `businessId` of their own), mirroring how `invoiceItems` scope
+  // through `invoices` above.
+  for (const productFixture of catalogProductFixtures) {
+    const product: CatalogProduct = {
+      id: productFixture.id,
+      businessId: BUSINESS_ID,
+      name: productFixture.name,
+      category: productFixture.category,
+      description: productFixture.description,
+      pricingMode: productFixture.pricingMode,
+      minOrderQuantity: productFixture.minOrderQuantity ?? 1,
+      fixedUnitPrice: productFixture.fixedUnitPrice ?? null,
+      areaBasePrice: productFixture.areaBasePrice ?? null,
+      areaRatePerM2: productFixture.areaRatePerM2 ?? null,
+      areaMinPrice: productFixture.areaMinPrice ?? null,
+      active: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    store.catalogProducts.set(product.id, product);
+
+    (productFixture.variants ?? []).forEach((variantFixture, variantIndex) => {
+      const variant: CatalogProductVariant = {
+        id: variantFixture.id,
+        productId: product.id,
+        name: variantFixture.name,
+        description: variantFixture.description ?? null,
+        sortOrder: variantIndex,
+        unitPrice: variantFixture.unitPrice ?? null,
+        packageQuantity: variantFixture.packageQuantity ?? null,
+        packageTotalPrice: variantFixture.packageTotalPrice ?? null,
+        active: true,
+      };
+      store.catalogProductVariants.set(variant.id, variant);
+
+      (variantFixture.tiers ?? []).forEach((tierFixture, tierIndex) => {
+        const tier: CatalogPriceTier = {
+          id: tierFixture.id,
+          variantId: variant.id,
+          quantity: tierFixture.quantity,
+          unitPrice: tierFixture.unitPrice ?? null,
+          flatTotalPrice: tierFixture.flatTotalPrice ?? null,
+          sortOrder: tierIndex,
+        };
+        store.catalogPriceTiers.set(tier.id, tier);
+      });
+    });
   }
 }
