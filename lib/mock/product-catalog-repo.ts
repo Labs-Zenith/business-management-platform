@@ -2,6 +2,7 @@ import type {
   CatalogPriceTier,
   CatalogProduct,
   CatalogProductCreate,
+  CatalogProductDeleteResult,
   CatalogProductDetail,
   CatalogProductListQuery,
   CatalogProductRepository,
@@ -13,19 +14,27 @@ import type {
   Paged,
 } from "@/lib/services/ports";
 import { CATALOG_PRODUCT_SORT_KEYS } from "@/lib/services/ports";
-import { createSorter, numberKey, textKey } from "@/lib/services/sorting";
+import { boolKey, createSorter, numberKey, textKey } from "@/lib/services/sorting";
 import { generateId, store as defaultStore, type MockStore } from "./store";
 
 /**
- * Mirrors `product-repo.ts`'s CRUD shape (business-scoped, no delete — only
- * the `active` toggle via `update`), extended with the catalog's two child
- * tables (`catalogProductVariants`/`catalogPriceTiers`), which carry NO
- * `businessId` of their own and scope entirely through the parent product —
- * see `MockStore.catalogProducts`'s doc comment. `create`/`update` are
- * "atomic" here simply because nothing awaits between the header write and
- * the variant/tier writes (single-threaded JS); no `withLock` is needed since
- * there is no shared counter/sequence to serialize (unlike quote/invoice
- * numbering).
+ * Mirrors `product-repo.ts`'s CRUD shape (business-scoped, hard-deletable),
+ * extended with the catalog's two child tables (`catalogProductVariants`/
+ * `catalogPriceTiers`), which carry NO `businessId` of their own and scope
+ * entirely through the parent product — see `MockStore.catalogProducts`'s
+ * doc comment. `create`/`update` are "atomic" here simply because nothing
+ * awaits between the header write and the variant/tier writes
+ * (single-threaded JS); no `withLock` is needed since there is no shared
+ * counter/sequence to serialize (unlike quote/invoice numbering).
+ *
+ * `delete` mirrors `lib/db/product-catalog-repo.ts#delete`'s guard: refuses
+ * once any `invoice_items` row references this product via
+ * `catalogProductId`, else removes it. UNLIKE the real Postgres backend,
+ * this store has no `ON DELETE CASCADE` to lean on — a plain
+ * `store.catalogProducts.delete(id)` would silently orphan the product's
+ * variants/tiers rather than remove them — so `delete` reuses the same
+ * `deleteVariantsAndTiers` helper `update`'s wholesale-replace already
+ * calls, to keep the two backends behaviourally identical.
  */
 
 function variantsForProduct(store: MockStore, productId: string): CatalogProductVariant[] {
@@ -116,6 +125,8 @@ const catalogProductSorter = createSorter<SortableCatalogSummary, CatalogProduct
     name: (product) => textKey(product.name),
     category: (product) => textKey(product.category),
     price: (product) => numberKey(product.lowestPriceCents),
+    // Same shape as `productSorter`'s: active first by default.
+    status: (product) => boolKey(product.active),
   },
 });
 
@@ -277,6 +288,34 @@ export function createProductCatalogRepository(store: MockStore): CatalogProduct
         }
       }
       return [...categories].sort((a, b) => a.localeCompare(b));
+    },
+
+    /**
+     * Hard delete, refused once the catalog product has been invoiced — see
+     * `CatalogProductRepository.delete`'s doc comment. DISTINCT invoices,
+     * since one invoice may list the same catalog product on several lines.
+     */
+    async delete(businessId: string, id: string): Promise<CatalogProductDeleteResult> {
+      const product = store.catalogProducts.get(id);
+      if (!product || product.businessId !== businessId) {
+        return { outcome: "not_found" };
+      }
+
+      const referencingInvoiceIds = new Set(
+        [...store.invoiceItems.values()]
+          .filter((item) => item.catalogProductId === id)
+          .map((item) => item.invoiceId),
+      );
+      if (referencingInvoiceIds.size > 0) {
+        return { outcome: "conflict", invoiceCount: referencingInvoiceIds.size };
+      }
+
+      // No child rows referenced this product — safe to drop its
+      // variants/tiers (simulating the real backend's CASCADE) and the
+      // product itself.
+      deleteVariantsAndTiers(store, id);
+      store.catalogProducts.delete(id);
+      return { outcome: "deleted" };
     },
   };
 }

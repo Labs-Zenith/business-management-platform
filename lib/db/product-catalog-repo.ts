@@ -3,6 +3,7 @@ import type {
   CatalogPriceTier,
   CatalogProduct,
   CatalogProductCreate,
+  CatalogProductDeleteResult,
   CatalogProductDetail,
   CatalogProductListQuery,
   CatalogProductRepository,
@@ -15,7 +16,7 @@ import type {
   Paged,
 } from "@/lib/services/ports";
 import { CATALOG_PRODUCT_SORT_KEYS } from "@/lib/services/ports";
-import { createSorter, numberKey, textKey } from "@/lib/services/sorting";
+import { boolKey, createSorter, numberKey, textKey } from "@/lib/services/sorting";
 import { runTransaction, sql } from "./client";
 
 /**
@@ -207,6 +208,8 @@ const catalogProductSorter = createSorter<SortableCatalogSummary, CatalogProduct
     name: (product) => textKey(product.name),
     category: (product) => textKey(product.category),
     price: (product) => numberKey(product.lowestPriceCents),
+    // Same shape as `productSorter`'s: active first by default.
+    status: (product) => boolKey(product.active),
   },
 });
 
@@ -408,5 +411,54 @@ export const productCatalogRepo: CatalogProductRepository = {
       ORDER BY category
     `) as unknown as { category: string }[];
     return rows.map((row) => row.category);
+  },
+
+  /**
+   * Guarded hard delete, per `CatalogProductRepository.delete`'s doc
+   * comment — refused once the listing has been invoiced, so billing
+   * history can always be traced back to what was sold. Same two-statement
+   * lock-then-count shape as `lib/db/product-repo.ts#delete` (see
+   * `lib/db/client.ts`'s canonical note on why a single statement with an
+   * inline `FOR UPDATE` plus a correlated cross-table count is broken).
+   * UNLIKE that repo, there is no third statement to drop a ledger by hand:
+   * `catalog_product_variants`/`catalog_price_tiers` are both `ON DELETE
+   * CASCADE`, so the single `DELETE FROM catalog_products` below already
+   * takes them with it.
+   */
+  async delete(businessId: string, id: string): Promise<CatalogProductDeleteResult> {
+    return runTransaction(async (tx) => {
+      // Statement 1: acquire and HOLD the product row lock for the rest of
+      // the transaction — this is what makes the count below race-safe: a
+      // concurrent `INSERT INTO invoice_items` needs a `FOR KEY SHARE` lock
+      // on THIS row to validate its FK, so it cannot slip a new line in
+      // between the count and the delete.
+      const lockRows = (await tx`
+        SELECT id FROM catalog_products WHERE id = ${id} AND business_id = ${businessId} FOR UPDATE
+      `) as unknown as { id: string }[];
+      if (lockRows.length === 0) return { outcome: "not_found" } as const;
+
+      // Statement 2: fresh-snapshot reference count. `invoice_items` carries
+      // no `business_id` of its own, hence the join to `invoices`. DISTINCT
+      // invoice_id, not row count — the message counts invoices, and one
+      // invoice may list the same catalog product on several lines.
+      const countRows = (await tx`
+        SELECT COUNT(DISTINCT ii.invoice_id)::int AS invoice_count
+        FROM invoice_items ii
+        JOIN invoices i ON i.id = ii.invoice_id
+        WHERE ii.catalog_product_id = ${id} AND i.business_id = ${businessId}
+      `) as unknown as { invoice_count: number }[];
+      const invoiceCount = Number(countRows[0]!.invoice_count);
+      if (invoiceCount > 0) {
+        return { outcome: "conflict", invoiceCount } as const;
+      }
+
+      // Zero references confirmed under the lock. No explicit child-row
+      // cleanup needed: `catalog_product_variants.product_id` and
+      // `catalog_price_tiers.variant_id` are both `ON DELETE CASCADE` (see
+      // `migrations/1700000016000_add_catalog_products.sql`), so this single
+      // DELETE also removes every variant and tier under this product.
+      await tx`DELETE FROM catalog_products WHERE id = ${id} AND business_id = ${businessId}`;
+      return { outcome: "deleted" } as const;
+    });
   },
 };

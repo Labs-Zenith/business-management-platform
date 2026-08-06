@@ -4,31 +4,30 @@ import userEvent from "@testing-library/user-event";
 import { pesosToCents } from "@/lib/money";
 import { selectOption } from "@/components/ui/select-test-helpers";
 
-const pushMock = vi.fn();
-const refreshMock = vi.fn();
+/** The form no longer navigates: it reports the saved id and the dialog decides what to do. */
+const onSavedMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock, refresh: refreshMock }),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
 import CatalogProductFormContent, { type CatalogProductFormContentProduct } from "./catalog-product-form-content";
 
 describe("CatalogProductFormContent", () => {
   beforeEach(() => {
-    pushMock.mockReset();
-    refreshMock.mockReset();
+    onSavedMock.mockReset();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("POSTs a 'fixed' mode product with fixedUnitPrice converted to integer cents, then pushes and refreshes", async () => {
+  it("POSTs a 'fixed' mode product with fixedUnitPrice converted to integer cents, then reports the saved id", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "prod-1" } }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CatalogProductFormContent categories={[]} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} />);
 
     // The 'fixed' mode is the create-mode default, so "Precio" is visible
     // without ever opening the "Precio avanzado" disclosure — the whole
@@ -47,8 +46,7 @@ describe("CatalogProductFormContent", () => {
       fixedUnitPrice: pesosToCents(5000),
       minOrderQuantity: 1,
     });
-    expect(pushMock).toHaveBeenCalledWith("/catalogo/prod-1");
-    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(onSavedMock).toHaveBeenCalledWith("prod-1");
   });
 
   it("POSTs a 'variant' mode product with each variant's unitPrice converted to integer cents", async () => {
@@ -56,7 +54,7 @@ describe("CatalogProductFormContent", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "prod-2" } }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CatalogProductFormContent categories={[]} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} />);
 
     await user.type(screen.getByLabelText(/^nombre$/i), "Aviso en acrílico");
     // "Modo de precio" lives behind the "Precio avanzado" disclosure, closed
@@ -84,7 +82,7 @@ describe("CatalogProductFormContent", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "prod-3" } }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CatalogProductFormContent categories={[]} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} />);
 
     await user.type(screen.getByLabelText(/^nombre$/i), "Stickers 3x3 cm");
     await user.click(screen.getByRole("button", { name: /precio avanzado/i }));
@@ -112,7 +110,7 @@ describe("CatalogProductFormContent", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "prod-4" } }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CatalogProductFormContent categories={[]} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} />);
 
     await user.type(screen.getByLabelText(/^nombre$/i), "Agendas 2027");
     await user.click(screen.getByRole("button", { name: /precio avanzado/i }));
@@ -160,7 +158,7 @@ describe("CatalogProductFormContent", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: { id: "prod-5" } }) });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CatalogProductFormContent categories={[]} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} />);
 
     await user.type(screen.getByLabelText(/^nombre$/i), "Lona impresa");
     await user.click(screen.getByRole("button", { name: /precio avanzado/i }));
@@ -216,7 +214,7 @@ describe("CatalogProductFormContent", () => {
       ],
     };
 
-    render(<CatalogProductFormContent categories={["Stickers"]} product={product} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={["Stickers"]} product={product} />);
 
     expect(screen.getByLabelText(/^nombre$/i)).toHaveValue("Stickers 3x3 cm");
     expect(screen.getByLabelText(/categoría/i)).toHaveValue("Stickers");
@@ -237,7 +235,7 @@ describe("CatalogProductFormContent", () => {
     expect(body.variants).toEqual([
       { name: "Paquete de 750", packageQuantity: 750, packageTotalPrice: 6_000_000 },
     ]);
-    expect(pushMock).toHaveBeenCalledWith("/catalogo/prod-9");
+    expect(onSavedMock).toHaveBeenCalledWith("prod-9");
   });
 
   it("toggling 'Producto activo' off in edit mode sends active: false", async () => {
@@ -260,7 +258,7 @@ describe("CatalogProductFormContent", () => {
       variants: [],
     };
 
-    render(<CatalogProductFormContent categories={[]} product={product} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} product={product} />);
 
     // `Switch` renders a `role="switch"` element, not a labelable native
     // input — `getByLabelText` would match both it and its hidden mirror
@@ -275,12 +273,12 @@ describe("CatalogProductFormContent", () => {
   });
 
   it("keeps the submit button disabled until the required fields for the chosen mode are valid", async () => {
-    render(<CatalogProductFormContent categories={[]} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} />);
     expect(screen.getByRole("button", { name: /crear producto/i })).toBeDisabled();
   });
 
   it("keeps the 'Precio avanzado' disclosure closed by default when creating a new product", () => {
-    render(<CatalogProductFormContent categories={[]} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} />);
 
     expect(screen.getByRole("button", { name: /precio avanzado/i })).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByLabelText(/modo de precio/i)).not.toBeInTheDocument();
@@ -311,7 +309,7 @@ describe("CatalogProductFormContent", () => {
       ],
     };
 
-    render(<CatalogProductFormContent categories={[]} product={product} />);
+    render(<CatalogProductFormContent onSaved={onSavedMock} categories={[]} product={product} />);
 
     // A real business already has products configured this way in
     // production — the ladder must never be hidden from someone editing it.

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
@@ -17,10 +17,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { HiddenParams } from "@/components/domain/filters/hidden-params";
 import { SelectFilterField } from "@/components/domain/filters/select-filter-field";
 import { MoneyAmount } from "@/components/domain/money-amount";
+import { canDeleteRecords } from "@/lib/services/permissions";
 import { PageHeader } from "@/components/domain/page-header";
 import { TablePagination } from "@/components/domain/table-pagination";
 import { TableSortHeader } from "@/components/domain/table-sort-header";
 import { PRICING_MODE_LABELS, PricingModeBadge } from "@/components/domain/catalogo/pricing-mode-badge";
+import CatalogProductFormDialog from "@/components/domain/catalogo/catalog-product-form-dialog";
+import DeleteCatalogProductButton from "@/components/domain/catalogo/delete-catalog-product-button";
 
 /**
  * Catálogo (commercial price book) list screen — distinct from `/inventario`,
@@ -41,9 +44,15 @@ import { PRICING_MODE_LABELS, PricingModeBadge } from "@/components/domain/catal
  * GET submit replaces the WHOLE query string with only the form's own
  * fields).
  *
- * Sortable columns: Nombre, Categoría, Precio — see `CATALOG_PRODUCT_SORT_KEYS`'s
- * doc comment in `lib/services/ports.ts` for what "Precio" means across the
- * five pricing modes.
+ * Sortable columns: Nombre, Categoría, Precio, Estado — see
+ * `CATALOG_PRODUCT_SORT_KEYS`'s doc comment in `lib/services/ports.ts` for
+ * what "Precio" means across the five pricing modes.
+ *
+ * Creating and editing both happen in a MODAL
+ * (`components/domain/catalogo/catalog-product-form-dialog.tsx`), never on a
+ * page of their own — the same shape as Inventario, since it is the same
+ * task for the user. Each row's Acciones cell holds that dialog plus the
+ * delete button, which only admins see.
  */
 
 const PAGE_SIZE = 20;
@@ -113,6 +122,9 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
   const status = parseStatusParam(params.status);
   const sort = parseSortParams(params.sort, params.dir, CATALOG_PRODUCT_SORT_KEYS, CATALOG_DEFAULT_SORT);
 
+  // UX only — requireCapability("deleteRecords") on the route is the gate.
+  const canDelete = canDeleteRecords(session.role);
+
   const [result, categories] = await Promise.all([
     listCatalogProducts(session, {
       q: params.q || undefined,
@@ -140,10 +152,16 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
         title="Catálogo"
         description="El listado de precios de lo que vendes — distinto de tu inventario."
         actions={
-          <Button className="w-full sm:w-auto" nativeButton={false} render={<Link href="/catalogo/new" />}>
-            <Plus className="size-4" />
-            Nuevo producto
-          </Button>
+          <CatalogProductFormDialog
+            mode="create"
+            categories={categories}
+            trigger={
+              <Button className="w-full sm:w-auto">
+                <Plus className="size-4" />
+                Nuevo producto
+              </Button>
+            }
+          />
         }
       />
 
@@ -208,13 +226,14 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
             <TableHead>Modo</TableHead>
             <TableSortHeader label="Precio" sortBy="price" firstDir="desc" {...sortHeaderProps} />
             <TableHead>Mín. pedido</TableHead>
-            <TableHead>Estado</TableHead>
+            <TableSortHeader label="Estado" sortBy="status" {...sortHeaderProps} />
+            <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {result.data.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
+              <TableCell colSpan={7} className="text-center text-muted-foreground">
                 No se encontraron productos de catálogo.
               </TableCell>
             </TableRow>
@@ -241,6 +260,27 @@ export default async function CatalogoPage({ searchParams }: CatalogoPageProps) 
                   <Badge variant={product.active ? "success" : "outline"}>
                     {product.active ? "Activo" : "Inactivo"}
                   </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <CatalogProductFormDialog
+                      mode="edit"
+                      productId={product.id}
+                      categories={categories}
+                      trigger={
+                        <Button variant="ghost" size="icon-sm" aria-label={`Editar ${product.name}`}>
+                          <Pencil />
+                        </Button>
+                      }
+                    />
+                    {canDelete ? (
+                      <DeleteCatalogProductButton
+                        productId={product.id}
+                        productName={product.name}
+                        productActive={product.active}
+                      />
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))

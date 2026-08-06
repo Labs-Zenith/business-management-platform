@@ -40,7 +40,6 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ChevronDown } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
@@ -104,6 +103,14 @@ export type CatalogProductFormContentProps = {
   categories: string[];
   /** When present, the form operates in edit mode: pre-fills from this product and PATCHes instead of POSTing. */
   product?: CatalogProductFormContentProduct;
+  /**
+   * Called with the saved product's id once the request succeeds. The form
+   * deliberately knows nothing about routing: its only consumer is a dialog
+   * (`catalog-product-form-dialog-content.tsx`), which decides whether to
+   * close and refresh in place or navigate. Errors never reach here — they
+   * are rendered inline and the form stays open.
+   */
+  onSaved: (productId: string) => void;
 };
 
 function centsToPesosString(cents: number | null): string {
@@ -235,8 +242,7 @@ function buildPayload(values: CatalogProductFormValues, isEditing: boolean) {
   }
 }
 
-export default function CatalogProductFormContent({ categories, product }: CatalogProductFormContentProps) {
-  const router = useRouter();
+export default function CatalogProductFormContent({ categories, product, onSaved }: CatalogProductFormContentProps) {
   const isEditing = Boolean(product);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Computed once from the initial `product` prop (this form never receives
@@ -295,8 +301,7 @@ export default function CatalogProductFormContent({ categories, product }: Catal
       }
 
       const body: { data: { id: string } } = await response.json();
-      router.push(`/catalogo/${body.data.id}`);
-      router.refresh();
+      onSaved(body.data.id);
     } catch {
       setSubmitError(isEditing ? EDIT_ERROR_MESSAGE : CREATE_ERROR_MESSAGE);
     }

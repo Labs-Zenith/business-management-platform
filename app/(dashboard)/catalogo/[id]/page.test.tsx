@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { CatalogProductDetail, Session } from "@/lib/services/ports";
@@ -27,6 +28,15 @@ vi.mock("@/lib/services/features", () => ({
 
 vi.mock("@/lib/services/product-catalog-service", () => ({
   getCatalogProduct: (session: Session, id: string) => mockGetCatalogProduct(session, id),
+  // The page also loads the business's existing categories, to feed the edit
+  // dialog's "Categoría" datalist.
+  listCatalogCategories: () => Promise.resolve([]),
+}));
+
+// The dialog is lazy (`dynamic(..., {ssr:false})`) — stubbed to its trigger
+// only, mirroring `inventario/page.test.tsx`. It has its own `.test.tsx`.
+vi.mock("@/components/domain/catalogo/catalog-product-form-dialog", () => ({
+  default: ({ trigger }: { trigger: ReactNode }) => trigger,
 }));
 
 import CatalogProductDetailPage from "./page";
@@ -236,16 +246,16 @@ describe("CatalogProductDetailPage", () => {
     expect(mockGetCatalogProduct).not.toHaveBeenCalled();
   });
 
-  it("links 'Editar producto' to /catalogo/{id}/edit", async () => {
+  it("opens the edit dialog from the header instead of navigating to an edit page", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockIsCatalogEnabled.mockResolvedValue(true);
     mockGetCatalogProduct.mockResolvedValue(BASE);
 
     render(await CatalogProductDetailPage({ params: Promise.resolve({ id: BASE.id }) }));
 
-    expect(screen.getByRole("button", { name: /editar producto/i })).toHaveAttribute(
-      "href",
-      `/catalogo/${BASE.id}/edit`,
-    );
+    // A trigger, not a link: there is no /catalogo/{id}/edit route any more —
+    // editing happens in a modal, like Inventario.
+    const trigger = screen.getByRole("button", { name: /editar producto/i });
+    expect(trigger).not.toHaveAttribute("href");
   });
 });

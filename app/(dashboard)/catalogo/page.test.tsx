@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { CatalogProductListQuery, CatalogProductSummary, Paged, Session } from "@/lib/services/ports";
@@ -38,6 +39,17 @@ vi.mock("@/lib/services/features", () => ({
 vi.mock("@/lib/services/product-catalog-service", () => ({
   listCatalogProducts: (session: Session, query: CatalogProductListQuery) => mockListCatalogProducts(session, query),
   listCatalogCategories: (session: Session) => mockListCatalogCategories(session),
+}));
+
+// Lazy dialogs (`dynamic(..., {ssr:false})`) — stubbed to their triggers only,
+// mirroring `inventario/page.test.tsx`. Each has its own `.test.tsx`.
+vi.mock("@/components/domain/catalogo/catalog-product-form-dialog", () => ({
+  default: ({ trigger }: { trigger: ReactNode }) => trigger,
+}));
+vi.mock("@/components/domain/catalogo/delete-catalog-product-button", () => ({
+  default: ({ productName }: { productName: string }) => (
+    <button type="button" aria-label={`Eliminar ${productName}`} />
+  ),
 }));
 
 import CatalogoPage from "./page";
@@ -187,7 +199,7 @@ describe("CatalogoPage", () => {
     expect(dirHidden).toHaveAttribute("value", "desc");
   });
 
-  it("offers the 'Nuevo producto' quick action linking to /catalogo/new", async () => {
+  it("offers the 'Nuevo producto' quick action, which opens the create dialog", async () => {
     mockRequireSessionOrRedirect.mockResolvedValue(SESSION);
     mockIsCatalogEnabled.mockResolvedValue(true);
     mockListCatalogProducts.mockResolvedValue({ data: [], page: 1, pageSize: 20, total: 0 });
@@ -195,9 +207,9 @@ describe("CatalogoPage", () => {
 
     render(await CatalogoPage({ searchParams: Promise.resolve({}) }));
 
-    // `nativeButton={false}` renders the polymorphic `<Link>` with
-    // `role="button"` (matches `invoices/[id]/page.tsx`'s "Editar factura"
-    // link convention), not the default `role="link"`.
-    expect(screen.getByRole("button", { name: /nuevo producto/i })).toHaveAttribute("href", "/catalogo/new");
+    // A dialog trigger, not a link: there is no /catalogo/new route any more —
+    // creating happens in a modal, like Inventario.
+    const trigger = screen.getByRole("button", { name: /nuevo producto/i });
+    expect(trigger).not.toHaveAttribute("href");
   });
 });

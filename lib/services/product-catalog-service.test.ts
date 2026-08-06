@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/server/api-error";
 import type {
   CatalogProductCreate,
+  CatalogProductDeleteResult,
   CatalogProductDetail,
   CatalogProductListQuery,
   CatalogProductSummary,
@@ -17,6 +18,7 @@ const mockUpdate = vi.fn<
   (businessId: string, id: string, data: CatalogProductUpdate) => Promise<CatalogProductDetail | null>
 >();
 const mockListCategories = vi.fn<(businessId: string) => Promise<string[]>>();
+const mockDelete = vi.fn<(businessId: string, id: string) => Promise<CatalogProductDeleteResult>>();
 
 vi.mock("@/lib/services/repositories", () => ({
   repositories: {
@@ -26,12 +28,14 @@ vi.mock("@/lib/services/repositories", () => ({
       create: (businessId: string, data: CatalogProductCreate) => mockCreate(businessId, data),
       update: (businessId: string, id: string, data: CatalogProductUpdate) => mockUpdate(businessId, id, data),
       listCategories: (businessId: string) => mockListCategories(businessId),
+      delete: (businessId: string, id: string) => mockDelete(businessId, id),
     },
   },
 }));
 
 import {
   createCatalogProduct,
+  deleteCatalogProduct,
   getCatalogProduct,
   listCatalogCategories,
   listCatalogProducts,
@@ -75,6 +79,7 @@ beforeEach(() => {
   mockCreate.mockReset();
   mockUpdate.mockReset();
   mockListCategories.mockReset();
+  mockDelete.mockReset();
 });
 
 describe("listCatalogProducts", () => {
@@ -228,6 +233,55 @@ describe("updateCatalogProduct", () => {
 
     await expect(updateCatalogProduct(SESSION, "missing-id", { active: true })).rejects.toMatchObject({
       code: "NOT_FOUND",
+    });
+  });
+});
+
+describe("deleteCatalogProduct", () => {
+  it("always scopes the delete to session.businessId, never a client-supplied id", async () => {
+    mockDelete.mockResolvedValue({ outcome: "deleted" });
+
+    await deleteCatalogProduct(SESSION, "some-id");
+
+    expect(mockDelete).toHaveBeenCalledWith(SESSION.businessId, "some-id");
+  });
+
+  it("resolves (no throw) when the repository reports deleted", async () => {
+    mockDelete.mockResolvedValue({ outcome: "deleted" });
+
+    await expect(deleteCatalogProduct(SESSION, "some-id")).resolves.toBeUndefined();
+  });
+
+  it("throws NOT_FOUND when the repository resolves not_found (missing or cross-business)", async () => {
+    mockDelete.mockResolvedValue({ outcome: "not_found" });
+
+    await expect(deleteCatalogProduct(SESSION, "missing-id")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
+  /**
+   * The CONFLICT message is rendered verbatim in the confirm dialog's inline
+   * alert and is followed by a real "Desactivar" button, so its exact
+   * wording (including singular/plural) is part of the contract — same as
+   * `deleteProduct`'s (`lib/services/product-service.test.ts`).
+   */
+  it("throws CONFLICT naming the invoice count once the product has been sold", async () => {
+    mockDelete.mockResolvedValue({ outcome: "conflict", invoiceCount: 1 });
+
+    await expect(deleteCatalogProduct(SESSION, "some-id")).rejects.toMatchObject({
+      code: "CONFLICT",
+      status: 409,
+      message: "No se puede eliminar este producto porque tiene 1 factura asociada. Desactívalo en su lugar.",
+      details: { invoiceCount: 1 },
+    });
+  });
+
+  it("uses the plural form for several invoices", async () => {
+    mockDelete.mockResolvedValue({ outcome: "conflict", invoiceCount: 2 });
+
+    await expect(deleteCatalogProduct(SESSION, "some-id")).rejects.toMatchObject({
+      message: "No se puede eliminar este producto porque tiene 2 facturas asociadas. Desactívalo en su lugar.",
     });
   });
 });

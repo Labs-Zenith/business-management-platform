@@ -4,7 +4,7 @@ import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { isCatalogEnabled } from "@/lib/services/features";
-import { getCatalogProduct } from "@/lib/services/product-catalog-service";
+import { getCatalogProduct, listCatalogCategories } from "@/lib/services/product-catalog-service";
 import type { CatalogProductDetail, CatalogProductVariantWithTiers } from "@/lib/services/ports";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { MoneyAmount } from "@/components/domain/money-amount";
 import { PageHeader } from "@/components/domain/page-header";
 import { StatCard } from "@/components/domain/stat-card";
 import { PricingModeBadge } from "@/components/domain/catalogo/pricing-mode-badge";
+import CatalogProductFormDialog from "@/components/domain/catalogo/catalog-product-form-dialog";
 
 /**
  * Detalle de producto de catálogo screen. `getCatalogProduct` returns the
@@ -197,7 +198,10 @@ export default async function CatalogProductDetailPage({ params }: CatalogProduc
   }
 
   const { id } = await params;
-  const product = await getCatalogProduct(session, id);
+  const [product, categories] = await Promise.all([
+    getCatalogProduct(session, id),
+    listCatalogCategories(session),
+  ]);
 
   return (
     <PageShell>
@@ -228,14 +232,17 @@ export default async function CatalogProductDetailPage({ params }: CatalogProduc
           </Breadcrumb>
         }
         actions={
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            nativeButton={false}
-            render={<Link href={`/catalogo/${product.id}/edit`} />}
-          >
-            Editar producto
-          </Button>
+          <CatalogProductFormDialog
+            mode="edit"
+            productId={product.id}
+            categories={categories}
+            redirectTo={`/catalogo/${product.id}`}
+            trigger={
+              <Button variant="outline" className="w-full sm:w-auto">
+                Editar producto
+              </Button>
+            }
+          />
         }
       />
 

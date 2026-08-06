@@ -926,6 +926,19 @@ export type CatalogProductCreate = {
 export type CatalogProductUpdate = Partial<CatalogProductCreate> & { active?: boolean };
 
 /**
+ * Outcome of `CatalogProductRepository.delete`, mirroring `ProductDeleteResult`.
+ * A catalog listing that has ever been invoiced (`invoice_items.catalog_product_id`)
+ * is REFUSED, not unlinked: keeping that link intact is what lets an invoice
+ * still be traced back to what was actually sold. `conflict` carries the
+ * DISTINCT invoice count (not the line count), because that is what the
+ * refusal message tells the user.
+ */
+export type CatalogProductDeleteResult =
+  | { outcome: "deleted" }
+  | { outcome: "not_found" }
+  | { outcome: "conflict"; invoiceCount: number };
+
+/**
  * `"price"` is not a stored column — a catalog product's price depends on
  * its `pricingMode` (see `CatalogProduct`'s doc comment: `fixed`/`area` carry
  * a price directly, `variant`/`package`/`tiered` carry theirs in the child
@@ -936,7 +949,7 @@ export type CatalogProductUpdate = Partial<CatalogProductCreate> & { active?: bo
  * full range. A product with no priced variant yet sorts last, like any
  * other missing value.
  */
-export const CATALOG_PRODUCT_SORT_KEYS = ["name", "category", "price"] as const;
+export const CATALOG_PRODUCT_SORT_KEYS = ["name", "category", "price", "status"] as const;
 export type CatalogProductSortBy = (typeof CATALOG_PRODUCT_SORT_KEYS)[number];
 
 export type CatalogProductListQuery = {
@@ -965,6 +978,18 @@ export interface CatalogProductRepository {
   update(businessId: string, id: string, data: CatalogProductUpdate): Promise<CatalogProductDetail | null>;
   /** Distinct non-null `category` values for this business, sorted — backs the list page's filter. */
   listCategories(businessId: string): Promise<string[]>;
+  /**
+   * Hard delete, allowed ONLY when zero `invoice_items` rows reference this
+   * product via `catalog_product_id` — otherwise `{outcome:"conflict",
+   * invoiceCount}`, and the caller is expected to offer deactivation
+   * (`update({active:false})`) instead. UNLIKE `ProductRepository.delete`,
+   * there is no ledger to drop by hand: `catalog_product_variants.product_id`
+   * and `catalog_price_tiers.variant_id` are both `ON DELETE CASCADE` (see
+   * `migrations/1700000016000_add_catalog_products.sql`), so a plain `DELETE
+   * FROM catalog_products` takes variants and tiers with it. Admin-only at
+   * the route layer via the `deleteRecords` capability.
+   */
+  delete(businessId: string, id: string): Promise<CatalogProductDeleteResult>;
 }
 
 // ---------------------------------------------------------------------------

@@ -315,6 +315,123 @@ describe("createProductCatalogRepository.list", () => {
   });
 });
 
+/**
+ * A catalog product with no billing history is hard-deletable — mirrors
+ * `lib/mock/product-repo.test.ts#delete`'s coverage. Once it has been
+ * invoiced (via `catalogProductId`, NOT `productId`) the delete is REFUSED,
+ * so the invoice can always be traced back to what was sold; the caller then
+ * offers deactivation instead. UNLIKE inventory's product, deleting also
+ * simulates the real backend's `ON DELETE CASCADE` by removing the child
+ * variants/tiers by hand (the mock store has no real FK to lean on).
+ */
+describe("createProductCatalogRepository.delete", () => {
+  function seedInvoiceItem(itemId: string, invoiceId: string, catalogProductId: string | null) {
+    store.invoiceItems.set(itemId, {
+      id: itemId,
+      invoiceId,
+      description: "Agendas personalizadas",
+      quantity: 2,
+      unitPrice: 2000000,
+      lineTotal: 4000000,
+      productId: null,
+      catalogProductId,
+    });
+  }
+
+  it("removes a never-invoiced product", async () => {
+    const repo = createProductCatalogRepository(store);
+    const created = await repo.create(BUSINESS_ID, fixedInput());
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({ outcome: "deleted" });
+
+    expect(store.catalogProducts.has(created.id)).toBe(false);
+  });
+
+  it("removes the product's variants and tiers alongside it, leaving other products' untouched (simulating ON DELETE CASCADE)", async () => {
+    const repo = createProductCatalogRepository(store);
+    const doomed = await repo.create(BUSINESS_ID, tieredInput());
+    const survivor = await repo.create(BUSINESS_ID, tieredInput({ name: "Otro" }));
+
+    await repo.delete(BUSINESS_ID, doomed.id);
+
+    expect([...store.catalogProductVariants.values()].some((v) => v.productId === doomed.id)).toBe(false);
+    expect([...store.catalogPriceTiers.values()].some((t) => t.variantId === doomed.variants[0]!.id)).toBe(false);
+    const survivorVariants = [...store.catalogProductVariants.values()].filter((v) => v.productId === survivor.id);
+    expect(survivorVariants).toHaveLength(1);
+  });
+
+  it("refuses with the DISTINCT invoice count once the product has been sold", async () => {
+    const repo = createProductCatalogRepository(store);
+    const created = await repo.create(BUSINESS_ID, fixedInput());
+    seedInvoiceItem("item-1", "invoice-1", created.id);
+    seedInvoiceItem("item-2", "invoice-2", created.id);
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({
+      outcome: "conflict",
+      invoiceCount: 2,
+    });
+
+    // Nothing is destroyed: neither the product nor its billing history.
+    expect(store.catalogProducts.has(created.id)).toBe(true);
+    expect(store.invoiceItems.size).toBe(2);
+    expect(store.invoiceItems.get("item-1")!.catalogProductId).toBe(created.id);
+  });
+
+  it("counts invoices, not lines, when one invoice sells the product twice", async () => {
+    const repo = createProductCatalogRepository(store);
+    const created = await repo.create(BUSINESS_ID, fixedInput());
+    seedInvoiceItem("item-1", "invoice-1", created.id);
+    seedInvoiceItem("item-2", "invoice-1", created.id);
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({
+      outcome: "conflict",
+      invoiceCount: 1,
+    });
+  });
+
+  it("ignores a line referencing this product's id via the INVENTORY productId field, not catalogProductId", async () => {
+    const repo = createProductCatalogRepository(store);
+    const created = await repo.create(BUSINESS_ID, fixedInput());
+    store.invoiceItems.set("item-inventory", {
+      id: "item-inventory",
+      invoiceId: "invoice-inventory",
+      description: "Coincidencia de id, no de catálogo",
+      quantity: 1,
+      unitPrice: 1000,
+      lineTotal: 1000,
+      productId: created.id,
+      catalogProductId: null,
+    });
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({ outcome: "deleted" });
+  });
+
+  it("ignores another product's invoice lines when deciding", async () => {
+    const repo = createProductCatalogRepository(store);
+    const created = await repo.create(BUSINESS_ID, fixedInput());
+    seedInvoiceItem("item-other", "invoice-3", "another-product-id");
+
+    await expect(repo.delete(BUSINESS_ID, created.id)).resolves.toEqual({ outcome: "deleted" });
+  });
+
+  it("returns not_found for a cross-business id, leaving the product untouched", async () => {
+    const repo = createProductCatalogRepository(store);
+    const created = await repo.create(BUSINESS_ID, fixedInput());
+
+    await expect(repo.delete(OTHER_BUSINESS_ID, created.id)).resolves.toEqual({ outcome: "not_found" });
+
+    expect(store.catalogProducts.has(created.id)).toBe(true);
+  });
+
+  it("returns not_found for an unknown id", async () => {
+    const repo = createProductCatalogRepository(store);
+
+    await expect(repo.delete(BUSINESS_ID, "80000000-0000-4000-8000-00000000dead")).resolves.toEqual({
+      outcome: "not_found",
+    });
+  });
+});
+
 describe("createProductCatalogRepository.listCategories", () => {
   it("returns distinct, sorted, non-null categories for the business only", async () => {
     const repo = createProductCatalogRepository(store);
