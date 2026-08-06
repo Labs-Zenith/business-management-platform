@@ -28,11 +28,17 @@ async function selectOption(page: Page, label: string | RegExp, optionName: stri
 /** Creates a simple name-and-price catalog product and returns its name. */
 async function createCatalogService(page: Page, pricePesos: number): Promise<string> {
   const name = unique("Servicio");
-  await page.goto("/catalogo/new");
-  await page.getByLabel("Nombre").fill(name);
-  await page.getByLabel("Precio", { exact: true }).fill(String(pricePesos));
-  await page.getByRole("button", { name: "Crear producto" }).click();
-  await expect(page).toHaveURL(/\/catalogo\/[0-9a-f-]+$/);
+  await page.goto("/catalogo");
+  await page.getByRole("button", { name: "Nuevo producto" }).click();
+  // Scoped to the dialog: it opens on top of the list, whose filter bar has
+  // controls with overlapping labels.
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Nombre").fill(name);
+  await dialog.getByLabel("Precio", { exact: true }).fill(String(pricePesos));
+  await dialog.getByRole("button", { name: "Crear producto" }).click();
+  // The dialog closes and the list refreshes in place; no navigation.
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(page.getByRole("link", { name })).toBeVisible();
   return name;
 }
 

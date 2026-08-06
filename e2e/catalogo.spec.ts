@@ -56,34 +56,44 @@ test.describe("Catálogo", () => {
     const name = `Servicio de diseño ${Date.now()}`;
     const unitPricePesos = 250000;
 
-    await page.goto("/catalogo/new");
+    await page.goto("/catalogo");
+    await page.getByRole("button", { name: "Nuevo producto" }).click();
 
-    await page.getByLabel("Nombre").fill(name);
+    // Scoped to the dialog: it opens ON TOP of the list, whose own filter bar
+    // has controls with the same labels.
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Nombre").fill(name);
     // The whole point of the simple path: a name and a price, nothing else.
     // `fixed` is the default mode and its price field is the only one on
     // screen — every other mode lives behind the "Precio avanzado" disclosure.
-    await page.getByLabel("Precio", { exact: true }).fill(String(unitPricePesos));
+    await dialog.getByLabel("Precio", { exact: true }).fill(String(unitPricePesos));
 
-    await page.getByRole("button", { name: "Crear producto" }).click();
+    await dialog.getByRole("button", { name: "Crear producto" }).click();
 
-    await expect(page).toHaveURL(/\/catalogo\/[0-9a-f-]+$/);
-    await expect(page.getByRole("heading", { name })).toBeVisible();
+    // The dialog closes and the list refreshes in place — there is no
+    // navigation, which is the whole point of editing in a modal.
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(page.getByRole("link", { name })).toBeVisible();
     await expect(page.getByText(formatCOP(unitPricePesos * 100)).first()).toBeVisible();
   });
 
   test("refuses a tiered product whose variant has no price tiers", async ({ page }) => {
-    await page.goto("/catalogo/new");
+    await page.goto("/catalogo");
+    await page.getByRole("button", { name: "Nuevo producto" }).click();
 
-    await page.getByLabel("Nombre").fill(`Sin escalones ${Date.now()}`);
+    // Scoped to the dialog throughout: it opens ON TOP of the list, whose
+    // filter bar also has a "Modo de precio" control.
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Nombre").fill(`Sin escalones ${Date.now()}`);
 
     // Every non-simple pricing mode lives behind the "Precio avanzado"
     // disclosure, closed by default so an ordinary service never meets it.
-    await page.getByRole("button", { name: /precio avanzado/i }).click();
+    await dialog.getByRole("button", { name: /precio avanzado/i }).click();
 
     // The pricing-mode control is a Base UI `Select` (a labelable
     // `role="combobox"` button), not a native `<select>` — its popup only
     // mounts once opened, so the option must be clicked after the trigger.
-    await page.getByLabel("Modo de precio").click();
+    await dialog.getByLabel("Modo de precio").click();
     await page.getByRole("option", { name: "Por cantidad" }).click();
 
     // A tiered variant with an empty ladder has no price at all. Postgres
@@ -92,7 +102,6 @@ test.describe("Catálogo", () => {
     // between the user and an unpriceable catalog entry. The form refuses at
     // the earliest point it can: submit stays disabled rather than letting the
     // request go out and bounce back as a 400.
-    await expect(page.getByRole("button", { name: "Crear producto" })).toBeDisabled();
-    await expect(page).not.toHaveURL(/\/catalogo\/[0-9a-f-]+$/);
+    await expect(dialog.getByRole("button", { name: "Crear producto" })).toBeDisabled();
   });
 });
