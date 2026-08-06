@@ -18,6 +18,8 @@
  * consumer handle it exhaustively.
  */
 
+import { todayIsoDateInAppZone } from "@/lib/dates";
+
 export type InvoiceStatus = "pending" | "partially_paid" | "paid" | "overdue" | "voided";
 
 export function computeStatus(
@@ -40,6 +42,21 @@ export function computeStatus(
     return "pending";
   }
 
-  const due = dueDate instanceof Date ? dueDate : new Date(dueDate);
-  return due.getTime() >= now.getTime() ? "pending" : "overdue";
+  // Calendar-day comparison, not an instant comparison: "dueDate passed"
+  // means the CALENDAR DAY has passed, not that fewer than 24h remain. Both
+  // sides are normalized to `YYYY-MM-DD` in the business's own timezone
+  // (`APP_TIME_ZONE`, Colombia) via `todayIsoDateInAppZone`, then compared
+  // lexically — the same string-range convention `dashboard-period.ts` uses
+  // for its `from`/`to` bounds. All 8 production callers already pass
+  // `dueDate` as a `YYYY-MM-DD` string, so it needs no conversion; the `Date`
+  // branch only exists to satisfy the `string | Date` type contract (dead in
+  // production) and is normalized through the same helper for consistency.
+  //
+  // Comparing `new Date(dueDate).getTime() >= now.getTime()` (the previous
+  // implementation) compared INSTANTS instead: `new Date("2026-08-06")`
+  // parses as UTC midnight, which is already 2026-08-05T19:00 in Bogota
+  // (UTC-5) — so an invoice due "tomorrow" read as "overdue" hours early.
+  const dueIsoDate = dueDate instanceof Date ? todayIsoDateInAppZone(dueDate) : dueDate;
+  const todayIsoDate = todayIsoDateInAppZone(now);
+  return dueIsoDate >= todayIsoDate ? "pending" : "overdue";
 }
