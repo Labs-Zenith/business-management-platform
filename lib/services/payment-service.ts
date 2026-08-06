@@ -76,6 +76,15 @@ export async function createPayment(
     assertCatalogId(methods, data.methodId, "methodId");
   }
 
+  // A voided invoice counts toward nothing and is frozen — paying it would
+  // record money against a sale that was undone. The repository's own
+  // overpay guard cannot catch this: a voided invoice reports balance 0, so
+  // the payment would be rejected as an overpay with a misleading message.
+  const invoice = await repositories.invoices.getById(session.businessId, invoiceId);
+  if (invoice?.status === "voided") {
+    throw new ApiError("CONFLICT", "No se puede registrar un pago sobre una factura anulada.");
+  }
+
   const persist: PaymentInput = {
     paymentDate: data.paymentDate,
     amount: data.amount,

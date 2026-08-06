@@ -324,6 +324,20 @@ export type Invoice = {
   total: number;
   status: InvoiceStatus;
   notes: string | null;
+  /**
+   * Set when the invoice was VOIDED (logically deleted). Its presence
+   * OVERRIDES the derived `status`, which becomes `"voided"` — see each
+   * repo's `withFinance`. A voided invoice keeps its number, its line items
+   * and its (also voided) payments, but counts toward nothing: not the
+   * customer's balance, not the dashboard, not the exports. It can never be
+   * edited or paid again, and voiding cannot be undone — the fix for a
+   * mistaken void is to issue a fresh invoice.
+   */
+  voidedAt: string | null;
+  /** `auth.users(id)` of whoever voided it. */
+  voidedBy: string | null;
+  /** Why it was voided — required by the service, not by the schema. */
+  voidReason: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -348,8 +362,22 @@ export type InvoiceDetail = InvoiceWithFinance & {
 export const INVOICE_SORT_KEYS = ["number", "issueDate", "dueDate", "total", "balance", "status"] as const;
 export type InvoiceSortBy = (typeof INVOICE_SORT_KEYS)[number];
 
+/** What the service hands the repository to void an invoice. */
+export type InvoiceVoid = {
+  /** Free text explaining WHY — required by the service, surfaced on the invoice and in the audit log. */
+  reason: string;
+  /** `auth.users(id)` of the admin performing it, always taken from the session. */
+  voidedBy: string;
+};
+
 export type InvoiceListQuery = {
   customerId?: string;
+  /**
+   * `"voided"` is the ONLY way to see voided invoices: `list` filters them
+   * out by default, which is what keeps them off the dashboard, the exports
+   * and every customer balance without each of those having to remember to
+   * exclude them.
+   */
   status?: InvoiceStatus;
   from?: string;
   to?: string;
@@ -396,6 +424,24 @@ export interface InvoiceRepository {
    */
   update(businessId: string, id: string, data: InvoicePersist): Promise<InvoiceDetail | null>;
   /**
+   * VOIDS the invoice (logical deletion) in ONE transaction, so it stops
+   * counting toward every figure without leaving the database:
+   *
+   *   1. reverses the inventory each product line moved — a sale gives the
+   *      units back (`in`), a credit note takes back what it returned
+   *      (`out`, and therefore GUARDED: it fails if those units have since
+   *      been re-sold, aborting the whole void);
+   *   2. voids the invoice's payments, so the money stops counting;
+   *   3. stamps `voided_at`/`voided_by`/`void_reason`.
+   *
+   * Returns `null` for a missing or cross-business id (never leaked, matching
+   * `getById`). Throws `ApiError("CONFLICT", ...)` if it is already voided,
+   * and `ApiError("VALIDATION_ERROR", ...)` if the stock reversal cannot be
+   * satisfied — zero mutation on either rejection. There is deliberately no
+   * un-void: the remedy for a mistaken void is a new invoice.
+   */
+  void(businessId: string, id: string, data: InvoiceVoid): Promise<InvoiceDetail | null>;
+  /**
    * Distinct `YYYY-MM` months (by `issueDate`) that have at least one invoice
    * for this business, in any order. Powers the dashboard period selector,
    * which must not offer months with no movement — see
@@ -435,6 +481,13 @@ export type Payment = {
   /** FK to `payment_methods.id`; nullable — mirrors `method`'s own nullability (see `PaymentInput.methodId`). */
   methodId: string | null;
   notes: string | null;
+  /**
+   * Set when this payment was voided alongside its invoice (payments are
+   * never voided on their own). A voided payment stops counting toward the
+   * invoice's `paidAmount`, the customer's balance and the dashboard, but the
+   * row survives so the record of it having been entered is not lost.
+   */
+  voidedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

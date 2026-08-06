@@ -19,14 +19,26 @@ import type { Role } from "./ports";
  * customers are otherwise deliberately un-gated — see the "No Role Gating on
  * Inventory" requirement). Enforced route-side with `requireCapability`; the
  * pages additionally hide the button, which is UX only, never the control.
+ * `voidInvoice` gates `POST /api/invoices/{id}/void`: voiding is how a
+ * mistaken invoice is undone, and it silently rewrites stock and the money
+ * counted, so it stays with the admin who answers for the books. It is a
+ * capability of its own rather than a reuse of `deleteRecords` because that
+ * one is documented as covering products and customers specifically, and an
+ * invoice is never deleted — only marked void.
  */
-export type Capability = "viewPayroll" | "viewAuditLog" | "editBusinessProfile" | "deleteRecords";
+export type Capability =
+  | "viewPayroll"
+  | "viewAuditLog"
+  | "editBusinessProfile"
+  | "deleteRecords"
+  | "voidInvoice";
 
 const CAPABILITY_ROLES: Record<Capability, readonly Role[]> = {
   viewPayroll: ["admin"],
   viewAuditLog: ["admin"],
   editBusinessProfile: ["admin"],
   deleteRecords: ["admin"],
+  voidInvoice: ["admin"],
 };
 
 /** Deny-by-default: any capability not present in `CAPABILITY_ROLES` returns `false`. */
@@ -48,4 +60,8 @@ export function canEditBusinessProfile(role: Role): boolean {
 
 export function canDeleteRecords(role: Role): boolean {
   return can(role, "deleteRecords");
+}
+
+export function canVoidInvoice(role: Role): boolean {
+  return can(role, "voidInvoice");
 }

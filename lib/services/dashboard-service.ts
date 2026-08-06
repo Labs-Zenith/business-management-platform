@@ -55,6 +55,10 @@ const INVOICE_STATUS_CHART_META: Record<InvoiceStatus, { label: string }> = {
   partially_paid: { label: "Parcial" },
   paid: { label: "Pagada" },
   overdue: { label: "Vencida" },
+  // Present only to satisfy the exhaustive `Record<InvoiceStatus, ...>`: a
+  // voided invoice never reaches the dashboard, because `invoices.list`
+  // filters it out before any of these aggregates run.
+  voided: { label: "Anulada" },
 };
 
 const INVOICE_STATUS_CHART_ORDER: InvoiceStatus[] = ["pending", "partially_paid", "paid", "overdue"];

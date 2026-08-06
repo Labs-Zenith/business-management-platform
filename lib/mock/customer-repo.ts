@@ -42,7 +42,16 @@ function paymentsForInvoice(store: MockStore, invoiceId: string): Payment[] {
 }
 
 function withFinance(store: MockStore, invoice: Invoice): InvoiceWithFinance {
-  const paidAmount = paymentsForInvoice(store, invoice.id).reduce((sum, payment) => sum + payment.amount, 0);
+  // Mirrors `lib/mock/invoice-repo.ts#withFinance`: a voided invoice's status
+  // comes from the persisted marker, not from `computeStatus`, and its
+  // amounts collapse to zero.
+  if (invoice.voidedAt) {
+    return { ...invoice, paidAmount: 0, balance: 0, status: "voided" };
+  }
+
+  const paidAmount = paymentsForInvoice(store, invoice.id)
+    .filter((payment) => !payment.voidedAt)
+    .reduce((sum, payment) => sum + payment.amount, 0);
   const balance = invoice.total - paidAmount;
   const status = computeStatus(invoice.total, paidAmount, invoice.dueDate, new Date());
   return { ...invoice, paidAmount, balance, status };
@@ -57,9 +66,18 @@ function toPaymentWithRefs(store: MockStore, customer: Customer, payment: Paymen
   };
 }
 
+/**
+ * A VOIDED invoice, and the payments voided with it, contribute nothing —
+ * that is the whole point of voiding. Mirrors the same exclusion in
+ * `lib/db/customer-repo.ts`.
+ */
 function computeCustomerBalance(store: MockStore, customerId: string): number {
-  const totalInvoiced = invoicesForCustomer(store, customerId).reduce((sum, invoice) => sum + invoice.total, 0);
-  const totalPaid = paymentsForCustomer(store, customerId).reduce((sum, payment) => sum + payment.amount, 0);
+  const totalInvoiced = invoicesForCustomer(store, customerId)
+    .filter((invoice) => !invoice.voidedAt)
+    .reduce((sum, invoice) => sum + invoice.total, 0);
+  const totalPaid = paymentsForCustomer(store, customerId)
+    .filter((payment) => !payment.voidedAt)
+    .reduce((sum, payment) => sum + payment.amount, 0);
   return totalInvoiced - totalPaid;
 }
 
@@ -111,8 +129,15 @@ export function createCustomerRepository(store: MockStore): CustomerRepository {
       const invoicesWithFinance = invoicesForCustomer(store, id).map((invoice) => withFinance(store, invoice));
       const payments = paymentsForCustomer(store, id);
 
-      const totalInvoiced = invoicesWithFinance.reduce((sum, invoice) => sum + invoice.total, 0);
-      const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      // Same exclusion as `computeCustomerBalance`: voided invoices and their
+      // payments stay visible in the recent lists below (shown as "Anulada")
+      // but add up to nothing.
+      const totalInvoiced = invoicesWithFinance
+        .filter((invoice) => invoice.status !== "voided")
+        .reduce((sum, invoice) => sum + invoice.total, 0);
+      const totalPaid = payments
+        .filter((payment) => !payment.voidedAt)
+        .reduce((sum, payment) => sum + payment.amount, 0);
 
       const recentInvoices = [...invoicesWithFinance]
         .sort((a, b) => (a.issueDate < b.issueDate ? 1 : -1))

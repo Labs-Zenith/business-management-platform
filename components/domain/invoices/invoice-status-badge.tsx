@@ -15,7 +15,7 @@ import type { InvoiceStatus } from "@/lib/services/status";
  */
 const STATUS_CONFIG: Record<
   InvoiceStatus,
-  { label: string; variant: "success" | "warning" | "info" | "destructive" }
+  { label: string; variant: "success" | "warning" | "info" | "destructive" | "outline" }
 > = {
   pending: {
     label: "Pendiente",
@@ -32,6 +32,13 @@ const STATUS_CONFIG: Record<
   overdue: {
     label: "Vencida",
     variant: "destructive",
+  },
+  // Deliberately `outline`, not `destructive`: a voided invoice needs no
+  // attention and is not urgent — it is inert. Making it red would compete
+  // visually with the overdue invoices that DO need chasing.
+  voided: {
+    label: "Anulada",
+    variant: "outline",
   },
 };
 

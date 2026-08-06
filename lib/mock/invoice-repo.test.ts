@@ -781,3 +781,150 @@ describe("createInvoiceRepository — credit note returns stock", () => {
     expect(await stockOf(store, product.id)).toBe(0);
   });
 });
+
+/**
+ * Voiding — the logical deletion for an invoice created by mistake. The
+ * cases that matter are the ones where money and stock have to end up back
+ * where they started, and the one where they cannot.
+ */
+describe("createInvoiceRepository.void", () => {
+  const LOCAL_BUSINESS_ID = "10000000-0000-4000-8000-000000000044";
+  const VOID_DATA = { reason: "Se facturó al cliente equivocado", voidedBy: "user-1" };
+
+  async function setup(initialStock: number) {
+    const store = createEmptyStore();
+    const customers = createCustomerRepository(store);
+    const products = createProductRepository(store);
+    const movements = createInventoryMovementRepository(store);
+    const invoices = createInvoiceRepository(store);
+    const payments = createPaymentRepository(store);
+
+    const customer = await customers.create(LOCAL_BUSINESS_ID, { name: "Cliente Anulación" });
+    const product = await products.create(LOCAL_BUSINESS_ID, { name: "Crema", unitCost: 40000 });
+    if (initialStock > 0) {
+      await movements.create(LOCAL_BUSINESS_ID, { productId: product.id, type: "in", quantity: initialStock });
+    }
+    const typeId = (code: string) => [...store.invoiceTypes.values()].find((t) => t.code === code)!.id;
+
+    return { store, products, invoices, payments, customers, customer, product, typeId };
+  }
+
+  function persist(customerId: string, productId: string, quantity: number, invoiceTypeId?: string): InvoicePersist {
+    const total = lineTotal(quantity, 40000);
+    return {
+      customerId,
+      issueDate: "2026-08-05",
+      dueDate: null,
+      invoiceTypeId,
+      items: [{ description: "Crema", quantity, unitPrice: 40000, productId, lineTotal: total }],
+      subtotal: total,
+      total,
+      status: computeStatus(total, 0, null, new Date("2026-08-05")),
+      notes: null,
+    };
+  }
+
+  async function stockOf(store: ReturnType<typeof createEmptyStore>, productId: string) {
+    return (await createProductRepository(store).getById(LOCAL_BUSINESS_ID, productId))!.currentQuantity;
+  }
+
+  it("gives the stock back and stops the money counting — the mistaken-invoice case", async () => {
+    const { store, invoices, payments, customers, customer, product, typeId } = await setup(10);
+    const invoice = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 4, typeId("venta")));
+    await payments.createForInvoice(LOCAL_BUSINESS_ID, invoice.id, {
+      paymentDate: "2026-08-05",
+      amount: 60000,
+      method: null,
+      methodId: null,
+      notes: null,
+    });
+    expect(await stockOf(store, product.id)).toBe(6);
+
+    const voided = await invoices.void(LOCAL_BUSINESS_ID, invoice.id, VOID_DATA);
+
+    expect(voided!.status).toBe("voided");
+    expect(voided!.voidReason).toBe(VOID_DATA.reason);
+    expect(voided!.voidedBy).toBe("user-1");
+    // Stock is back where it started, and the invoice counts for nothing.
+    expect(await stockOf(store, product.id)).toBe(10);
+    expect(voided!.paidAmount).toBe(0);
+    expect(voided!.balance).toBe(0);
+    // The customer owes nothing again.
+    const detail = await customers.getById(LOCAL_BUSINESS_ID, customer.id);
+    expect(detail!.balance).toBe(0);
+    expect(detail!.totalInvoiced).toBe(0);
+    expect(detail!.totalPaid).toBe(0);
+  });
+
+  it("keeps the rows: nothing is deleted, only marked", async () => {
+    const { store, invoices, payments, customer, product, typeId } = await setup(5);
+    const invoice = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 1, typeId("venta")));
+    await payments.createForInvoice(LOCAL_BUSINESS_ID, invoice.id, {
+      paymentDate: "2026-08-05", amount: 1000, method: null, methodId: null, notes: null,
+    });
+
+    await invoices.void(LOCAL_BUSINESS_ID, invoice.id, VOID_DATA);
+
+    expect(store.invoices.has(invoice.id)).toBe(true);
+    expect([...store.invoiceItems.values()].filter((i) => i.invoiceId === invoice.id)).toHaveLength(1);
+    const invoicePayments = [...store.payments.values()].filter((p) => p.invoiceId === invoice.id);
+    expect(invoicePayments).toHaveLength(1);
+    expect(invoicePayments[0]!.voidedAt).not.toBeNull();
+  });
+
+  it("disappears from the default list but is reachable with status=voided", async () => {
+    const { invoices, customer, product, typeId } = await setup(5);
+    const invoice = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 1, typeId("venta")));
+    await invoices.void(LOCAL_BUSINESS_ID, invoice.id, VOID_DATA);
+
+    const live = await invoices.list(LOCAL_BUSINESS_ID, { page: 1, pageSize: 20 });
+    expect(live.data.some((i) => i.id === invoice.id)).toBe(false);
+
+    const onlyVoided = await invoices.list(LOCAL_BUSINESS_ID, { page: 1, pageSize: 20, status: "voided" });
+    expect(onlyVoided.data.map((i) => i.id)).toEqual([invoice.id]);
+  });
+
+  it("takes back the stock a CREDIT NOTE had returned", async () => {
+    const { store, invoices, customer, product, typeId } = await setup(10);
+    const note = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 3, typeId("nota_credito")));
+    expect(await stockOf(store, product.id)).toBe(13);
+
+    await invoices.void(LOCAL_BUSINESS_ID, note.id, VOID_DATA);
+
+    expect(await stockOf(store, product.id)).toBe(10);
+  });
+
+  it("REFUSES when the units a credit note returned were already re-sold, changing nothing", async () => {
+    const { store, invoices, customer, product, typeId } = await setup(0);
+    const note = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 2, typeId("nota_credito")));
+    await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 2, typeId("venta")));
+    expect(await stockOf(store, product.id)).toBe(0);
+
+    await expect(invoices.void(LOCAL_BUSINESS_ID, note.id, VOID_DATA)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+
+    // Zero mutation on rejection: still live, still zero stock.
+    expect(await stockOf(store, product.id)).toBe(0);
+    expect(store.invoices.get(note.id)!.voidedAt).toBeNull();
+  });
+
+  it("refuses to void twice", async () => {
+    const { invoices, customer, product, typeId } = await setup(5);
+    const invoice = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 1, typeId("venta")));
+    await invoices.void(LOCAL_BUSINESS_ID, invoice.id, VOID_DATA);
+
+    await expect(invoices.void(LOCAL_BUSINESS_ID, invoice.id, VOID_DATA)).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+  });
+
+  it("returns null for a cross-business id, leaving the invoice live", async () => {
+    const { store, invoices, customer, product, typeId } = await setup(5);
+    const invoice = await invoices.create(LOCAL_BUSINESS_ID, persist(customer.id, product.id, 1, typeId("venta")));
+
+    await expect(invoices.void("10000000-0000-4000-8000-000000000099", invoice.id, VOID_DATA)).resolves.toBeNull();
+
+    expect(store.invoices.get(invoice.id)!.voidedAt).toBeNull();
+  });
+});

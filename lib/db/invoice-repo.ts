@@ -6,6 +6,7 @@ import type {
   InvoiceItem,
   InvoiceListQuery,
   InvoicePersist,
+  InvoiceVoid,
   InvoiceRepository,
   InvoiceWithFinance,
   Paged,
@@ -28,6 +29,9 @@ type InvoiceRow = {
   total: number;
   status: string;
   notes: string | null;
+  voided_at: string | null;
+  voided_by: string | null;
+  void_reason: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -52,6 +56,7 @@ type PaymentRow = {
   method: string | null;
   method_id: string | null;
   notes: string | null;
+  voided_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -114,6 +119,7 @@ function toPaymentWithRefs(payment: PaymentRow, customerName: string, invoiceNum
     method: payment.method,
     methodId: payment.method_id,
     notes: payment.notes,
+    voidedAt: payment.voided_at ? new Date(payment.voided_at).toISOString() : null,
     createdAt: new Date(payment.created_at).toISOString(),
     updatedAt: new Date(payment.updated_at).toISOString(),
     customer: { id: payment.customer_id, name: customerName },
@@ -134,14 +140,32 @@ function toInvoice(row: InvoiceRow): Invoice {
     total: Number(row.total),
     status: row.status as Invoice["status"],
     notes: row.notes,
+    voidedAt: row.voided_at ? new Date(row.voided_at).toISOString() : null,
+    voidedBy: row.voided_by,
+    voidReason: row.void_reason,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
 }
 
+/**
+ * THE choke point for an invoice's status. A voided invoice short-circuits
+ * everything: `computeStatus` works off total/paid/dueDate and cannot express
+ * "voided", so the persisted `voidedAt` marker wins here instead. Its balance
+ * and paid amount collapse to 0 so it contributes nothing to any total that
+ * sums these — customer balances, the dashboard, exports.
+ *
+ * Voided PAYMENTS are excluded from `paidAmount` for a live invoice too,
+ * though in practice payments are only ever voided together with their
+ * invoice.
+ */
 function withFinance(invoice: Invoice, payments: PaymentRow[]): InvoiceWithFinance {
+  if (invoice.voidedAt) {
+    return { ...invoice, paidAmount: 0, balance: 0, status: "voided" };
+  }
+
   const paidAmount = payments
-    .filter((p) => String(p.invoice_id) === String(invoice.id))
+    .filter((p) => String(p.invoice_id) === String(invoice.id) && !p.voided_at)
     .reduce((sum, p) => sum + Number(p.amount), 0);
   const balance = invoice.total - paidAmount;
   const status = computeStatus(invoice.total, paidAmount, invoice.dueDate, new Date());
@@ -223,6 +247,12 @@ export const invoiceRepo: InvoiceRepository = {
     const paymentRows = (await sql`SELECT * FROM payments WHERE business_id = ${businessId}`) as unknown as PaymentRow[];
 
     let invoices = invoiceRows.map(toInvoice).map((inv) => withFinance(inv, paymentRows));
+
+    // Voided invoices are hidden unless explicitly asked for. This ONE line
+    // is what keeps them off the dashboard, the exports and every customer
+    // balance — all of which read through this method — instead of each of
+    // those having to remember to exclude them.
+    if (query.status !== "voided") invoices = invoices.filter((i) => i.status !== "voided");
 
     if (query.customerId) invoices = invoices.filter((i) => i.customerId === query.customerId);
     if (query.status) invoices = invoices.filter((i) => i.status === query.status);
@@ -667,6 +697,113 @@ export const invoiceRepo: InvoiceRepository = {
     // Header + items already committed atomically above; re-read for the
     // returned detail.
     return buildDetail(toInvoice(updatedRows[0]!));
+  },
+
+  /**
+   * Voids the invoice (logical deletion) — see `InvoiceRepository.void`.
+   *
+   * Every statement runs inside ONE `runTransaction`, behind the canonical
+   * two-statement `FOR UPDATE` guard from `client.ts`: lock first, mutate
+   * after. If the stock reversal cannot be satisfied the throw rolls the
+   * WHOLE thing back, so an invoice is never left half-voided.
+   */
+  async void(businessId: string, id: string, data: InvoiceVoid): Promise<InvoiceDetail | null> {
+    const { lockRows } = await runTransaction(async (tx) => {
+      // Statement 1: lock the invoice and read what decides the rest — is it
+      // already voided, and which way did its lines move stock. Same
+      // `FOR UPDATE OF i` as `update`: the global `invoice_types` catalog
+      // must never be locked by a per-business write.
+      const lockRows = (await tx`
+        SELECT i.id, i.voided_at, t.code AS type_code
+        FROM invoices i
+        JOIN invoice_types t ON t.id = i.invoice_type_id
+        WHERE i.id = ${id} AND i.business_id = ${businessId}
+        FOR UPDATE OF i
+      `) as unknown as { id: string; voided_at: string | null; type_code: string }[];
+
+      const locked = lockRows[0];
+      if (!locked) return { lockRows } as const;
+      if (locked.voided_at) {
+        throw new ApiError("CONFLICT", "Esta factura ya está anulada.");
+      }
+
+      // Statement 2: the product lines to reverse, read under the lock.
+      const productItemRows = (await tx`
+        SELECT product_id, quantity, description
+        FROM invoice_items
+        WHERE invoice_id = ${id} AND product_id IS NOT NULL
+      `) as unknown as { product_id: string; quantity: string; description: string }[];
+
+      // Undoing a line moves stock the OPPOSITE way to how it was applied: a
+      // sale gives the units back (`in`), a credit note takes back what it
+      // returned (`out`). Only the `out` direction can underflow, so only it
+      // is guarded — exactly the asymmetry `update` already handles.
+      const reversalType = reverseMovementDirection(movementDirectionFor(locked.type_code));
+
+      for (const item of productItemRows) {
+        if (reversalType === "in") {
+          await tx`
+            INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+            VALUES (gen_random_uuid(), ${businessId}, ${item.product_id}, 'in',
+              (SELECT id FROM movement_types WHERE code = 'in'), ${item.quantity}, NULL)
+          `;
+          continue;
+        }
+
+        // Lock the product row, then a fresh-snapshot floor-at-zero guard —
+        // the same two-statement shape as `create`/`update`.
+        const productLockRows = (await tx`
+          SELECT id FROM products WHERE id = ${item.product_id} AND business_id = ${businessId} FOR UPDATE
+        `) as unknown as { id: string }[];
+        if (productLockRows.length === 0) {
+          throw new ApiError("VALIDATION_ERROR", `Producto no encontrado para la línea "${item.description}"`);
+        }
+
+        const movementRows = (await tx`
+          WITH bal AS (
+            SELECT p.id,
+              COALESCE((SELECT SUM(CASE WHEN m.type = 'in' THEN m.quantity ELSE -m.quantity END)
+                        FROM inventory_movements m WHERE m.product_id = p.id), 0) AS current_qty
+            FROM products p
+            WHERE p.id = ${item.product_id} AND p.business_id = ${businessId}
+          )
+          INSERT INTO inventory_movements (id, business_id, product_id, type, type_id, quantity, note)
+          SELECT gen_random_uuid(), ${businessId}, bal.id, 'out',
+            (SELECT id FROM movement_types WHERE code = 'out'), ${item.quantity}, NULL
+          FROM bal
+          WHERE ${item.quantity} <= bal.current_qty
+          RETURNING *
+        `) as unknown as { id: string }[];
+
+        if (movementRows.length === 0) {
+          throw new ApiError(
+            "VALIDATION_ERROR",
+            `No se puede anular: las unidades devueltas de "${item.description}" ya salieron del inventario.`,
+          );
+        }
+      }
+
+      // The money stops counting, without losing the record of it.
+      await tx`
+        UPDATE payments SET voided_at = now(), updated_at = now()
+        WHERE invoice_id = ${id} AND business_id = ${businessId} AND voided_at IS NULL
+      `;
+
+      await tx`
+        UPDATE invoices
+        SET voided_at = now(), voided_by = ${data.voidedBy}, void_reason = ${data.reason}, updated_at = now()
+        WHERE id = ${id} AND business_id = ${businessId}
+      `;
+
+      return { lockRows } as const;
+    });
+
+    if (lockRows.length === 0) return null;
+
+    // Committed above; re-read via the plain `sql` tag for the returned
+    // detail — mirrors `create`/`update`'s post-transaction read.
+    const rows = (await sql`SELECT * FROM invoices WHERE id = ${id}`) as unknown as InvoiceRow[];
+    return buildDetail(toInvoice(rows[0]!));
   },
 
   /** SQL-side aggregate — see `lib/db/expense-repo.ts#listActiveMonths` for why. */

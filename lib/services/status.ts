@@ -9,9 +9,16 @@
  *
  * Rule 2 is checked BEFORE rule 4: a partially paid invoice that is also
  * past its due date stays "partially_paid", never "overdue".
+ *
+ * `"voided"` is part of the union but `computeStatus` NEVER returns it: it is
+ * not derivable from total/paid/dueDate. It comes from the persisted
+ * `invoices.voided_at` marker and is imposed by each repo's `withFinance`,
+ * which short-circuits before calling this function. Keeping it in the same
+ * union is what makes the list filter, the badge and every `InvoiceStatus`
+ * consumer handle it exhaustively.
  */
 
-export type InvoiceStatus = "pending" | "partially_paid" | "paid" | "overdue";
+export type InvoiceStatus = "pending" | "partially_paid" | "paid" | "overdue" | "voided";
 
 export function computeStatus(
   total: number,

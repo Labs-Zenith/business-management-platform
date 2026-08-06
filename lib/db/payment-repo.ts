@@ -37,6 +37,7 @@ type PaymentRow = {
   method: string | null;
   method_id: string | null;
   notes: string | null;
+  voided_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -61,6 +62,7 @@ async function toPaymentWithRefs(row: PaymentRow): Promise<PaymentWithRefs> {
     method: row.method,
     methodId: row.method_id,
     notes: row.notes,
+    voidedAt: row.voided_at ? new Date(row.voided_at).toISOString() : null,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
     customer: { id: row.customer_id, name: customerRows[0]?.name ?? "" },
@@ -83,7 +85,10 @@ export const paymentRepo: PaymentRepository = {
 
   async list(businessId: string, query: PaymentListQuery): Promise<Paged<PaymentWithRefs>> {
     const rows = (await sql`SELECT * FROM payments WHERE business_id = ${businessId}`) as unknown as PaymentRow[];
-    let withRefs = await Promise.all(rows.map(toPaymentWithRefs));
+    // Voided payments belong to a voided invoice and must not count anywhere
+    // — Ingresos, the dashboard's "cobrado", the exports. Excluding them at
+    // this single read point covers all of them.
+    let withRefs = await Promise.all(rows.filter((row) => !row.voided_at).map(toPaymentWithRefs));
 
     if (query.customerId) withRefs = withRefs.filter((p) => p.customerId === query.customerId);
     if (query.invoiceId) withRefs = withRefs.filter((p) => p.invoiceId === query.invoiceId);
