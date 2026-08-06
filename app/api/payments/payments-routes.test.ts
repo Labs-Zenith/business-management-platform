@@ -77,6 +77,9 @@ function seedOtherBusinessPayment(): Payment {
     total: 100000,
     status: "partially_paid",
     notes: null,
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
   };
@@ -92,6 +95,7 @@ function seedOtherBusinessPayment(): Payment {
     method: "cash",
     methodId: "c3000000-0000-4000-8000-000000000001",
     notes: null,
+    voidedAt: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
   };

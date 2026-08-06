@@ -3,7 +3,7 @@ import { formatCOP } from "@/lib/money";
 import { requireSessionOrRedirect } from "@/lib/session";
 import { loadStoreFromCookie } from "@/lib/mock/cookie-persistence";
 import { getInvoice } from "@/lib/services/invoice-service";
-import { canViewAuditLog } from "@/lib/services/permissions";
+import { canViewAuditLog, canVoidInvoice } from "@/lib/services/permissions";
 import { Button } from "@/components/ui/button";
 import {
   Breadcrumb,
@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardRow, CardTitle } from "@/components/
 import { PageShell } from "@/components/ui/page-shell";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/domain/page-header";
+import VoidInvoiceDialog from "@/components/domain/invoices/void-invoice-dialog";
 import { InvoiceStatusBadge } from "@/components/domain/invoices/invoice-status-badge";
 import { StatCard } from "@/components/domain/stat-card";
 import { MoneyAmount } from "@/components/domain/money-amount";
@@ -63,6 +64,13 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
   const session = await requireSessionOrRedirect();
   const { id } = await params;
   const invoice = await getInvoice(session, id);
+  // A voided invoice is frozen: it counts toward nothing, and neither editing
+  // nor paying it is allowed. Both actions below already happen to vanish
+  // because a voided invoice reports balance 0 — this makes the reason
+  // explicit rather than emergent.
+  const isVoided = invoice.status === "voided";
+  // UX only; `requireCapability("voidInvoice")` on the route is the gate.
+  const canVoid = canVoidInvoice(session.role) && !isVoided;
 
   return (
     <PageShell>
@@ -84,7 +92,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
         }
         actions={
           <>
-            {invoice.balance > 0 ? (
+            {!isVoided && invoice.balance > 0 ? (
               <Button
                 variant="outline"
                 className="w-full sm:w-auto"
@@ -94,6 +102,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
                 Editar factura
               </Button>
             ) : null}
+            {canVoid ? <VoidInvoiceDialog invoiceId={invoice.id} invoiceNumber={invoice.number} /> : null}
             <Button
               variant="outline"
               className="w-full sm:w-auto"
@@ -105,6 +114,25 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
           </>
         }
       />
+
+      {isVoided ? (
+        <div
+          role="status"
+          className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm"
+        >
+          <p className="font-medium text-destructive">Factura anulada</p>
+          <p className="mt-1 text-muted-foreground">
+            Ya no cuenta en el saldo del cliente ni en el dashboard. Se devolvió el inventario que había
+            descontado y sus pagos quedaron anulados.
+          </p>
+          {invoice.voidReason ? (
+            <p className="mt-2">
+              <span className="text-muted-foreground">Motivo: </span>
+              {invoice.voidReason}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Total" value={<MoneyAmount cents={invoice.total} size="lg" />} />
@@ -155,7 +183,7 @@ export default async function InvoiceDetailPage({ params }: InvoiceDetailPagePro
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Pagos</CardTitle>
-          {invoice.balance > 0 ? (
+          {!isVoided && invoice.balance > 0 ? (
             <PaymentFormDialog
               invoiceId={invoice.id}
               balance={invoice.balance}

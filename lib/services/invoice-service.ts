@@ -248,6 +248,13 @@ export async function createInvoice(session: Session, data: InvoiceCreateInput):
 export async function updateInvoice(session: Session, id: string, data: InvoiceUpdateInput): Promise<InvoiceDetail> {
   const invoice = await getInvoice(session, id);
 
+  // A voided invoice is frozen: it counts toward nothing and exists only as
+  // a record of what was undone. Editing it would silently resurrect stock
+  // movements for an invoice that is not supposed to affect anything.
+  if (invoice.status === "voided") {
+    throw new ApiError("CONFLICT", "Una factura anulada no se puede editar. Crea una factura nueva.");
+  }
+
   // Fully-paid invoices are permanently locked.
   if (invoice.balance <= 0) {
     throw new ApiError("CONFLICT", "Invoice cannot be edited once it is fully paid.");
@@ -313,4 +320,31 @@ export async function updateInvoice(session: Session, id: string, data: InvoiceU
   await recordAuditLog(session, "invoice", updated.id, "invoice_updated", detail);
 
   return updated;
+}
+
+/**
+ * Voids an invoice — the logical deletion for one created by mistake. The
+ * repository reverses the stock its lines moved and voids its payments in a
+ * single transaction; this layer owns the rules around it: the reason is
+ * mandatory, and the act is recorded in the audit log with WHO and WHY.
+ *
+ * Admin-only — `requireCapability("voidInvoice")` at the route. There is
+ * deliberately no un-void: the remedy for a mistaken void is a new invoice.
+ */
+export async function voidInvoice(session: Session, id: string, reason: string): Promise<InvoiceDetail> {
+  const trimmed = reason.trim();
+  if (!trimmed) {
+    throw new ApiError("VALIDATION_ERROR", "El motivo de la anulación es obligatorio.");
+  }
+
+  const voided = await repositories.invoices.void(session.businessId, id, {
+    reason: trimmed,
+    voidedBy: session.userId,
+  });
+  if (!voided) {
+    throw new ApiError("NOT_FOUND", "Invoice not found.");
+  }
+
+  await recordAuditLog(session, "invoice", voided.id, "invoice_voided", `${voided.number} — ${trimmed}`);
+  return voided;
 }

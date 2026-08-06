@@ -161,6 +161,9 @@ export function seedFixtures(store: MockStore): void {
       total,
       status,
       notes: invoiceFixture.notes,
+      voidedAt: null,
+      voidedBy: null,
+      voidReason: null,
       createdAt: nowIso,
       updatedAt: nowIso,
     };
@@ -180,6 +183,7 @@ export function seedFixtures(store: MockStore): void {
         method: paymentFixture.method,
         methodId: findCatalogIdByCode(store.paymentMethods, paymentFixture.method) ?? null,
         notes: paymentFixture.notes,
+        voidedAt: null,
         createdAt: nowIso,
         updatedAt: nowIso,
       };

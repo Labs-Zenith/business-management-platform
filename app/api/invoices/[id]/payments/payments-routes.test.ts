@@ -67,6 +67,9 @@ function seedInvoice(id: string, total: number, dueDate = "2026-08-01", status: 
     total,
     status,
     notes: null,
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
   };
@@ -103,6 +106,9 @@ function seedOtherBusinessInvoice(): Invoice {
     total: 100000,
     status: "pending",
     notes: "Factura de otro negocio",
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
   };

@@ -7,6 +7,7 @@ import type {
   InvoiceItem,
   InvoiceListQuery,
   InvoicePersist,
+  InvoiceVoid,
   InvoiceRepository,
   InvoiceWithFinance,
   InventoryMovement,
@@ -46,8 +47,15 @@ function toPaymentWithRefs(store: MockStore, payment: Payment): PaymentWithRefs 
 }
 
 /** Recomputes paid/balance/status for an invoice from the current payments. */
+/** Mirrors `lib/db/invoice-repo.ts#withFinance` — see its doc comment. */
 function withFinance(store: MockStore, invoice: Invoice): InvoiceWithFinance {
-  const paidAmount = paymentsForInvoice(store, invoice.id).reduce((sum, payment) => sum + payment.amount, 0);
+  if (invoice.voidedAt) {
+    return { ...invoice, paidAmount: 0, balance: 0, status: "voided" };
+  }
+
+  const paidAmount = paymentsForInvoice(store, invoice.id)
+    .filter((payment) => !payment.voidedAt)
+    .reduce((sum, payment) => sum + payment.amount, 0);
   const balance = invoice.total - paidAmount;
   const status = computeStatus(invoice.total, paidAmount, invoice.dueDate, new Date());
   return { ...invoice, paidAmount, balance, status };
@@ -169,6 +177,12 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
         .filter((invoice) => invoice.businessId === businessId)
         .map((invoice) => withFinance(store, invoice));
 
+      // Voided invoices are hidden unless explicitly asked for — same single
+      // exclusion point as the Postgres twin.
+      if (query.status !== "voided") {
+        invoices = invoices.filter((invoice) => invoice.status !== "voided");
+      }
+
       if (query.customerId) {
         invoices = invoices.filter((invoice) => invoice.customerId === query.customerId);
       }
@@ -183,6 +197,59 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
       }
 
       return paginate(invoiceSorter.sort(invoices, query), query.page, query.pageSize);
+    },
+
+    /**
+     * Mirrors `lib/db/invoice-repo.ts#void`. Everything is validated and the
+     * movements are BUILT before a single store write, so a rejected void
+     * (already voided, or a stock reversal that cannot be satisfied) leaves
+     * the store exactly as it was — the mock equivalent of that method's
+     * whole-transaction rollback.
+     */
+    async void(businessId: string, id: string, data: InvoiceVoid): Promise<InvoiceDetail | null> {
+      const existing = store.invoices.get(id);
+      if (!existing || existing.businessId !== businessId) {
+        return null;
+      }
+      if (existing.voidedAt) {
+        throw new ApiError("CONFLICT", "Esta factura ya está anulada.");
+      }
+
+      // Undoing a line moves stock the OPPOSITE way to how it was applied.
+      // Only the `out` direction can underflow, so only it is guarded.
+      const reversalType = reverseMovementDirection(
+        movementDirectionFor(store.invoiceTypes.get(existing.invoiceTypeId)?.code),
+      );
+      const now = new Date().toISOString();
+      const reversalMovements = buildLineMovements(
+        store,
+        businessId,
+        itemsForInvoice(store, id),
+        new Map(),
+        now,
+        reversalType,
+        (entry) =>
+          `No se puede anular: las unidades devueltas de "${entry.description}" ya salieron del inventario.`,
+      );
+
+      // Nothing above touched the store; from here it is all-or-nothing.
+      for (const movement of reversalMovements) {
+        store.inventoryMovements.set(movement.id, movement);
+      }
+      for (const [paymentId, payment] of store.payments) {
+        if (payment.invoiceId === id && !payment.voidedAt) {
+          store.payments.set(paymentId, { ...payment, voidedAt: now, updatedAt: now });
+        }
+      }
+      store.invoices.set(id, {
+        ...existing,
+        voidedAt: now,
+        voidedBy: data.voidedBy,
+        voidReason: data.reason,
+        updatedAt: now,
+      });
+
+      return toInvoiceDetail(store, store.invoices.get(id)!);
     },
 
     /** Mirrors `lib/db/invoice-repo.ts#listActiveMonths`. */
@@ -270,6 +337,9 @@ export function createInvoiceRepository(store: MockStore): InvoiceRepository {
           total: data.total,
           status: data.status,
           notes: data.notes,
+          voidedAt: null,
+          voidedBy: null,
+          voidReason: null,
           createdAt: now,
           updatedAt: now,
         };
